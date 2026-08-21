@@ -1,0 +1,31 @@
+# Servicios efímeros para la suite de pruebas (doc 07).
+# Sin volúmenes: la base se recrea por corrida. Puertos distintos para no
+# chocar con el stack de desarrollo.
+name: duelodev-test
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: duelodev
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: duelodev_test
+    ports:
+      - '55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U duelodev -d duelodev_test']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - '56379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20

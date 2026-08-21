@@ -1,0 +1,45 @@
+# DueloDev — stack de desarrollo local.
+# Semana 0: solo postgres + redis. Los servicios de aplicación se añaden
+# en sus fases (api: S3, realtime: S5, web: S7, worker: S1-S2).
+name: duelodev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: duelodev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-duelodev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiame_en_local}
+      POSTGRES_DB: ${POSTGRES_DB:-duelodev}
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-duelodev} -d ${POSTGRES_DB:-duelodev}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: duelodev-redis
+    restart: unless-stopped
+    # appendonly: la cola del juez y el estado de partida (H4) no deben
+    # evaporarse en un reinicio del contenedor.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6380}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
