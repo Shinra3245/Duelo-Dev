@@ -1,0 +1,145 @@
+# CI de DueloDev — obligatorio desde la Semana 0 (contexto H11).
+#
+# La suite de abuso del juez no puede depender de que alguien se acuerde de
+# correrla: aquí corre sola en cada cambio de `judge/`.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  # ¿Qué cambió? Decide si corre la suite del juez (es la más lenta).
+  cambios:
+    runs-on: ubuntu-latest
+    outputs:
+      judge: ${{ steps.filtro.outputs.judge }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filtro
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            judge:
+              - 'judge/**'
+
+  formato:
+    name: Formato y lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  unitarios:
+    name: Pruebas unitarias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # Se activa en la Semana 3, cuando existan migraciones y endpoints.
+  integracion:
+    name: Integración (API + Postgres + Redis)
+    runs-on: ubuntu-latest
+    if: hashFiles('api/package.json') != ''
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: duelodev
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: duelodev_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U duelodev -d duelodev_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://duelodev:test@localhost:5432/duelodev_test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration --workspace api
+
+  # Suite de abuso del juez: los 15 puntos del doc 06 §3.
+  # Un cambio en el juez sin esto en verde NO está terminado.
+  juez:
+    name: Juez — suite de abuso
+    needs: cambios
+    if: needs.cambios.outputs.judge == 'true' && hashFiles('judge/requirements.txt') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r judge/requirements.txt
+      - run: ruff check judge/
+      - run: black --check judge/
+      - run: mypy --strict judge/
+      - name: Construir imagen ubuntu-judge
+        run: docker build -t duelodev/ubuntu-judge:latest -f judge/Dockerfile.judge judge/
+      - name: Suite de abuso completa
+        run: pytest judge/tests -v
+
+  auditoria:
+    name: Auditoría de dependencias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Bloqueante: lo que realmente se despliega.
+      - name: Dependencias de produccion
+        run: npm audit --omit=dev --audit-level=moderate
+      # Informativo: las de desarrollo (vitest/vite) no llegan al servidor y
+      # solo son explotables con un dev server escuchando. Ver deuda D-04.
+      - name: Dependencias de desarrollo (informativo)
+        continue-on-error: true
+        run: npm audit --audit-level=high
