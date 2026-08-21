@@ -1,0 +1,36 @@
+# ── Contexto de agentes: SOLO local, nunca al repositorio ──
+.claude/
+!.claude/settings.json
+
+# Entorno
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Python (juez)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Datos locales
+*.log
+tmp/
+/data/
+pgdata/
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
