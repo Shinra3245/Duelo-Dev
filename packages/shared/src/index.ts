@@ -6,3 +6,6 @@ export * from './logger.js';
 export * from './health.js';
 export * from './rest.js';
 export * from './queue.js';
+export * from './scoring.js';
+export * from './gamemodes.js';
+export * from './entities.js';
