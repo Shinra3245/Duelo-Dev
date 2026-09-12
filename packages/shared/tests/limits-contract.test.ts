@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   COMPILE_TIMEOUT_MS,
+  CPU_LIMIT,
   DEFAULT_TIME_LIMIT_MS,
   LANGUAGES,
   MEMORY_LIMIT_MB,
@@ -60,6 +61,7 @@ describe('contrato de límites TS ↔ Python', () => {
 
   it.each([
     ['DEFAULT_TIME_LIMIT_MS', DEFAULT_TIME_LIMIT_MS],
+    ['CPU_LIMIT', CPU_LIMIT],
     ['MEMORY_LIMIT_MB', MEMORY_LIMIT_MB],
     ['PIDS_LIMIT', PIDS_LIMIT],
     ['OUTPUT_LIMIT_BYTES', OUTPUT_LIMIT_BYTES],

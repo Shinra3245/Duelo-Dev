@@ -1,0 +1,6 @@
+# Herramientas existentes separadas del futuro worker: pruebas puras sin Docker/BD.
+pytest==8.3.4
+pytest-timeout==2.3.1
+ruff==0.8.4
+black==24.10.0
+mypy==1.14.0

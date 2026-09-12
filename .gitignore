@@ -1,6 +1,17 @@
-# ── Contexto de agentes: SOLO local, nunca al repositorio ──
-.claude/
-!.claude/settings.json
+# Guías y configuración de asistentes: solo local
+/.claude/
+/.codex/
+/.gemini/
+/AGENTS.md
+/CLAUDE.md
+/CODEX.md
+/GEMINI.md
+/.github/copilot-instructions.md
+
+# Guías del proyecto: solo local
+/README.md
+/docs/
+/judge/README.md
 
 # Entorno
 .env
@@ -22,6 +33,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 
 # Datos locales
 *.log

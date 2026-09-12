@@ -8,11 +8,11 @@ from enum import StrEnum
 
 
 class Verdict(StrEnum):
-    AC = "AC"    # Todos los casos pasan
-    WA = "WA"    # Salida difiere en >=1 caso
+    AC = "AC"  # Todos los casos pasan
+    WA = "WA"  # Salida difiere en >=1 caso
     TLE = "TLE"  # Excede tiempo en >=1 caso
     MLE = "MLE"  # OOM-kill del kernel
-    RE = "RE"    # Exit code != 0
-    CE = "CE"    # Falla compilación
+    RE = "RE"  # Exit code != 0
+    CE = "CE"  # Falla compilación
     OLE = "OLE"  # stdout > 1 MB
-    SE = "SE"    # Fallo interno del juez (se reintenta 1 vez)
+    SE = "SE"  # Fallo interno del juez (se reintenta 1 vez)

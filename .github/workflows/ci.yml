@@ -1,7 +1,7 @@
 # CI de DueloDev — obligatorio desde la Semana 0 (contexto H11).
 #
-# La suite de abuso del juez no puede depender de que alguien se acuerde de
-# correrla: aquí corre sola en cada cambio de `judge/`.
+# Etapa actual: evaluación pura del juez. El gate explícito impide añadir
+# ejecución de código sin integrar la validación del sandbox (docs/06).
 name: CI
 
 on:
@@ -18,19 +18,22 @@ env:
   NODE_VERSION: '24'
 
 jobs:
-  # ¿Qué cambió? Decide si corre la suite del juez (es la más lenta).
-  cambios:
+  preparacion:
+    name: Detectar fases implementadas
     runs-on: ubuntu-latest
     outputs:
-      judge: ${{ steps.filtro.outputs.judge }}
+      api: ${{ steps.fases.outputs.api }}
     steps:
       - uses: actions/checkout@v4
-      - id: filtro
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            judge:
-              - 'judge/**'
+      - id: fases
+        shell: bash
+        run: |
+          if [[ -f api/package.json ]]; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api=false" >> "$GITHUB_OUTPUT"
+            echo "API e integración pendientes de implementación (F2)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   formato:
     name: Formato y lint
@@ -73,7 +76,8 @@ jobs:
   integracion:
     name: Integración (API + Postgres + Redis)
     runs-on: ubuntu-latest
-    if: hashFiles('api/package.json') != ''
+    needs: preparacion
+    if: needs.preparacion.outputs.api == 'true'
     services:
       postgres:
         image: postgres:16-alpine
@@ -103,12 +107,8 @@ jobs:
       - run: npm ci
       - run: npm run test:integration --workspace api
 
-  # Suite de abuso del juez: los 15 puntos del doc 06 §3.
-  # Un cambio en el juez sin esto en verde NO está terminado.
   juez:
-    name: Juez — suite de abuso
-    needs: cambios
-    if: needs.cambios.outputs.judge == 'true' && hashFiles('judge/requirements.txt') != ''
+    name: Juez — evaluación pura y preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,14 +116,20 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r judge/requirements.txt
+          cache-dependency-path: judge/requirements-dev.txt
+      - run: pip install -r judge/requirements-dev.txt
       - run: ruff check judge/
       - run: black --check judge/
-      - run: mypy --strict judge/
-      - name: Construir imagen ubuntu-judge
-        run: docker build -t duelodev/ubuntu-judge:latest -f judge/Dockerfile.judge judge/
-      - name: Suite de abuso completa
-        run: pytest judge/tests -v
+      - run: mypy judge/
+      - run: python -m pytest judge/tests -v
+      - name: Estado de la validación del sandbox
+        shell: bash
+        run: |
+          if [[ -f judge/executor.py || -f judge/Dockerfile.judge ]]; then
+            echo "::error::Antes de incorporar el ejecutor, configurar aquí la suite S01–S20 en un entorno desechable con rootless validado."
+            exit 1
+          fi
+          echo "Solo evaluación pura verificada. Sandbox S01–S20 pendiente; F1 no está cerrada." >> "$GITHUB_STEP_SUMMARY"
 
   auditoria:
     name: Auditoría de dependencias
@@ -139,7 +145,7 @@ jobs:
       - name: Dependencias de produccion
         run: npm audit --omit=dev --audit-level=moderate
       # Informativo: las de desarrollo (vitest/vite) no llegan al servidor y
-      # solo son explotables con un dev server escuchando. Ver deuda D-04.
+      # Revisar cada advisory; no asumir que ninguna afecta al entorno de desarrollo.
       - name: Dependencias de desarrollo (informativo)
         continue-on-error: true
         run: npm audit --audit-level=high

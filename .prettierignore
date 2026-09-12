@@ -6,3 +6,11 @@ problems/*/cases
 problems/*/examples
 docs
 package-lock.json
+
+# Herramientas y orientación locales
+.venv
+.claude
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/__pycache__
