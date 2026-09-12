@@ -126,7 +126,7 @@ EOF
 
 genisoimage -quiet -output "${vm_dir}/seed.iso" -volid cidata -joliet -rock "${seed_dir}/user-data" "${seed_dir}/meta-data"
 qemu-img convert -p -O vdi "$image_path" "${vm_dir}/disk.vdi"
-qemu-img resize "${vm_dir}/disk.vdi" "${DISK_SIZE_MIB}M"
+VBoxManage modifymedium disk "${vm_dir}/disk.vdi" --resize "$DISK_SIZE_MIB"
 
 VBoxManage modifyvm "$vm_name" \
   --memory 4096 \
