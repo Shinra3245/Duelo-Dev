@@ -10,6 +10,7 @@ readonly IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/${IMAGE_NAME}"
 readonly CHECKSUMS_URL="https://cloud-images.ubuntu.com/noble/current/SHA256SUMS"
 readonly GUEST_USER="judge"
 readonly SSH_PORT="2222"
+readonly DISK_SIZE_MIB="30720"
 
 user_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
 vm_name="$DEFAULT_VM_NAME"
@@ -125,6 +126,7 @@ EOF
 
 genisoimage -quiet -output "${vm_dir}/seed.iso" -volid cidata -joliet -rock "${seed_dir}/user-data" "${seed_dir}/meta-data"
 qemu-img convert -p -O vdi "$image_path" "${vm_dir}/disk.vdi"
+qemu-img resize "${vm_dir}/disk.vdi" "${DISK_SIZE_MIB}M"
 
 VBoxManage modifyvm "$vm_name" \
   --memory 4096 \
