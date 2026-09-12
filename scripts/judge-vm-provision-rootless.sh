@@ -37,6 +37,7 @@ printf '%s\n' \
 sudo apt-get update
 sudo apt-get install --yes docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
 sudo systemctl disable --now docker.service docker.socket containerd.service 2>/dev/null || true
+sudo rm -f /run/docker.sock
 
 if ! grep -q '^judge:' /etc/subuid; then
   printf 'judge:100000:65536\n' | sudo tee -a /etc/subuid >/dev/null
