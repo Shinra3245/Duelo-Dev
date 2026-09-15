@@ -3,6 +3,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { createLogger } from '@duelodev/shared';
 import type { ApiAppOptions, ApiContext } from './types.js';
+import { InMemoryRefreshTokenRepository, InMemoryUserRepository } from './repositories/memory.js';
+import { AuthService } from './services/auth.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -22,12 +24,29 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const logger = options.logger ?? createLogger(serviceName);
   const probes = options.probes ?? {};
 
+  const userRepo = options.userRepo ?? new InMemoryUserRepository();
+  const refreshTokenRepo = options.refreshTokenRepo ?? new InMemoryRefreshTokenRepository();
+  const authSecret =
+    options.authSecret ??
+    process.env['AUTH_SECRET'] ??
+    'duelodev-default-dev-secret-change-in-production';
+  const authService =
+    options.authService ??
+    new AuthService({
+      userRepo,
+      refreshTokenRepo,
+      authSecret,
+    });
+
   const ctx: ApiContext = {
     serviceName,
     version,
     startTime: Date.now(),
     probes,
     logger,
+    userRepo,
+    refreshTokenRepo,
+    authService,
     ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };
 

@@ -3,6 +3,13 @@ import { ERROR_CODES, ERROR_MESSAGES, type ApiError } from '@duelodev/shared';
 import type { ApiContext } from '../types.js';
 import { HttpError } from '../plugins/body-parser.js';
 import { handleHealthz, handleReadyz } from './health.js';
+import {
+  handleConvertGuest,
+  handleLogin,
+  handleLogout,
+  handleRefresh,
+  handleRegister,
+} from './auth.js';
 
 export function sendJson(
   req: IncomingMessage,
@@ -44,6 +51,31 @@ export async function dispatchRoute(
 
     if (pathname === '/readyz') {
       await handleReadyz(req, res, ctx, requestId);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/register') {
+      await handleRegister(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/login') {
+      await handleLogin(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/refresh') {
+      await handleRefresh(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/logout') {
+      await handleLogout(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/users/convert') {
+      await handleConvertGuest(req, res, ctx);
       return;
     }
 

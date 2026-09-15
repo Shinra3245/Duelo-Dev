@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '@duelodev/shared';
+import type { RefreshTokenRepository, UserRepository } from './repositories/types.js';
+import type { AuthService } from './services/auth.js';
 
 /** Sonda de verificación de dependencias para /readyz. */
 export type ReadinessProbe = () => Promise<void>;
@@ -19,6 +21,14 @@ export interface ApiAppOptions {
   metrics?: Record<string, number> | MetricsProvider;
   /** Instancia personalizada del logger estructurado. */
   logger?: Logger;
+  /** Repositorio de usuarios. Si no se especifica, se crea uno en memoria. */
+  userRepo?: UserRepository;
+  /** Repositorio de refresh tokens. Si no se especifica, se crea uno en memoria. */
+  refreshTokenRepo?: RefreshTokenRepository;
+  /** Servicio de autenticación. Si no se especifica, se instancia automáticamente. */
+  authService?: AuthService;
+  /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
+  authSecret?: string;
 }
 
 /** Contexto compartido para el ciclo de vida de peticiones HTTP en API. */
@@ -29,6 +39,9 @@ export interface ApiContext {
   probes: Record<string, ReadinessProbe>;
   metrics?: Record<string, number> | MetricsProvider;
   logger: Logger;
+  userRepo: UserRepository;
+  refreshTokenRepo: RefreshTokenRepository;
+  authService: AuthService;
 }
 
 /** Firma de manejador de ruta HTTP nativo. */

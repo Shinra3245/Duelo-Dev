@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createAccessToken,
   generateFamilyId,
   generateSecureToken,
   hashPassword,
   hashToken,
+  verifyAccessToken,
   verifyPassword,
 } from '../src/services/index.js';
 
@@ -101,6 +103,67 @@ describe('API Security Services', () => {
       expect(uuidRegex.test(family1)).toBe(true);
       expect(uuidRegex.test(family2)).toBe(true);
       expect(family1).not.toBe(family2);
+    });
+
+    it('crea y verifica tokens de acceso válidos con firma HMAC-SHA256', () => {
+      const secret = 'super-secret-key-1234';
+      const token = createAccessToken(
+        { userId: 'user-uuid-1', role: 'user', gamertag: 'coder-pro' },
+        secret,
+        300,
+      );
+
+      expect(typeof token).toBe('string');
+      expect(token.split('.')).toHaveLength(3);
+
+      const verified = verifyAccessToken(token, secret);
+      expect(verified).not.toBeNull();
+      expect(verified?.userId).toBe('user-uuid-1');
+      expect(verified?.role).toBe('user');
+      expect(verified?.gamertag).toBe('coder-pro');
+      expect(verified?.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    });
+
+    it('rechaza access tokens con firma manipulada o clave incorrecta', () => {
+      const secret1 = 'secret-1';
+      const secret2 = 'secret-2';
+      const token = createAccessToken(
+        { userId: 'user-uuid-2', role: 'guest', gamertag: 'guest-123' },
+        secret1,
+        300,
+      );
+
+      // Verificación con otra clave debe fallar
+      expect(verifyAccessToken(token, secret2)).toBeNull();
+
+      // Manipulación del payload
+      const [header, , sig] = token.split('.');
+      const tamperedPayload = Buffer.from(
+        JSON.stringify({ userId: 'hacker', role: 'user', exp: 9999999999 }),
+      ).toString('base64url');
+      const tamperedToken = `${header}.${tamperedPayload}.${sig}`;
+
+      expect(verifyAccessToken(tamperedToken, secret1)).toBeNull();
+    });
+
+    it('rechaza access tokens expirados', () => {
+      const secret = 'expiration-test-secret';
+      // Token expirado (vigencia negativa de -10 segundos)
+      const expiredToken = createAccessToken(
+        { userId: 'user-expired', role: 'user', gamertag: 'ghost' },
+        secret,
+        -10,
+      );
+
+      expect(verifyAccessToken(expiredToken, secret)).toBeNull();
+    });
+
+    it('rechaza tokens malformados de forma segura', () => {
+      const secret = 'malformed-secret';
+      expect(verifyAccessToken('', secret)).toBeNull();
+      expect(verifyAccessToken('part1.part2', secret)).toBeNull();
+      expect(verifyAccessToken('part1.part2.part3.part4', secret)).toBeNull();
+      expect(verifyAccessToken('invalid.invalid.invalid', secret)).toBeNull();
     });
   });
 });
