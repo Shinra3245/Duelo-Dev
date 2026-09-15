@@ -10,6 +10,7 @@ import type {
 import type { AuthService } from './services/auth.js';
 import type { RoomService } from './services/rooms.js';
 import type { SubmissionService } from './services/submissions.js';
+import type { JudgeQueue, SubmissionReconciler } from './queue/index.js';
 
 /** Sonda de verificación de dependencias para /readyz. */
 export type ReadinessProbe = () => Promise<void>;
@@ -39,6 +40,10 @@ export interface ApiAppOptions {
   submissionRepo?: SubmissionRepository;
   /** Repositorio de problemas. Si no se especifica, se crea uno en memoria. */
   problemRepo?: ProblemRepository;
+  /** Cola de ejecución del juez. Si no se especifica, se crea una en memoria. */
+  judgeQueue?: JudgeQueue;
+  /** Reconciliador de envíos pendientes. Si no se especifica, se instancia automáticamente. */
+  submissionReconciler?: SubmissionReconciler;
   /** Servicio de autenticación. Si no se especifica, se instancia automáticamente. */
   authService?: AuthService;
   /** Servicio de salas. Si no se especifica, se instancia automáticamente. */
@@ -62,6 +67,8 @@ export interface ApiContext {
   roomRepo: RoomRepository;
   submissionRepo: SubmissionRepository;
   problemRepo: ProblemRepository;
+  judgeQueue: JudgeQueue;
+  submissionReconciler: SubmissionReconciler;
   authService: AuthService;
   roomService: RoomService;
   submissionService: SubmissionService;

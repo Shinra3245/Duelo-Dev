@@ -3,7 +3,11 @@ import {
   ERROR_CODES,
   ERROR_MESSAGES,
   IDEMPOTENCY_WINDOW_S,
+  JUDGE_STREAM_SCHEMA_VERSION,
+  createLogger,
   type CreateSubmissionRequest,
+  type JudgeJobStreamMessage,
+  type Logger,
   type ProblemPublicResponse,
   type SubmissionAcceptedResponse,
   type SubmissionDetailsResponse,
@@ -14,6 +18,7 @@ import type {
   RoomRepository,
   SubmissionRepository,
 } from '../repositories/types.js';
+import type { JudgeQueue } from '../queue/types.js';
 
 /** Cooldown por defecto entre envíos por jugador en una partida (10 segundos, doc 04 §2). */
 export const SUBMISSION_COOLDOWN_S = 10;
@@ -28,6 +33,8 @@ export interface SubmissionServiceOptions {
   submissionRepo: SubmissionRepository;
   roomRepo: RoomRepository;
   problemRepo?: ProblemRepository | undefined;
+  judgeQueue?: JudgeQueue | undefined;
+  logger?: Logger | undefined;
   cooldownSeconds?: number;
   idempotencyWindowSeconds?: number;
 }
@@ -39,6 +46,8 @@ export class SubmissionService {
   private readonly submissionRepo: SubmissionRepository;
   private readonly roomRepo: RoomRepository;
   private readonly problemRepo?: ProblemRepository | undefined;
+  private readonly judgeQueue?: JudgeQueue | undefined;
+  private readonly logger: Logger;
   private readonly cooldownSeconds: number;
   private readonly idempotencyWindowSeconds: number;
 
@@ -51,6 +60,8 @@ export class SubmissionService {
     this.submissionRepo = options.submissionRepo;
     this.roomRepo = options.roomRepo;
     this.problemRepo = options.problemRepo;
+    this.judgeQueue = options.judgeQueue;
+    this.logger = options.logger ?? createLogger('submission-service');
     this.cooldownSeconds = options.cooldownSeconds ?? SUBMISSION_COOLDOWN_S;
     this.idempotencyWindowSeconds = options.idempotencyWindowSeconds ?? IDEMPOTENCY_WINDOW_S;
   }
@@ -63,6 +74,7 @@ export class SubmissionService {
     req: CreateSubmissionRequest,
     idempotencyKey?: string | null,
     now: number = Date.now(),
+    requestId?: string,
   ): Promise<{ response: SubmissionAcceptedResponse; retryAfter?: number }> {
     const rawBodyJson = JSON.stringify(req);
     const bodyHash = createHash('sha256').update(rawBodyJson, 'utf8').digest('hex');
@@ -166,6 +178,35 @@ export class SubmissionService {
         response: acceptedResponse,
         expiresAt: now + this.idempotencyWindowSeconds * 1000,
       });
+    }
+
+    // 8. Despachar a la cola judge:stream (doc 04 §4)
+    if (this.judgeQueue) {
+      const casesRef = `cases/${req.problem_id}`;
+      const jobMessage: JudgeJobStreamMessage = {
+        schema_version: JUDGE_STREAM_SCHEMA_VERSION,
+        submission_id: submission.id,
+        problem_id: req.problem_id,
+        problem_version: 1,
+        language: req.language,
+        source_code: req.source_code,
+        time_limit_ms: timeLimitMs,
+        memory_limit_mb: memoryLimitMb,
+        cases_ref: casesRef,
+        enqueued_at_ms: now,
+        ...(requestId ? { request_id: requestId } : {}),
+      };
+
+      try {
+        await this.judgeQueue.enqueue(jobMessage);
+      } catch (err) {
+        // Doc 04 § 127: INSERT confirmado, XADD falla -> La persistencia ya ocurrió;
+        // el reconciliador en segundo plano reencola con el mismo id sin fallar el 202
+        this.logger.warn('Fallo al encolar en judge:stream tras persistir envío; será recuperado', {
+          submission_id: submission.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     return { response: acceptedResponse };

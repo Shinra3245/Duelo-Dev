@@ -15,6 +15,7 @@ export async function handleCreateSubmission(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: ApiContext,
+  requestId?: string,
 ): Promise<void> {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -37,7 +38,13 @@ export async function handleCreateSubmission(
     });
   }
 
-  const result = await ctx.submissionService.submit(session.userId, validated.data, idempotencyKey);
+  const result = await ctx.submissionService.submit(
+    session.userId,
+    validated.data,
+    idempotencyKey,
+    Date.now(),
+    requestId,
+  );
   sendJson(req, res, 202, result.response);
 }
 

@@ -118,7 +118,7 @@ export async function dispatchRoute(
     }
 
     if (pathname === '/api/v1/submissions') {
-      await handleCreateSubmission(req, res, ctx);
+      await handleCreateSubmission(req, res, ctx, requestId);
       return;
     }
 

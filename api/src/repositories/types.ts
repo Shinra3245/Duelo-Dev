@@ -172,6 +172,7 @@ export interface SubmissionRepository {
   findSubmissionById(id: string): Promise<SubmissionEntity | null>;
   findSubmissionsByMatch(matchId: string): Promise<SubmissionEntity[]>;
   findSubmissionsByUser(matchId: string, userId: string): Promise<SubmissionEntity[]>;
+  findPendingSubmissions(limit?: number): Promise<SubmissionEntity[]>;
   updateSubmission(id: string, input: Partial<SubmissionEntity>): Promise<SubmissionEntity | null>;
 }
 

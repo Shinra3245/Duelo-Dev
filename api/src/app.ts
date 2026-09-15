@@ -13,6 +13,7 @@ import {
 import { AuthService } from './services/auth.js';
 import { RoomService } from './services/rooms.js';
 import { SubmissionService } from './services/submissions.js';
+import { InMemoryJudgeQueue, SubmissionReconciler } from './queue/index.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -37,6 +38,15 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
   const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository();
   const problemRepo = options.problemRepo ?? new InMemoryProblemRepository();
+  const judgeQueue = options.judgeQueue ?? new InMemoryJudgeQueue();
+  const submissionReconciler =
+    options.submissionReconciler ??
+    new SubmissionReconciler({
+      submissionRepo,
+      queue: judgeQueue,
+      logger,
+    });
+
   const authSecret =
     options.authSecret ??
     process.env['AUTH_SECRET'] ??
@@ -61,6 +71,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       submissionRepo,
       roomRepo,
       problemRepo,
+      judgeQueue,
+      logger,
     });
 
   const ctx: ApiContext = {
@@ -74,6 +86,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     roomRepo,
     submissionRepo,
     problemRepo,
+    judgeQueue,
+    submissionReconciler,
     authService,
     roomService,
     submissionService,
@@ -119,12 +133,14 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
           service: serviceName,
           version,
         });
+        submissionReconciler.start();
         resolve({ port: actualPort, host });
       });
     });
   };
 
   const close = (): Promise<void> => {
+    submissionReconciler.stop();
     return new Promise((resolve, reject) => {
       server.close((err) => {
         if (err) {

@@ -426,6 +426,17 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     return list;
   }
 
+  async findPendingSubmissions(limit = 100): Promise<SubmissionEntity[]> {
+    const list: SubmissionEntity[] = [];
+    for (const sub of this.submissions.values()) {
+      if (sub.status === 'queued') {
+        list.push({ ...sub });
+        if (list.length >= limit) break;
+      }
+    }
+    return list;
+  }
+
   async updateSubmission(
     id: string,
     input: Partial<SubmissionEntity>,
