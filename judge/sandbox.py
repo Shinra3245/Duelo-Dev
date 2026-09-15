@@ -5,12 +5,14 @@ especificación en una llamada al daemon rootless de la VM desechable.
 """
 
 from dataclasses import dataclass
+import re
 from typing import Final
 
 from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, MEMORY_LIMIT_MB, PIDS_LIMIT
 
 RUNNER_UID: Final[int] = 65532
 RUNNER_GID: Final[int] = 65532
+_LOCAL_DIGEST: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,9 @@ class SandboxSpec:
     pids_limit: int = PIDS_LIMIT
 
     def __post_init__(self) -> None:
-        if not self.image or "@" not in self.image:
+        if not self.image or (
+            "@sha256:" not in self.image and not _LOCAL_DIGEST.fullmatch(self.image)
+        ):
             raise ValueError("La imagen del runner debe estar fijada por digest")
         if not self.command or any(not isinstance(part, str) or not part for part in self.command):
             raise ValueError("El comando debe ser una tupla no vacía de argumentos")
