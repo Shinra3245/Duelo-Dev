@@ -81,5 +81,11 @@ assert s12.exit_code == 0
 s14 = run(('sh', '-c', 'head -c 16 /dev/urandom'))
 assert len(s14.stdout) == 16 and not s14.system_error
 
-print('S02, S04-S09 y S12-S14/S16 verificados en VM rootless.')
+# S18: cada caso recibe una tmpfs nueva; no hereda archivos del caso anterior.
+s18_first = run(('sh', '-c', 'echo previous-case >/tmp/case-marker'))
+assert s18_first.exit_code == 0
+s18_next = run(('sh', '-c', 'test ! -e /tmp/case-marker'))
+assert s18_next.exit_code == 0
+
+print('S02, S04-S09, S12-S14, S16 y parte de S18 verificados en VM rootless.')
 PY"
