@@ -4,12 +4,15 @@ import type { AddressInfo } from 'node:net';
 import { createLogger } from '@duelodev/shared';
 import type { ApiAppOptions, ApiContext } from './types.js';
 import {
+  InMemoryProblemRepository,
   InMemoryRefreshTokenRepository,
   InMemoryRoomRepository,
+  InMemorySubmissionRepository,
   InMemoryUserRepository,
 } from './repositories/memory.js';
 import { AuthService } from './services/auth.js';
 import { RoomService } from './services/rooms.js';
+import { SubmissionService } from './services/submissions.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -32,6 +35,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const userRepo = options.userRepo ?? new InMemoryUserRepository();
   const refreshTokenRepo = options.refreshTokenRepo ?? new InMemoryRefreshTokenRepository();
   const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
+  const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository();
+  const problemRepo = options.problemRepo ?? new InMemoryProblemRepository();
   const authSecret =
     options.authSecret ??
     process.env['AUTH_SECRET'] ??
@@ -50,6 +55,13 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       userRepo,
       authService,
     });
+  const submissionService =
+    options.submissionService ??
+    new SubmissionService({
+      submissionRepo,
+      roomRepo,
+      problemRepo,
+    });
 
   const ctx: ApiContext = {
     serviceName,
@@ -60,8 +72,11 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     userRepo,
     refreshTokenRepo,
     roomRepo,
+    submissionRepo,
+    problemRepo,
     authService,
     roomService,
+    submissionService,
     ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };
 

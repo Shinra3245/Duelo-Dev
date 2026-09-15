@@ -9,6 +9,7 @@ export * from './repositories/index.js';
 export * from './routes/health.js';
 export * from './routes/auth.js';
 export * from './routes/rooms.js';
+export * from './routes/submissions.js';
 export * from './routes/router.js';
 export { createApp, type ApiApp };
 

@@ -2,16 +2,22 @@ import { randomUUID } from 'node:crypto';
 import type {
   MatchEntity,
   MatchPlayerEntity,
+  ProblemEntity,
   RefreshTokenEntity,
+  SubmissionEntity,
+  TestCaseEntity,
   UserEntity,
 } from '@duelodev/shared';
 import type {
   CreateMatchInput,
   CreateMatchPlayerInput,
   CreateRefreshTokenInput,
+  CreateSubmissionInput,
   CreateUserInput,
+  ProblemRepository,
   RefreshTokenRepository,
   RoomRepository,
+  SubmissionRepository,
   UpdateUserInput,
   UserRepository,
 } from './types.js';
@@ -333,5 +339,116 @@ export class InMemoryRoomRepository implements RoomRepository {
     this.matches.clear();
     this.roomCodeToId.clear();
     this.players.clear();
+  }
+}
+
+/**
+ * Repositorio de envíos durable en memoria (doc 04 §1).
+ */
+export class InMemorySubmissionRepository implements SubmissionRepository {
+  private readonly submissions = new Map<string, SubmissionEntity>();
+
+  async createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity> {
+    const now = new Date().toISOString();
+    const submission: SubmissionEntity = {
+      id: input.id ?? randomUUID(),
+      match_id: input.match_id,
+      round_id: input.round_id,
+      user_id: input.user_id,
+      problem_id: input.problem_id,
+      language: input.language,
+      source_code: input.source_code,
+      time_limit_ms: input.time_limit_ms,
+      memory_limit_mb: input.memory_limit_mb,
+      received_at: input.received_at ?? now,
+      admission_seq: input.admission_seq,
+      status: input.status ?? 'queued',
+      verdict: input.verdict ?? null,
+      passed_cases: input.passed_cases ?? null,
+      total_cases: input.total_cases ?? null,
+      exec_time_ms: input.exec_time_ms ?? null,
+      compile_output: input.compile_output ?? null,
+      judge_error: input.judge_error ?? null,
+      judged_at: input.judged_at ?? null,
+    };
+
+    this.submissions.set(submission.id, submission);
+    return { ...submission };
+  }
+
+  async findSubmissionById(id: string): Promise<SubmissionEntity | null> {
+    const sub = this.submissions.get(id);
+    return sub ? { ...sub } : null;
+  }
+
+  async findSubmissionsByMatch(matchId: string): Promise<SubmissionEntity[]> {
+    const list: SubmissionEntity[] = [];
+    for (const sub of this.submissions.values()) {
+      if (sub.match_id === matchId) list.push({ ...sub });
+    }
+    return list;
+  }
+
+  async findSubmissionsByUser(matchId: string, userId: string): Promise<SubmissionEntity[]> {
+    const list: SubmissionEntity[] = [];
+    for (const sub of this.submissions.values()) {
+      if (sub.match_id === matchId && sub.user_id === userId) list.push({ ...sub });
+    }
+    return list;
+  }
+
+  async updateSubmission(
+    id: string,
+    input: Partial<SubmissionEntity>,
+  ): Promise<SubmissionEntity | null> {
+    const existing = this.submissions.get(id);
+    if (!existing) return null;
+
+    const updated: SubmissionEntity = {
+      ...existing,
+      ...input,
+    };
+
+    this.submissions.set(id, updated);
+    return { ...updated };
+  }
+
+  clear(): void {
+    this.submissions.clear();
+  }
+}
+
+/**
+ * Repositorio de problemas y casos de prueba en memoria (doc 04 §1).
+ */
+export class InMemoryProblemRepository implements ProblemRepository {
+  private readonly problems = new Map<string, ProblemEntity>();
+  private readonly testCases = new Map<string, TestCaseEntity[]>();
+
+  async findProblemById(id: string): Promise<ProblemEntity | null> {
+    const prob = this.problems.get(id);
+    return prob ? { ...prob } : null;
+  }
+
+  async findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]> {
+    const cases = this.testCases.get(problemId) ?? [];
+    return cases.map((c) => ({ ...c }));
+  }
+
+  async createProblem(problem: ProblemEntity): Promise<ProblemEntity> {
+    this.problems.set(problem.id, { ...problem });
+    return { ...problem };
+  }
+
+  async createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity> {
+    const cases = this.testCases.get(testCase.problem_id) ?? [];
+    cases.push({ ...testCase });
+    this.testCases.set(testCase.problem_id, cases);
+    return { ...testCase };
+  }
+
+  clear(): void {
+    this.problems.clear();
+    this.testCases.clear();
   }
 }

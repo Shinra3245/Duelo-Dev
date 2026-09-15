@@ -1,7 +1,10 @@
 import type {
   MatchEntity,
   MatchPlayerEntity,
+  ProblemEntity,
   RefreshTokenEntity,
+  SubmissionEntity,
+  TestCaseEntity,
   UserEntity,
   UserRole,
 } from '@duelodev/shared';
@@ -124,4 +127,41 @@ export interface RoomRepository {
       >
     >,
   ): Promise<MatchPlayerEntity | null>;
+}
+
+export interface CreateSubmissionInput {
+  id?: string;
+  match_id: string;
+  round_id: string;
+  user_id: string;
+  problem_id: string;
+  language: SubmissionEntity['language'];
+  source_code: string;
+  time_limit_ms: number;
+  memory_limit_mb: number;
+  received_at?: string;
+  admission_seq: number;
+  status?: SubmissionEntity['status'];
+  verdict?: SubmissionEntity['verdict'];
+  passed_cases?: number | null;
+  total_cases?: number | null;
+  exec_time_ms?: number | null;
+  compile_output?: string | null;
+  judge_error?: string | null;
+  judged_at?: string | null;
+}
+
+export interface SubmissionRepository {
+  createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity>;
+  findSubmissionById(id: string): Promise<SubmissionEntity | null>;
+  findSubmissionsByMatch(matchId: string): Promise<SubmissionEntity[]>;
+  findSubmissionsByUser(matchId: string, userId: string): Promise<SubmissionEntity[]>;
+  updateSubmission(id: string, input: Partial<SubmissionEntity>): Promise<SubmissionEntity | null>;
+}
+
+export interface ProblemRepository {
+  findProblemById(id: string): Promise<ProblemEntity | null>;
+  findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]>;
+  createProblem(problem: ProblemEntity): Promise<ProblemEntity>;
+  createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity>;
 }

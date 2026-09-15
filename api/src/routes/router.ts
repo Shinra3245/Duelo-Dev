@@ -16,6 +16,11 @@ import {
   handleJoinRoom,
   handleStartRoom,
 } from './rooms.js';
+import {
+  handleCreateSubmission,
+  handleGetProblemPublic,
+  handleGetSubmissionDetails,
+} from './submissions.js';
 
 export function sendJson(
   req: IncomingMessage,
@@ -108,6 +113,25 @@ export async function dispatchRoute(
     if (roomDetailsMatch) {
       const roomCode = roomDetailsMatch[1]!;
       await handleGetRoomDetails(req, res, ctx, roomCode);
+      return;
+    }
+
+    if (pathname === '/api/v1/submissions') {
+      await handleCreateSubmission(req, res, ctx);
+      return;
+    }
+
+    const submissionDetailsMatch = pathname.match(/^\/api\/v1\/submissions\/([^/]+)$/);
+    if (submissionDetailsMatch) {
+      const submissionId = submissionDetailsMatch[1]!;
+      await handleGetSubmissionDetails(req, res, ctx, submissionId);
+      return;
+    }
+
+    const problemPublicMatch = pathname.match(/^\/api\/v1\/problems\/([^/]+)\/public$/);
+    if (problemPublicMatch) {
+      const problemId = problemPublicMatch[1]!;
+      await handleGetProblemPublic(req, res, ctx, problemId);
       return;
     }
 
