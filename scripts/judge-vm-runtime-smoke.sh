@@ -11,7 +11,8 @@ readonly REMOTE_DIR="/home/judge/duelodev-runtime-smoke"
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
   "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/evaluation.py judge/limits.py \
-  judge/runtime.py judge/sandbox.py judge/supervisor.py "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
+  judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
+  "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
   "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
