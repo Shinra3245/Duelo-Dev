@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  MatchCodeSnapshotEntity,
   MatchEntity,
   MatchPlayerEntity,
   ProblemEntity,
@@ -9,6 +10,7 @@ import type {
   UserEntity,
 } from '@duelodev/shared';
 import type {
+  CreateMatchCodeSnapshotInput,
   CreateMatchInput,
   CreateMatchPlayerInput,
   CreateRefreshTokenInput,
@@ -182,6 +184,7 @@ export class InMemoryRoomRepository implements RoomRepository {
   private readonly matches = new Map<string, MatchEntity>();
   private readonly roomCodeToId = new Map<string, string>();
   private readonly players = new Map<string, MatchPlayerEntity[]>();
+  private readonly snapshots = new Map<string, MatchCodeSnapshotEntity[]>();
 
   async createMatch(input: CreateMatchInput): Promise<MatchEntity> {
     const now = new Date().toISOString();
@@ -335,10 +338,36 @@ export class InMemoryRoomRepository implements RoomRepository {
     return null;
   }
 
+  async saveSnapshot(input: CreateMatchCodeSnapshotInput): Promise<MatchCodeSnapshotEntity> {
+    const now = new Date().toISOString();
+    const snapshot: MatchCodeSnapshotEntity = {
+      id: input.id ?? randomUUID(),
+      match_id: input.match_id,
+      round_id: input.round_id,
+      user_id: input.user_id,
+      problem_id: input.problem_id,
+      language: input.language,
+      source_code: input.source_code,
+      version: input.version ?? 1,
+      captured_at: input.captured_at ?? now,
+    };
+
+    const list = this.snapshots.get(input.match_id) ?? [];
+    list.push(snapshot);
+    this.snapshots.set(input.match_id, list);
+    return { ...snapshot };
+  }
+
+  async findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]> {
+    const list = this.snapshots.get(matchId) ?? [];
+    return list.map((s) => ({ ...s }));
+  }
+
   clear(): void {
     this.matches.clear();
     this.roomCodeToId.clear();
     this.players.clear();
+    this.snapshots.clear();
   }
 }
 

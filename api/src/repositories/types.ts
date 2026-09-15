@@ -1,4 +1,6 @@
 import type {
+  Language,
+  MatchCodeSnapshotEntity,
   MatchEntity,
   MatchPlayerEntity,
   ProblemEntity,
@@ -127,6 +129,20 @@ export interface RoomRepository {
       >
     >,
   ): Promise<MatchPlayerEntity | null>;
+  saveSnapshot(input: CreateMatchCodeSnapshotInput): Promise<MatchCodeSnapshotEntity>;
+  findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]>;
+}
+
+export interface CreateMatchCodeSnapshotInput {
+  id?: string;
+  match_id: string;
+  round_id: string;
+  user_id: string;
+  problem_id: string;
+  language: Language;
+  source_code: string;
+  version?: number;
+  captured_at?: string;
 }
 
 export interface CreateSubmissionInput {

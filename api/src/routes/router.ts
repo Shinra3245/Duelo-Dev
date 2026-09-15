@@ -21,6 +21,7 @@ import {
   handleGetProblemPublic,
   handleGetSubmissionDetails,
 } from './submissions.js';
+import { handleGetMatchSummary } from './matches.js';
 
 export function sendJson(
   req: IncomingMessage,
@@ -132,6 +133,13 @@ export async function dispatchRoute(
     if (problemPublicMatch) {
       const problemId = problemPublicMatch[1]!;
       await handleGetProblemPublic(req, res, ctx, problemId);
+      return;
+    }
+
+    const matchSummaryMatch = pathname.match(/^\/api\/v1\/matches\/([^/]+)\/summary$/);
+    if (matchSummaryMatch) {
+      const matchId = matchSummaryMatch[1]!;
+      await handleGetMatchSummary(req, res, ctx, matchId);
       return;
     }
 

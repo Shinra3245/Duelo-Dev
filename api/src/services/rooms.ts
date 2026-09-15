@@ -2,9 +2,15 @@ import { randomBytes } from 'node:crypto';
 import {
   ERROR_CODES,
   ERROR_MESSAGES,
+  comparePlayerScores,
+  determineWinners,
   type CreateRoomRequest,
   type JoinRoomRequest,
   type JoinRoomResponse,
+  type MatchCodeSnapshot,
+  type MatchFinishReason,
+  type MatchSummaryResponse,
+  type PlayerScore,
   type RoomCreatedResponse,
   type RoomDetailsResponse,
   type RoomPlayerSummary,
@@ -315,6 +321,82 @@ export class RoomService {
       match_id: match.id,
       started: true,
       status: 'running',
+    };
+  }
+
+  /**
+   * Obtiene el resumen de una partida finalizada y sus snapshots de código revelados (doc 04 §2).
+   */
+  async getMatchSummary(matchId: string, requestingUserId: string): Promise<MatchSummaryResponse> {
+    const match = await this.roomRepo.findMatchById(matchId);
+    if (!match) {
+      throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
+    }
+
+    // El solicitante debe ser miembro de la partida
+    const player = await this.roomRepo.findPlayer(match.id, requestingUserId);
+    if (!player) {
+      throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
+    }
+
+    // Solo permitido en estados terminales
+    if (match.status !== 'finished' && match.status !== 'abandoned') {
+      throw new HttpError(409, ERROR_CODES.CONFLICT, 'La partida aún no ha finalizado.');
+    }
+
+    const allPlayers = await this.roomRepo.findPlayersByMatchId(match.id);
+    const userMap = new Map<string, string>();
+    for (const p of allPlayers) {
+      const user = await this.userRepo.findById(p.user_id);
+      if (user) {
+        userMap.set(p.user_id, user.gamertag);
+      }
+    }
+
+    const scores: PlayerScore[] = allPlayers
+      .map((p) => ({
+        user_id: p.user_id,
+        gamertag: userMap.get(p.user_id) ?? p.user_id,
+        score: p.score,
+        cases_total: p.cases_total,
+        time_total_ms: p.time_total_ms,
+        current_problem_idx: p.current_problem_idx,
+      }))
+      .sort(comparePlayerScores);
+
+    const winnerIds =
+      match.winner_ids && match.winner_ids.length > 0 ? match.winner_ids : determineWinners(scores);
+
+    const finishReason: MatchFinishReason = match.finish_reason ?? 'abandonment';
+
+    // Obtener snapshots durables registrados para la partida
+    const allSnapshots = await this.roomRepo.findSnapshotsByMatch(match.id);
+
+    // Conjunto de jugadores que autorizan revelar su código
+    const revealedUserIds = new Set(allPlayers.filter((p) => p.is_revealed).map((p) => p.user_id));
+
+    // Filtrar: un jugador ve sus propios snapshots y los de rivales que tengan is_revealed: true
+    const visibleSnapshots: MatchCodeSnapshot[] = allSnapshots
+      .filter((s) => s.user_id === requestingUserId || revealedUserIds.has(s.user_id))
+      .map((s) => ({
+        user_id: s.user_id,
+        round_id: s.round_id,
+        problem_id: s.problem_id,
+        language: s.language,
+        source_code: s.source_code,
+        captured_at: s.captured_at,
+      }));
+
+    return {
+      match_id: match.id,
+      mode: match.mode,
+      status: match.status,
+      finish_reason: finishReason,
+      winner_ids: winnerIds,
+      final_scores: scores,
+      started_at: match.started_at ?? match.created_at,
+      finished_at: match.finished_at ?? new Date().toISOString(),
+      snapshots: visibleSnapshots,
     };
   }
 }
