@@ -6,10 +6,14 @@ que la construcción de la invocación pueda probarse sin iniciar contenedores.
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Protocol
+import subprocess
+import threading
+from time import monotonic
+from typing import IO, Protocol
 
+from judge.capture import BoundedCapture
 from judge.evaluation import CaseExecution
-from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, WALL_CLOCK_MARGIN
+from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, OUTPUT_LIMIT_BYTES, WALL_CLOCK_MARGIN
 from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec
 from judge.supervisor import CompiledArtifact
 
@@ -32,6 +36,96 @@ class DockerInvoker(Protocol):
     def invoke(
         self, argv: tuple[str, ...], stdin: bytes, timeout_ms: int
     ) -> RuntimeObservation: ...
+
+
+class SubprocessDockerInvoker:
+    """Ejecuta argv sin shell y drena stdout/stderr con un límite estricto."""
+
+    def __init__(self, output_limit_bytes: int = OUTPUT_LIMIT_BYTES) -> None:
+        if type(output_limit_bytes) is not int or output_limit_bytes < 1:
+            raise ValueError("output_limit_bytes debe ser positivo")
+        self._output_limit_bytes = output_limit_bytes
+
+    def invoke(self, argv: tuple[str, ...], stdin: bytes, timeout_ms: int) -> RuntimeObservation:
+        if not argv or type(timeout_ms) is not int or timeout_ms < 1:
+            raise ValueError("argv y timeout_ms deben ser válidos")
+        if not isinstance(stdin, bytes):
+            raise ValueError("stdin debe ser bytes")
+
+        started = monotonic()
+        try:
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+            )
+        except OSError:
+            return RuntimeObservation(b"", b"", -1, 0, system_error=True)
+
+        assert process.stdin is not None
+        assert process.stdout is not None
+        assert process.stderr is not None
+        stdout = BoundedCapture(self._output_limit_bytes)
+        stderr = BoundedCapture(self._output_limit_bytes)
+        overflow = threading.Event()
+        threads = [
+            self._start_reader(process.stdout, stdout, overflow),
+            self._start_reader(process.stderr, stderr, overflow),
+            self._start_writer(process.stdin, stdin),
+        ]
+
+        deadline = started + timeout_ms / 1000
+        timed_out = False
+        while process.poll() is None:
+            if overflow.wait(timeout=0.01):
+                process.kill()
+                break
+            if monotonic() >= deadline:
+                timed_out = True
+                process.kill()
+                break
+
+        process.wait()
+        for thread in threads:
+            thread.join(timeout=1)
+        elapsed_ms = round((monotonic() - started) * 1000)
+        return RuntimeObservation(
+            stdout.data,
+            stderr.data,
+            process.returncode,
+            elapsed_ms,
+            timed_out=timed_out,
+            output_exceeded=overflow.is_set(),
+        )
+
+    @staticmethod
+    def _start_reader(
+        stream: IO[bytes], capture: BoundedCapture, overflow: threading.Event
+    ) -> threading.Thread:
+        def read() -> None:
+            while chunk := stream.read(64 * 1024):
+                capture.append(chunk)
+                if capture.exceeded:
+                    overflow.set()
+
+        thread = threading.Thread(target=read, daemon=True, name="judge-io-reader")
+        thread.start()
+        return thread
+
+    @staticmethod
+    def _start_writer(stream: IO[bytes], stdin: bytes) -> threading.Thread:
+        def write() -> None:
+            try:
+                stream.write(stdin)
+                stream.close()
+            except BrokenPipeError:
+                pass
+
+        thread = threading.Thread(target=write, daemon=True, name="judge-io-writer")
+        thread.start()
+        return thread
 
 
 def docker_run_argv(spec: SandboxSpec) -> tuple[str, ...]:

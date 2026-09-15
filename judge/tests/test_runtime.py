@@ -1,11 +1,17 @@
 """El adaptador se prueba sin Docker; el invoker real se valida solo en la VM."""
 
 from dataclasses import dataclass
+import sys
 
 import pytest
 
 from judge.limits import WALL_CLOCK_MARGIN
-from judge.runtime import DockerCaseRunner, RuntimeObservation, docker_run_argv
+from judge.runtime import (
+    DockerCaseRunner,
+    RuntimeObservation,
+    SubprocessDockerInvoker,
+    docker_run_argv,
+)
 from judge.sandbox import SandboxSpec
 from judge.supervisor import CompiledArtifact
 
@@ -50,3 +56,32 @@ def test_runner_forwards_only_stdin_and_maps_observation() -> None:
 def test_artifact_cannot_select_another_image() -> None:
     with pytest.raises(ValueError, match="coincidir"):
         DockerCaseRunner(FakeInvoker()).run_case(CompiledArtifact("other@sha256:x"), spec(), b"", 1)
+
+
+def test_subprocess_invoker_forwards_input_without_a_shell() -> None:
+    observation = SubprocessDockerInvoker().invoke(
+        (sys.executable, "-c", "import sys; print(sys.stdin.buffer.read().decode())"),
+        b"input",
+        1000,
+    )
+
+    assert observation.stdout == b"input\n"
+    assert observation.exit_code == 0
+    assert not observation.system_error
+
+
+def test_subprocess_invoker_marks_output_exceeded() -> None:
+    observation = SubprocessDockerInvoker(output_limit_bytes=5).invoke(
+        (sys.executable, "-c", "import sys; sys.stdout.write('abcdefgh')"), b"", 1000
+    )
+
+    assert observation.output_exceeded
+    assert observation.stdout == b"abcde"
+
+
+def test_subprocess_invoker_enforces_wall_timeout() -> None:
+    observation = SubprocessDockerInvoker().invoke(
+        (sys.executable, "-c", "import time; time.sleep(1)"), b"", 10
+    )
+
+    assert observation.timed_out
