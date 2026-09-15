@@ -5,24 +5,43 @@ import {
   MATCH_FINISH_REASONS,
   MATCH_FINISH_REASON_LABELS,
   MATCH_NAMESPACE,
+  MATCH_STATUSES,
   MAX_COMPILE_OUTPUT_BYTES,
   MAX_EVENT_PAYLOAD_BYTES,
   MAX_YDOC_BYTES,
+  PLAYER_CONNECTIONS,
   PROBLEM_CATEGORIES,
   RECONNECT_GRACE_MS,
   RONDAS_TARGET_VALUES,
+  ROUND_STATUSES,
   S2C,
+  isGameModeName,
+  isMatchConfig,
   isMatchFinishReason,
+  isMatchFinishedPayload,
+  isMatchStartedPayload,
+  isMatchStatus,
+  isMatchSyncPayload,
+  isPlayerConnection,
+  isPlayerScore,
+  isPlayerStatusPayload,
+  isProblemBeginPayload,
   isProblemCategory,
   isPuntosConfig,
+  isRevealChangedPayload,
   isRondasConfig,
   isRondasTarget,
+  isRoundStatus,
+  isScoreUpdatePayload,
+  isSubmissionReceivedPayload,
+  isVerdictPayload,
   matchRoom,
   type MatchConfig,
   type MatchFinishedPayload,
   type MatchStartedPayload,
   type MatchStatus,
   type MatchSyncPayload,
+  type PlayerScore,
   type ProblemBeginPayload,
   type PuntosMatchConfig,
   type RondasMatchConfig,
@@ -53,6 +72,27 @@ describe('contrato de eventos y estado de partida', () => {
     ]);
   });
 
+  it('valida estados de partida, ronda, conexiones y modos con guardias', () => {
+    for (const status of MATCH_STATUSES) {
+      expect(isMatchStatus(status)).toBe(true);
+    }
+    expect(isMatchStatus('invalido')).toBe(false);
+
+    for (const rStatus of ROUND_STATUSES) {
+      expect(isRoundStatus(rStatus)).toBe(true);
+    }
+    expect(isRoundStatus('invalido')).toBe(false);
+
+    for (const conn of PLAYER_CONNECTIONS) {
+      expect(isPlayerConnection(conn)).toBe(true);
+    }
+    expect(isPlayerConnection('invalido')).toBe(false);
+
+    expect(isGameModeName('puntos')).toBe(true);
+    expect(isGameModeName('rondas')).toBe(true);
+    expect(isGameModeName('otro')).toBe(false);
+  });
+
   it('valida categorías de problemas con isProblemCategory', () => {
     for (const cat of PROBLEM_CATEGORIES) {
       expect(isProblemCategory(cat)).toBe(true);
@@ -81,7 +121,7 @@ describe('contrato de eventos y estado de partida', () => {
     expect(isMatchFinishReason('inventado')).toBe(false);
   });
 
-  it('configuración discriminada inequívoca para Puntos', () => {
+  it('configuración discriminada inequívoca para Puntos y guardias estrictas', () => {
     const puntosConfig: PuntosMatchConfig = {
       mode: 'puntos',
       num_problems: 5,
@@ -89,16 +129,29 @@ describe('contrato de eventos y estado de partida', () => {
       categories: ['facil', 'facil_medio'],
       max_players: 2,
     };
+    const genericConfig: MatchConfig = puntosConfig;
 
-    const config: MatchConfig = puntosConfig;
-    expect(isPuntosConfig(config)).toBe(true);
-    expect(isRondasConfig(config)).toBe(false);
-    if (isPuntosConfig(config)) {
-      expect(config.time_per_problem_s).toBe(300);
-    }
+    expect(isMatchConfig(genericConfig)).toBe(true);
+    expect(isPuntosConfig(puntosConfig)).toBe(true);
+    expect(isRondasConfig(puntosConfig)).toBe(false);
+
+    // Invariante violado: award_on_timeout presente
+    expect(isMatchConfig({ ...puntosConfig, award_on_timeout: true })).toBe(false);
+    expect(isMatchConfig({ ...puntosConfig, award_on_timeout: false })).toBe(false);
+
+    // Invariante violado: time_per_problem_s no positivo
+    expect(isMatchConfig({ ...puntosConfig, time_per_problem_s: 0 })).toBe(false);
+    expect(isMatchConfig({ ...puntosConfig, time_per_problem_s: -10 })).toBe(false);
+
+    // Invariante violado: categorías vacías o inválidas
+    expect(isMatchConfig({ ...puntosConfig, categories: [] })).toBe(false);
+    expect(isMatchConfig({ ...puntosConfig, categories: ['inventada'] })).toBe(false);
+
+    // Invariante violado: max_players < 2
+    expect(isMatchConfig({ ...puntosConfig, max_players: 1 })).toBe(false);
   });
 
-  it('configuración discriminada inequívoca para Rondas', () => {
+  it('configuración discriminada inequívoca para Rondas y guardias estrictas', () => {
     const rondasConfig: RondasMatchConfig = {
       mode: 'rondas',
       num_problems: 10,
@@ -108,13 +161,46 @@ describe('contrato de eventos y estado de partida', () => {
       max_players: 3,
     };
 
-    const config: MatchConfig = rondasConfig;
-    expect(isRondasConfig(config)).toBe(true);
-    expect(isPuntosConfig(config)).toBe(false);
-    if (isRondasConfig(config)) {
-      expect(config.match_duration_s).toBe(1800);
-      expect(config.target).toBe(6);
-    }
+    expect(isMatchConfig(rondasConfig)).toBe(true);
+    expect(isRondasConfig(rondasConfig)).toBe(true);
+    expect(isPuntosConfig(rondasConfig)).toBe(false);
+
+    // Invariante violado: target mayor que num_problems (doc 02 §4)
+    expect(isMatchConfig({ ...rondasConfig, num_problems: 5, target: 6 })).toBe(false);
+
+    // Invariante violado: target fuera de {3, 6, 9, 10}
+    expect(isMatchConfig({ ...rondasConfig, target: 5 })).toBe(false);
+
+    // Invariante violado: campos mezclados de Puntos
+    expect(
+      isMatchConfig({
+        ...rondasConfig,
+        time_per_problem_s: 300,
+      } as unknown),
+    ).toBe(false);
+  });
+
+  it('valida invariantes de PlayerScore con isPlayerScore', () => {
+    const validScore: PlayerScore = {
+      user_id: 'user-1',
+      gamertag: 'coder-pro',
+      score: 3,
+      cases_total: 25,
+      time_total_ms: 12500,
+      current_problem_idx: 2,
+    };
+    expect(isPlayerScore(validScore)).toBe(true);
+
+    // Invariantes violados: valores negativos
+    expect(isPlayerScore({ ...validScore, score: -1 })).toBe(false);
+    expect(isPlayerScore({ ...validScore, cases_total: -5 })).toBe(false);
+    expect(isPlayerScore({ ...validScore, time_total_ms: -100 })).toBe(false);
+    expect(isPlayerScore({ ...validScore, current_problem_idx: -1 })).toBe(false);
+
+    // Identificadores vacíos
+    expect(isPlayerScore({ ...validScore, user_id: '' })).toBe(false);
+    expect(isPlayerScore({ ...validScore, gamertag: '' })).toBe(false);
+    expect(isPlayerScore(null)).toBe(false);
   });
 
   it('admite el estado settling en MatchStatus y RoundStatus', () => {
@@ -122,9 +208,11 @@ describe('contrato de eventos y estado de partida', () => {
     const roundStatusSettling: RoundStatus = 'settling';
     expect(matchStatusSettling).toBe('settling');
     expect(roundStatusSettling).toBe('settling');
+    expect(isMatchStatus('settling')).toBe(true);
+    expect(isRoundStatus('settling')).toBe(true);
   });
 
-  it('soporta empates con múltiples winner_ids y winner_id nulo', () => {
+  it('soporta empates con múltiples winner_ids y winner_id nulo validando invariantes', () => {
     const tiedFinish: MatchFinishedPayload = {
       server_time: 1700000000000,
       match_id: 'match-1',
@@ -153,12 +241,25 @@ describe('contrato de eventos y estado de partida', () => {
       summary_url: '/matches/match-1/summary',
     };
 
-    expect(tiedFinish.winner_ids).toHaveLength(2);
-    expect(tiedFinish.winner_id).toBeNull();
-    expect(tiedFinish.finish_reason).toBe('time_expired');
+    expect(isMatchFinishedPayload(tiedFinish)).toBe(true);
+
+    // Invariante violado: empate con múltiples ganadores pero winner_id no nulo
+    expect(isMatchFinishedPayload({ ...tiedFinish, winner_id: 'user-1' })).toBe(false);
+
+    // Victoria singular válida
+    const singleFinish: MatchFinishedPayload = {
+      ...tiedFinish,
+      winner_ids: ['user-1'],
+      winner_id: 'user-1',
+    };
+    expect(isMatchFinishedPayload(singleFinish)).toBe(true);
+
+    // Invariante violado: ganador único pero winner_id nulo o discordante
+    expect(isMatchFinishedPayload({ ...singleFinish, winner_id: null })).toBe(false);
+    expect(isMatchFinishedPayload({ ...singleFinish, winner_id: 'user-2' })).toBe(false);
   });
 
-  it('sincronización personalizada de Rondas no expone problemas futuros', () => {
+  it('sincronización personalizada de Rondas no expone problemas futuros e implementa guardias', () => {
     const syncPayload: MatchSyncPayload = {
       server_time: 1700000000000,
       match_id: 'match-xyz',
@@ -192,15 +293,17 @@ describe('contrato de eventos y estado de partida', () => {
       players: { 'user-a': 'connected', 'user-b': 'connected' },
     };
 
-    expect(syncPayload.problem_id).toBe('problem-1');
-    expect(syncPayload.problem_index).toBe(0);
-    expect(syncPayload.round_id).toBe('round-p1');
-    expect(syncPayload.round_status).toBe('open');
-    // Verifica que no hay un arreglo global de problemas futuros filtrados
-    expect((syncPayload as Record<string, unknown>).problem_order).toBeUndefined();
+    expect(isMatchSyncPayload(syncPayload)).toBe(true);
+
+    // Invariante violado: filtración de lista de problemas en Rondas (doc 04 §3)
+    const leakingSync = {
+      ...syncPayload,
+      problem_order: ['problem-1', 'problem-2', 'problem-3'],
+    };
+    expect(isMatchSyncPayload(leakingSync)).toBe(false);
   });
 
-  it('eventos de estado contienen match_id, round_id, state_version y server_time', () => {
+  it('eventos de estado contienen match_id, round_id, state_version y server_time y se validan', () => {
     const startPayload: MatchStartedPayload = {
       server_time: 1700000000000,
       match_id: 'm-1',
@@ -216,9 +319,8 @@ describe('contrato de eventos y estado de partida', () => {
       },
       problem_order: ['p-1', 'p-2', 'p-3'],
     };
-    expect(startPayload.match_id).toBe('m-1');
-    expect(startPayload.round_id).toBe('r-1');
-    expect(startPayload.state_version).toBe(1);
+    expect(isMatchStartedPayload(startPayload)).toBe(true);
+    expect(isMatchStartedPayload({ ...startPayload, state_version: 0 })).toBe(false);
 
     const beginPayload: ProblemBeginPayload = {
       server_time: 1700000000050,
@@ -229,8 +331,8 @@ describe('contrato de eventos y estado de partida', () => {
       index: 0,
       ends_at: 1700000180050,
     };
-    expect(beginPayload.round_id).toBe('r-1');
-    expect(beginPayload.state_version).toBe(2);
+    expect(isProblemBeginPayload(beginPayload)).toBe(true);
+    expect(isProblemBeginPayload({ ...beginPayload, index: -1 })).toBe(false);
 
     const subReceived: SubmissionReceivedPayload = {
       server_time: 1700000005000,
@@ -239,8 +341,8 @@ describe('contrato de eventos y estado de partida', () => {
       submission_id: 'sub-99',
       user_id: 'u-1',
     };
-    expect(subReceived.round_id).toBe('r-1');
-    expect(subReceived.submission_id).toBe('sub-99');
+    expect(isSubmissionReceivedPayload(subReceived)).toBe(true);
+    expect(isSubmissionReceivedPayload({ ...subReceived, submission_id: '' })).toBe(false);
 
     const verdictPayload: VerdictPayload = {
       server_time: 1700000008000,
@@ -254,8 +356,51 @@ describe('contrato de eventos y estado de partida', () => {
       exec_time_ms: 120,
       compile_output: 'ok',
     };
-    expect(verdictPayload.round_id).toBe('r-1');
-    expect(verdictPayload.verdict).toBe('AC');
+    expect(isVerdictPayload(verdictPayload)).toBe(true);
+
+    // Invariante violado: passed > total
+    expect(isVerdictPayload({ ...verdictPayload, passed: 11, total: 10 })).toBe(false);
+
+    // Invariante violado: compile_output superior a 4 KiB
+    expect(
+      isVerdictPayload({
+        ...verdictPayload,
+        compile_output: 'a'.repeat(MAX_COMPILE_OUTPUT_BYTES + 1),
+      }),
+    ).toBe(false);
+
+    const scoreUpdate = {
+      server_time: 1700000008000,
+      match_id: 'm-1',
+      state_version: 3,
+      scores: [
+        {
+          user_id: 'u-1',
+          gamertag: 'alice',
+          score: 1,
+          cases_total: 10,
+          time_total_ms: 12000,
+          current_problem_idx: 1,
+        },
+      ],
+    };
+    expect(isScoreUpdatePayload(scoreUpdate)).toBe(true);
+
+    const revealChanged = {
+      server_time: 1700000008000,
+      match_id: 'm-1',
+      user_id: 'u-1',
+      visible: true,
+    };
+    expect(isRevealChangedPayload(revealChanged)).toBe(true);
+
+    const playerStatus = {
+      server_time: 1700000008000,
+      match_id: 'm-1',
+      user_id: 'u-1',
+      status: 'disconnected',
+    };
+    expect(isPlayerStatusPayload(playerStatus)).toBe(true);
   });
 
   it('límites y constantes de presupuesto respetan la especificación', () => {

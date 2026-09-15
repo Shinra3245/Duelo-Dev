@@ -3,6 +3,11 @@ import {
   GAMERTAG_REGEX,
   IDEMPOTENCY_KEY_HEADER,
   IDEMPOTENCY_WINDOW_S,
+  isCreateSubmissionRequest,
+  isSubmissionAcceptedResponse,
+  isSubmissionDetailsResponse,
+  isSubmissionStatus,
+  isUserRole,
   isValidGamertag,
   type AuthUserResponse,
   type CreateRoomRequest,
@@ -18,6 +23,8 @@ import {
   type SubmissionAcceptedResponse,
   type SubmissionDetailsResponse,
 } from '../src/rest.js';
+import { SOURCE_CODE_MAX_BYTES } from '../src/limits.js';
+import { MAX_COMPILE_OUTPUT_BYTES } from '../src/events.js';
 
 describe('contratos REST de /api/v1', () => {
   it('valida formato canónico de gamertags (3-20 alfanuméricos y guión medio)', () => {
@@ -34,6 +41,17 @@ describe('contratos REST de /api/v1', () => {
     expect(isValidGamertag('user name')).toBe(false); // espacio no permitido
     expect(isValidGamertag('user@host')).toBe(false); // caracteres especiales
     expect(isValidGamertag('')).toBe(false);
+  });
+
+  it('valida roles de usuario y estados de envío', () => {
+    expect(isUserRole('user')).toBe(true);
+    expect(isUserRole('guest')).toBe(true);
+    expect(isUserRole('admin')).toBe(false);
+
+    expect(isSubmissionStatus('queued')).toBe(true);
+    expect(isSubmissionStatus('judging')).toBe(true);
+    expect(isSubmissionStatus('completed')).toBe(true);
+    expect(isSubmissionStatus('failed')).toBe(false);
   });
 
   it('constantes de idempotencia definidas según doc 04', () => {
@@ -115,7 +133,7 @@ describe('contratos REST de /api/v1', () => {
     expect(startRes.started).toBe(true);
   });
 
-  it('estructura de envío y consulta de resultado', () => {
+  it('estructura de envío y consulta de resultado con guardias de invariantes', () => {
     const subReq: CreateSubmissionRequest = {
       match_id: 'm-1',
       round_id: 'r-1',
@@ -123,7 +141,23 @@ describe('contratos REST de /api/v1', () => {
       language: 'python',
       source_code: 'print(sum(map(int, input().split())))',
     };
-    expect(subReq.language).toBe('python');
+    expect(isCreateSubmissionRequest(subReq)).toBe(true);
+
+    // Invariante violado: código fuente mayor a 64 KiB
+    expect(
+      isCreateSubmissionRequest({
+        ...subReq,
+        source_code: 'a'.repeat(SOURCE_CODE_MAX_BYTES + 1),
+      }),
+    ).toBe(false);
+
+    // Invariante violado: lenguaje desconocido
+    expect(
+      isCreateSubmissionRequest({
+        ...subReq,
+        language: 'ruby' as unknown,
+      }),
+    ).toBe(false);
 
     const subAccepted: SubmissionAcceptedResponse = {
       submission_id: 'sub-789',
@@ -134,8 +168,8 @@ describe('contratos REST de /api/v1', () => {
       received_at: 1700000000000,
       status: 'queued',
     };
-    expect(subAccepted.status).toBe('queued');
-    expect(subAccepted.admission_seq).toBe(1);
+    expect(isSubmissionAcceptedResponse(subAccepted)).toBe(true);
+    expect(isSubmissionAcceptedResponse({ ...subAccepted, admission_seq: 0 })).toBe(false);
 
     const subDetails: SubmissionDetailsResponse = {
       submission_id: 'sub-789',
@@ -151,8 +185,21 @@ describe('contratos REST de /api/v1', () => {
       received_at: 1700000000000,
       judged_at: 1700000001500,
     };
-    expect(subDetails.verdict).toBe('AC');
-    expect(subDetails.passed).toBe(12);
+    expect(isSubmissionDetailsResponse(subDetails)).toBe(true);
+
+    // Invariante violado: passed > total
+    expect(isSubmissionDetailsResponse({ ...subDetails, passed: 13, total: 12 })).toBe(false);
+
+    // Invariante violado: compile_output > 4 KiB
+    expect(
+      isSubmissionDetailsResponse({
+        ...subDetails,
+        compile_output: 'x'.repeat(MAX_COMPILE_OUTPUT_BYTES + 1),
+      }),
+    ).toBe(false);
+
+    // Invariante violado: exec_time_ms negativo
+    expect(isSubmissionDetailsResponse({ ...subDetails, exec_time_ms: -1 })).toBe(false);
   });
 
   it('estructura de problema público sin revelar casos ocultos', () => {

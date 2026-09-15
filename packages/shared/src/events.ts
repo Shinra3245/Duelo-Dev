@@ -8,8 +8,10 @@
  * TypeScript proporciona tipado en tiempo de compilación y no valida tráfico en runtime.
  * La validación estricta de payloads entrantes por WS y HTTP se realiza mediante
  * JSON Schema / validadores en las capas de API y Realtime.
+ * Este módulo incluye guardias de tipo estáticas y reusables para validar invariantes
+ * en capas de coordinación sin agregar dependencias externas.
  */
-import type { Verdict } from './verdicts.js';
+import { type Verdict, isVerdict } from './verdicts.js';
 
 export const MATCH_NAMESPACE = '/match';
 
@@ -61,7 +63,12 @@ export type ServerEventName = (typeof S2C)[keyof typeof S2C];
  * - `finished`: terminada con resultado final durable.
  * - `abandoned`: interrumpida por abandono o fallo irrecuperable de sistema.
  */
-export type MatchStatus = 'lobby' | 'running' | 'settling' | 'finished' | 'abandoned';
+export const MATCH_STATUSES = ['lobby', 'running', 'settling', 'finished', 'abandoned'] as const;
+export type MatchStatus = (typeof MATCH_STATUSES)[number];
+
+export function isMatchStatus(value: unknown): value is MatchStatus {
+  return typeof value === 'string' && (MATCH_STATUSES as readonly string[]).includes(value);
+}
 
 /**
  * Estados de la ocurrencia de un problema / ronda:
@@ -69,13 +76,28 @@ export type MatchStatus = 'lobby' | 'running' | 'settling' | 'finished' | 'aband
  * - `settling`: primer AC candidato o tiempo agotado; evaluando envíos admitidos hasta el corte.
  * - `closed`: resuelta definitivamente, puntaje asignado.
  */
-export type RoundStatus = 'open' | 'settling' | 'closed';
+export const ROUND_STATUSES = ['open', 'settling', 'closed'] as const;
+export type RoundStatus = (typeof ROUND_STATUSES)[number];
 
-export type PlayerConnection = 'connected' | 'disconnected' | 'left';
-export type GameModeName = 'puntos' | 'rondas';
+export function isRoundStatus(value: unknown): value is RoundStatus {
+  return typeof value === 'string' && (ROUND_STATUSES as readonly string[]).includes(value);
+}
+
+export const PLAYER_CONNECTIONS = ['connected', 'disconnected', 'left'] as const;
+export type PlayerConnection = (typeof PLAYER_CONNECTIONS)[number];
+
+export function isPlayerConnection(value: unknown): value is PlayerConnection {
+  return typeof value === 'string' && (PLAYER_CONNECTIONS as readonly string[]).includes(value);
+}
+
+export const GAME_MODE_NAMES = ['puntos', 'rondas'] as const;
+export type GameModeName = (typeof GAME_MODE_NAMES)[number];
+
+export function isGameModeName(value: unknown): value is GameModeName {
+  return typeof value === 'string' && (GAME_MODE_NAMES as readonly string[]).includes(value);
+}
 
 export const PROBLEM_CATEGORIES = ['muy_facil', 'facil', 'facil_medio', 'dificil'] as const;
-
 export type ProblemCategory = (typeof PROBLEM_CATEGORIES)[number];
 
 export function isProblemCategory(value: unknown): value is ProblemCategory {
@@ -156,12 +178,76 @@ export interface RondasMatchConfig extends BaseMatchConfig {
 /** Configuración inequívoca discriminada por `mode` (doc 04 §3). */
 export type MatchConfig = PuntosMatchConfig | RondasMatchConfig;
 
-export function isPuntosConfig(config: MatchConfig): config is PuntosMatchConfig {
-  return config.mode === 'puntos';
+/**
+ * Valida de forma estricta los invariantes de configuración de partida:
+ * - Enteros positivos para tiempos y problemas.
+ * - Al menos 2 jugadores máximos.
+ * - Categorías válidas no vacías.
+ * - En Rondas: target en {3, 6, 9, 10} y target <= num_problems.
+ * - Prohibición expresa de award_on_timeout.
+ */
+export function isMatchConfig(value: unknown): value is MatchConfig {
+  if (typeof value !== 'object' || value === null) return false;
+  const cfg = value as Record<string, unknown>;
+
+  if (
+    typeof cfg.num_problems !== 'number' ||
+    !Number.isInteger(cfg.num_problems) ||
+    cfg.num_problems <= 0
+  ) {
+    return false;
+  }
+
+  if (
+    typeof cfg.max_players !== 'number' ||
+    !Number.isInteger(cfg.max_players) ||
+    cfg.max_players < 2
+  ) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(cfg.categories) ||
+    cfg.categories.length === 0 ||
+    !cfg.categories.every(isProblemCategory)
+  ) {
+    return false;
+  }
+
+  if ('award_on_timeout' in cfg && cfg.award_on_timeout !== undefined) {
+    return false;
+  }
+
+  if (cfg.mode === 'puntos') {
+    return (
+      typeof cfg.time_per_problem_s === 'number' &&
+      Number.isInteger(cfg.time_per_problem_s) &&
+      cfg.time_per_problem_s > 0 &&
+      cfg.match_duration_s === undefined &&
+      cfg.target === undefined
+    );
+  }
+
+  if (cfg.mode === 'rondas') {
+    return (
+      typeof cfg.match_duration_s === 'number' &&
+      Number.isInteger(cfg.match_duration_s) &&
+      cfg.match_duration_s > 0 &&
+      isRondasTarget(cfg.target) &&
+      cfg.target <= cfg.num_problems &&
+      cfg.time_per_problem_s === undefined
+    );
+  }
+
+  return false;
 }
 
-export function isRondasConfig(config: MatchConfig): config is RondasMatchConfig {
-  return config.mode === 'rondas';
+export function isPuntosConfig(value: unknown): value is PuntosMatchConfig {
+  return isMatchConfig(value) && value.mode === 'puntos';
+}
+
+export function isRondasConfig(value: unknown): value is RondasMatchConfig {
+  return isMatchConfig(value) && value.mode === 'rondas';
 }
 
 // ─────────────────────── Estampas y versión de estado ─────────────────────
@@ -184,6 +270,29 @@ export interface PlayerScore {
   cases_total: number;
   time_total_ms: number;
   current_problem_idx: number;
+}
+
+export function isPlayerScore(value: unknown): value is PlayerScore {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.user_id === 'string' &&
+    p.user_id.length > 0 &&
+    typeof p.gamertag === 'string' &&
+    p.gamertag.length > 0 &&
+    typeof p.score === 'number' &&
+    Number.isInteger(p.score) &&
+    p.score >= 0 &&
+    typeof p.cases_total === 'number' &&
+    Number.isInteger(p.cases_total) &&
+    p.cases_total >= 0 &&
+    typeof p.time_total_ms === 'number' &&
+    Number.isFinite(p.time_total_ms) &&
+    p.time_total_ms >= 0 &&
+    typeof p.current_problem_idx === 'number' &&
+    Number.isInteger(p.current_problem_idx) &&
+    p.current_problem_idx >= 0
+  );
 }
 
 /**
@@ -306,3 +415,225 @@ export const MAX_COMPILE_OUTPUT_BYTES = 4 * 1024;
 export const RECONNECT_GRACE_MS = 60_000;
 /** Tiempo máximo de espera en lobby al anfitrión ausente antes de cancelar la sala (doc 02 §5). */
 export const HOST_LOBBY_TIMEOUT_MS = 60_000;
+
+// ────────────────── Guardias de invariantes para eventos ──────────────────
+
+export function isMatchStartedPayload(value: unknown): value is MatchStartedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.state_version === 'number' &&
+    Number.isInteger(p.state_version) &&
+    p.state_version >= 1 &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0 &&
+    isGameModeName(p.mode) &&
+    typeof p.round_id === 'string' &&
+    p.round_id.length > 0 &&
+    isMatchConfig(p.config) &&
+    (p.problem_order === undefined ||
+      (Array.isArray(p.problem_order) &&
+        p.problem_order.every((id) => typeof id === 'string' && id.length > 0)))
+  );
+}
+
+export function isProblemBeginPayload(value: unknown): value is ProblemBeginPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.state_version === 'number' &&
+    Number.isInteger(p.state_version) &&
+    p.state_version >= 1 &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0 &&
+    typeof p.round_id === 'string' &&
+    p.round_id.length > 0 &&
+    typeof p.problem_id === 'string' &&
+    p.problem_id.length > 0 &&
+    typeof p.index === 'number' &&
+    Number.isInteger(p.index) &&
+    p.index >= 0 &&
+    typeof p.ends_at === 'number' &&
+    Number.isFinite(p.ends_at) &&
+    p.ends_at > 0
+  );
+}
+
+export function isSubmissionReceivedPayload(value: unknown): value is SubmissionReceivedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.round_id === 'string' &&
+    p.round_id.length > 0 &&
+    typeof p.submission_id === 'string' &&
+    p.submission_id.length > 0 &&
+    typeof p.user_id === 'string' &&
+    p.user_id.length > 0 &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0
+  );
+}
+
+export function isVerdictPayload(value: unknown): value is VerdictPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.round_id === 'string' &&
+    p.round_id.length > 0 &&
+    typeof p.submission_id === 'string' &&
+    p.submission_id.length > 0 &&
+    typeof p.user_id === 'string' &&
+    p.user_id.length > 0 &&
+    isVerdict(p.verdict) &&
+    typeof p.passed === 'number' &&
+    Number.isInteger(p.passed) &&
+    p.passed >= 0 &&
+    typeof p.total === 'number' &&
+    Number.isInteger(p.total) &&
+    p.total >= 0 &&
+    p.passed <= p.total &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0 &&
+    (p.exec_time_ms === undefined ||
+      (typeof p.exec_time_ms === 'number' &&
+        Number.isFinite(p.exec_time_ms) &&
+        p.exec_time_ms >= 0)) &&
+    (p.compile_output === undefined ||
+      (typeof p.compile_output === 'string' && p.compile_output.length <= MAX_COMPILE_OUTPUT_BYTES))
+  );
+}
+
+export function isScoreUpdatePayload(value: unknown): value is ScoreUpdatePayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.state_version === 'number' &&
+    Number.isInteger(p.state_version) &&
+    p.state_version >= 1 &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0 &&
+    Array.isArray(p.scores) &&
+    p.scores.every(isPlayerScore) &&
+    (p.round_id === undefined || (typeof p.round_id === 'string' && p.round_id.length > 0))
+  );
+}
+
+export function isRevealChangedPayload(value: unknown): value is RevealChangedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.user_id === 'string' &&
+    p.user_id.length > 0 &&
+    typeof p.visible === 'boolean' &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0
+  );
+}
+
+export function isPlayerStatusPayload(value: unknown): value is PlayerStatusPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.match_id === 'string' &&
+    p.match_id.length > 0 &&
+    typeof p.user_id === 'string' &&
+    p.user_id.length > 0 &&
+    isPlayerConnection(p.status) &&
+    typeof p.server_time === 'number' &&
+    Number.isFinite(p.server_time) &&
+    p.server_time > 0
+  );
+}
+
+export function isMatchFinishedPayload(value: unknown): value is MatchFinishedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+
+  if (
+    typeof p.match_id !== 'string' ||
+    p.match_id.length === 0 ||
+    typeof p.state_version !== 'number' ||
+    !Number.isInteger(p.state_version) ||
+    p.state_version < 1 ||
+    typeof p.server_time !== 'number' ||
+    !Number.isFinite(p.server_time) ||
+    p.server_time <= 0 ||
+    !Array.isArray(p.winner_ids) ||
+    !p.winner_ids.every((id) => typeof id === 'string' && id.length > 0) ||
+    !isMatchFinishReason(p.finish_reason) ||
+    !Array.isArray(p.final_scores) ||
+    !p.final_scores.every(isPlayerScore) ||
+    typeof p.summary_url !== 'string' ||
+    p.summary_url.length === 0
+  ) {
+    return false;
+  }
+
+  // Invariante de desempate y ganadores (doc 02 §6):
+  // Un único ganador implica winner_id === winner_ids[0]; empate o sin ganadores implica winner_id === null.
+  if (p.winner_ids.length === 1) {
+    return p.winner_id === p.winner_ids[0];
+  }
+  return p.winner_id === null;
+}
+
+export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+
+  if (
+    typeof p.match_id !== 'string' ||
+    p.match_id.length === 0 ||
+    typeof p.state_version !== 'number' ||
+    !Number.isInteger(p.state_version) ||
+    p.state_version < 1 ||
+    typeof p.server_time !== 'number' ||
+    !Number.isFinite(p.server_time) ||
+    p.server_time <= 0 ||
+    !isMatchStatus(p.status) ||
+    !isGameModeName(p.mode) ||
+    (p.round_id !== null && typeof p.round_id !== 'string') ||
+    (p.problem_id !== null && typeof p.problem_id !== 'string') ||
+    typeof p.problem_index !== 'number' ||
+    !Number.isInteger(p.problem_index) ||
+    p.problem_index < 0 ||
+    (p.ends_at !== null &&
+      (typeof p.ends_at !== 'number' || !Number.isFinite(p.ends_at) || p.ends_at <= 0)) ||
+    (p.round_status !== null && !isRoundStatus(p.round_status)) ||
+    !Array.isArray(p.scores) ||
+    !p.scores.every(isPlayerScore) ||
+    typeof p.reveal_flags !== 'object' ||
+    p.reveal_flags === null ||
+    !Object.values(p.reveal_flags).every((v) => typeof v === 'boolean') ||
+    typeof p.players !== 'object' ||
+    p.players === null ||
+    !Object.values(p.players).every(isPlayerConnection)
+  ) {
+    return false;
+  }
+
+  // En Rondas, está estrictamente prohibido exponer problem_order para no revelar problemas futuros (doc 04 §3)
+  if (p.mode === 'rondas' && 'problem_order' in p && p.problem_order !== undefined) {
+    return false;
+  }
+
+  return true;
+}
