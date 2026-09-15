@@ -139,21 +139,20 @@ class SubprocessDockerInvoker:
                     timeout=10,
                 )
             if run_token:
-                for _ in range(10):
-                    leftovers = subprocess.check_output(
-                        (docker, "ps", "-aq", "--filter", f"label=duelodev.judge.run={run_token}"),
-                        text=True,
+                sleep(0.2)
+                leftovers = subprocess.check_output(
+                    (docker, "ps", "-aq", "--filter", f"label=duelodev.judge.run={run_token}"),
+                    text=True,
+                    timeout=10,
+                ).split()
+                if leftovers:
+                    subprocess.run(
+                        (docker, "rm", "-f", *leftovers),
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                         timeout=10,
-                    ).split()
-                    if leftovers:
-                        subprocess.run(
-                            (docker, "rm", "-f", *leftovers),
-                            check=False,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            timeout=10,
-                        )
-                    sleep(0.1)
+                    )
         except (OSError, subprocess.SubprocessError):
             pass
         finally:
