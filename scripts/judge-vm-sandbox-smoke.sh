@@ -16,6 +16,7 @@ scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/evaluation.py judge/l
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
   "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
+import os
 import subprocess
 
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
@@ -25,6 +26,7 @@ from judge.supervisor import CompiledArtifact
 image = subprocess.check_output(
     ['docker', 'image', 'inspect', 'alpine:3.20', '--format', '{{.Id}}'], text=True
 ).strip()
+os.environ['DUELODEV_JUDGE_CANARY'] = 'supervisor-only-canary'
 
 def run(command, time_limit_ms=1000, output_limit=1024 * 1024):
     spec = SandboxSpec(image, tuple(command), time_limit_ms)
@@ -43,6 +45,10 @@ assert s04.exit_code == 0
 # S05: la raíz es solo lectura.
 s05 = run(('sh', '-c', 'touch /write-must-fail >/dev/null 2>&1 && exit 1 || exit 0'))
 assert s05.exit_code == 0
+
+# S06/S16: el entorno del supervisor no se propaga al programa ni revela un canario.
+s06 = run(('sh', '-c', 'printenv DUELODEV_JUDGE_CANARY >/dev/null && exit 1 || exit 0'))
+assert s06.exit_code == 0
 
 # S07: la salida se corta y se marca antes de acumularla en el supervisor.
 s07 = run(('sh', '-c', 'head -c 1024 /dev/zero'), output_limit=64)
@@ -75,5 +81,5 @@ assert s12.exit_code == 0
 s14 = run(('sh', '-c', 'head -c 16 /dev/urandom'))
 assert len(s14.stdout) == 16 and not s14.system_error
 
-print('S02, S04, S05, S07-S09 y S12-S14 verificados en VM rootless.')
+print('S02, S04-S09 y S12-S14/S16 verificados en VM rootless.')
 PY"
