@@ -55,6 +55,8 @@ export class SubmissionService {
   private readonly idempotencyRecords = new Map<string, IdempotencyRecord>();
   /** Registro de cooldown en memoria: `${matchId}:${userId}` -> timestamp_ms */
   private readonly cooldowns = new Map<string, number>();
+  /** Registro de envíos activos en vuelo para serialización concurrente atómica */
+  private readonly activeSubmissions = new Set<string>();
 
   constructor(options: SubmissionServiceOptions) {
     this.submissionRepo = options.submissionRepo;
@@ -100,26 +102,16 @@ export class SubmissionService {
       }
     }
 
-    // 2. Verificar existencia y estado de la partida
-    const match = await this.roomRepo.findMatchById(req.match_id);
-    if (!match) {
-      throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
-    }
-
-    if (match.status !== 'running') {
-      throw new HttpError(409, ERROR_CODES.CONFLICT, 'La partida no está en curso.');
-    }
-
-    // 3. Verificar que el usuario sea un jugador elegible de la partida
-    const player = await this.roomRepo.findPlayer(req.match_id, userId);
-    if (!player) {
-      throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
-    }
-
-    // 4. Control de cooldown por jugador en la partida (10 s)
+    // 2. Control de cooldown por jugador en la partida (10 s) y reserva atómica (doc 04 §2)
     const cooldownKey = `${req.match_id}:${userId}`;
     const lastSubmitted = this.cooldowns.get(cooldownKey);
     const cooldownDurationMs = this.cooldownSeconds * 1000;
+
+    if (this.activeSubmissions.has(cooldownKey)) {
+      throw new HttpError(429, ERROR_CODES.SUBMIT_COOLDOWN, ERROR_MESSAGES.SUBMIT_COOLDOWN, {
+        retry_after_s: this.cooldownSeconds,
+      });
+    }
 
     if (lastSubmitted && now < lastSubmitted + cooldownDurationMs) {
       const remainingMs = lastSubmitted + cooldownDurationMs - now;
@@ -129,87 +121,109 @@ export class SubmissionService {
       });
     }
 
-    // 5. Asignar secuencia de admisión atómica para la partida
-    const nextAdmissionSeq = (match.admission_seq ?? 0) + 1;
-    await this.roomRepo.updateMatch(match.id, { admission_seq: nextAdmissionSeq });
-
-    // 6. Obtener límites de tiempo/memoria del problema si existe
-    let timeLimitMs = 2000;
-    let memoryLimitMb = 256;
-    if (this.problemRepo) {
-      const prob = await this.problemRepo.findProblemById(req.problem_id);
-      if (prob) {
-        timeLimitMs = prob.time_limit_ms;
-        memoryLimitMb = prob.memory_limit_mb;
-      }
-    }
-
-    // 7. Persistir el envío de forma durable
-    const submission = await this.submissionRepo.createSubmission({
-      match_id: req.match_id,
-      round_id: req.round_id,
-      user_id: userId,
-      problem_id: req.problem_id,
-      language: req.language,
-      source_code: req.source_code,
-      time_limit_ms: timeLimitMs,
-      memory_limit_mb: memoryLimitMb,
-      admission_seq: nextAdmissionSeq,
-      status: 'queued',
-    });
-
-    // Registrar cooldown
+    // Reservar cooldown slot inmediatamente para serializar peticiones concurrentes
+    this.activeSubmissions.add(cooldownKey);
     this.cooldowns.set(cooldownKey, now);
 
-    const acceptedResponse: SubmissionAcceptedResponse = {
-      submission_id: submission.id,
-      match_id: submission.match_id,
-      round_id: submission.round_id,
-      problem_id: submission.problem_id,
-      admission_seq: submission.admission_seq,
-      received_at: new Date(submission.received_at).getTime(),
-      status: 'queued',
-    };
+    try {
+      // 3. Verificar existencia y estado de la partida
+      const match = await this.roomRepo.findMatchById(req.match_id);
+      if (!match) {
+        throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
+      }
 
-    // Guardar registro de idempotencia si la clave fue provista
-    if (idempotencyStorageKey) {
-      this.idempotencyRecords.set(idempotencyStorageKey, {
-        bodyHash,
-        response: acceptedResponse,
-        expiresAt: now + this.idempotencyWindowSeconds * 1000,
-      });
-    }
+      if (match.status !== 'running') {
+        throw new HttpError(409, ERROR_CODES.CONFLICT, 'La partida no está en curso.');
+      }
 
-    // 8. Despachar a la cola judge:stream (doc 04 §4)
-    if (this.judgeQueue) {
-      const casesRef = `cases/${req.problem_id}`;
-      const jobMessage: JudgeJobStreamMessage = {
-        schema_version: JUDGE_STREAM_SCHEMA_VERSION,
-        submission_id: submission.id,
+      // 4. Verificar que el usuario sea un jugador elegible de la partida
+      const player = await this.roomRepo.findPlayer(req.match_id, userId);
+      if (!player) {
+        throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
+      }
+
+      // 5. Asignar secuencia de admisión atómica para la partida
+      const nextAdmissionSeq = (match.admission_seq ?? 0) + 1;
+      await this.roomRepo.updateMatch(match.id, { admission_seq: nextAdmissionSeq });
+
+      // 6. Obtener límites de tiempo/memoria del problema si existe
+      let timeLimitMs = 2000;
+      let memoryLimitMb = 256;
+      if (this.problemRepo) {
+        const prob = await this.problemRepo.findProblemById(req.problem_id);
+        if (prob) {
+          timeLimitMs = prob.time_limit_ms;
+          memoryLimitMb = prob.memory_limit_mb;
+        }
+      }
+
+      // 7. Persistir el envío de forma durable
+      const submission = await this.submissionRepo.createSubmission({
+        match_id: req.match_id,
+        round_id: req.round_id,
+        user_id: userId,
         problem_id: req.problem_id,
-        problem_version: 1,
         language: req.language,
         source_code: req.source_code,
         time_limit_ms: timeLimitMs,
         memory_limit_mb: memoryLimitMb,
-        cases_ref: casesRef,
-        enqueued_at_ms: now,
-        ...(requestId ? { request_id: requestId } : {}),
+        admission_seq: nextAdmissionSeq,
+        status: 'queued',
+      });
+
+      const acceptedResponse: SubmissionAcceptedResponse = {
+        submission_id: submission.id,
+        match_id: submission.match_id,
+        round_id: submission.round_id,
+        problem_id: submission.problem_id,
+        admission_seq: submission.admission_seq,
+        received_at: new Date(submission.received_at).getTime(),
+        status: 'queued',
       };
 
-      try {
-        await this.judgeQueue.enqueue(jobMessage);
-      } catch (err) {
-        // Doc 04 § 127: INSERT confirmado, XADD falla -> La persistencia ya ocurrió;
-        // el reconciliador en segundo plano reencola con el mismo id sin fallar el 202
-        this.logger.warn('Fallo al encolar en judge:stream tras persistir envío; será recuperado', {
-          submission_id: submission.id,
-          error: err instanceof Error ? err.message : String(err),
+      // Guardar registro de idempotencia si la clave fue provista
+      if (idempotencyStorageKey) {
+        this.idempotencyRecords.set(idempotencyStorageKey, {
+          bodyHash,
+          response: acceptedResponse,
+          expiresAt: now + this.idempotencyWindowSeconds * 1000,
         });
       }
-    }
 
-    return { response: acceptedResponse };
+      // 8. Despachar a la cola judge:stream (doc 04 §4)
+      if (this.judgeQueue) {
+        const casesRef = `cases/${req.problem_id}`;
+        const jobMessage: JudgeJobStreamMessage = {
+          schema_version: JUDGE_STREAM_SCHEMA_VERSION,
+          submission_id: submission.id,
+          problem_id: req.problem_id,
+          problem_version: 1,
+          language: req.language,
+          source_code: req.source_code,
+          time_limit_ms: timeLimitMs,
+          memory_limit_mb: memoryLimitMb,
+          cases_ref: casesRef,
+          enqueued_at_ms: now,
+          ...(requestId ? { request_id: requestId } : {}),
+        };
+
+        try {
+          await this.judgeQueue.enqueue(jobMessage);
+        } catch (queueErr) {
+          this.logger.warn(
+            'Fallo transitorio al encolar en judge:stream; la reconciliación recuperará el envío',
+            {
+              submission_id: submission.id,
+              error: queueErr instanceof Error ? queueErr.message : String(queueErr),
+            },
+          );
+        }
+      }
+
+      return { response: acceptedResponse };
+    } finally {
+      this.activeSubmissions.delete(cooldownKey);
+    }
   }
 
   /**

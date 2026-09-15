@@ -14,6 +14,7 @@ import { AuthService } from './services/auth.js';
 import { RoomService } from './services/rooms.js';
 import { SubmissionService } from './services/submissions.js';
 import { InMemoryJudgeQueue, SubmissionReconciler } from './queue/index.js';
+import { seedProblems } from './seeds/seeder.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -120,7 +121,11 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
 
   const server = createServer(requestListener);
 
-  const start = (port = 3001, host = '0.0.0.0'): Promise<{ port: number; host: string }> => {
+  const start = async (port = 3001, host = '0.0.0.0'): Promise<{ port: number; host: string }> => {
+    if (options.seedPilotProblems) {
+      await seedProblems(problemRepo);
+    }
+
     return new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(port, host, () => {

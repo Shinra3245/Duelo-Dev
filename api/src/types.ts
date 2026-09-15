@@ -52,6 +52,8 @@ export interface ApiAppOptions {
   submissionService?: SubmissionService;
   /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
   authSecret?: string;
+  /** Si es true, siembra los problemas piloto en problemRepo al iniciar la app. */
+  seedPilotProblems?: boolean;
 }
 
 /** Contexto compartido para el ciclo de vida de peticiones HTTP en API. */

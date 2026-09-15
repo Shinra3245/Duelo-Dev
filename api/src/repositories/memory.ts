@@ -470,6 +470,24 @@ export class InMemoryProblemRepository implements ProblemRepository {
     return prob ? { ...prob } : null;
   }
 
+  async findProblemByContentHash(contentHash: string): Promise<ProblemEntity | null> {
+    for (const prob of this.problems.values()) {
+      if (prob.content_hash === contentHash) {
+        return { ...prob };
+      }
+    }
+    return null;
+  }
+
+  async findAllProblems(limit = 100): Promise<ProblemEntity[]> {
+    const list: ProblemEntity[] = [];
+    for (const prob of this.problems.values()) {
+      list.push({ ...prob });
+      if (list.length >= limit) break;
+    }
+    return list;
+  }
+
   async findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]> {
     const cases = this.testCases.get(problemId) ?? [];
     return cases.map((c) => ({ ...c }));
@@ -481,10 +499,26 @@ export class InMemoryProblemRepository implements ProblemRepository {
   }
 
   async createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity> {
+    const raw = testCase as unknown as { ordinal?: number; order_idx?: number };
+    const ordinal = raw.ordinal ?? raw.order_idx ?? 0;
+    const normalized: TestCaseEntity = {
+      ...testCase,
+      ordinal,
+    };
     const cases = this.testCases.get(testCase.problem_id) ?? [];
-    cases.push({ ...testCase });
+    const existingIdx =
+      raw.ordinal !== undefined || raw.order_idx !== undefined
+        ? cases.findIndex((c) => c.ordinal === ordinal)
+        : -1;
+
+    if (existingIdx >= 0) {
+      cases[existingIdx] = { ...normalized };
+    } else {
+      cases.push({ ...normalized });
+      cases.sort((a, b) => a.ordinal - b.ordinal);
+    }
     this.testCases.set(testCase.problem_id, cases);
-    return { ...testCase };
+    return { ...normalized };
   }
 
   clear(): void {

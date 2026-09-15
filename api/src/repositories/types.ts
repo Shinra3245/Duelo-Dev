@@ -178,6 +178,8 @@ export interface SubmissionRepository {
 
 export interface ProblemRepository {
   findProblemById(id: string): Promise<ProblemEntity | null>;
+  findProblemByContentHash?(contentHash: string): Promise<ProblemEntity | null>;
+  findAllProblems?(limit?: number): Promise<ProblemEntity[]>;
   findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]>;
   createProblem(problem: ProblemEntity): Promise<ProblemEntity>;
   createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity>;

@@ -471,6 +471,62 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
       expect(guestSubData.admission_seq).toBe(2);
       expect(guestSubData.status).toBe('queued');
     });
+
+    it('criterio F2: 5 envíos concurrentes del mismo jugador -> exactamente 1 admitido y 4 con 429', async () => {
+      const host = await registerUser('sub-conc-host@test.com', 'SubConcHost');
+      const guest = await registerUser('sub-conc-guest@test.com', 'SubConcGuest');
+
+      const createRes = await fetch(`${baseUrl}/api/v1/rooms`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: host.cookieHeader,
+        },
+        body: JSON.stringify({ config: validPuntosConfig }),
+      });
+      const room = (await createRes.json()) as RoomCreatedResponse;
+
+      await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/join`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: guest.cookieHeader,
+        },
+        body: JSON.stringify({ gamertag: 'SubConcGuest' }),
+      });
+
+      await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/start`, {
+        method: 'POST',
+        headers: { Cookie: host.cookieHeader },
+      });
+
+      // Disparar 5 peticiones simultáneas con Promise.all
+      const requests = Array.from({ length: 5 }, (_, i) =>
+        fetch(`${baseUrl}/api/v1/submissions`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: host.cookieHeader,
+          },
+          body: JSON.stringify({
+            match_id: room.match_id,
+            round_id: testRoundId,
+            problem_id: testProblemId,
+            language: 'python',
+            source_code: `print("concurrent-${i}")`,
+          }),
+        }),
+      );
+
+      const responses = await Promise.all(requests);
+      const statuses = responses.map((r) => r.status);
+
+      const accepted = statuses.filter((s) => s === 202);
+      const throttled = statuses.filter((s) => s === 429);
+
+      expect(accepted).toHaveLength(1);
+      expect(throttled).toHaveLength(4);
+    });
   });
 
   describe('GET /api/v1/submissions/:id', () => {
