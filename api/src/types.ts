@@ -10,7 +10,9 @@ import type {
 import type { AuthService } from './services/auth.js';
 import type { RoomService } from './services/rooms.js';
 import type { SubmissionService } from './services/submissions.js';
-import type { JudgeQueue, SubmissionReconciler } from './queue/index.js';
+import type { JudgmentService } from './services/judgment.js';
+import type { JudgeQueue, SubmissionReconciler, ResultPublisher } from './queue/index.js';
+import type { CsrfOptions } from './plugins/csrf.js';
 
 /** Sonda de verificación de dependencias para /readyz. */
 export type ReadinessProbe = () => Promise<void>;
@@ -50,6 +52,12 @@ export interface ApiAppOptions {
   roomService?: RoomService;
   /** Servicio de envíos y problemas públicos. Si no se especifica, se instancia automáticamente. */
   submissionService?: SubmissionService;
+  /** Publicador de avisos de resultados en judge:results. Si no se especifica, se crea uno en memoria. */
+  resultPublisher?: ResultPublisher;
+  /** Servicio de aplicación de resultados durables del juez. Si no se especifica, se instancia automáticamente. */
+  judgmentService?: JudgmentService;
+  /** Opciones de verificación de origen y CSRF. */
+  csrfOptions?: CsrfOptions;
   /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
   authSecret?: string;
   /** Si es true, siembra los problemas piloto en problemRepo al iniciar la app. */
@@ -71,9 +79,12 @@ export interface ApiContext {
   problemRepo: ProblemRepository;
   judgeQueue: JudgeQueue;
   submissionReconciler: SubmissionReconciler;
+  resultPublisher: ResultPublisher;
+  judgmentService: JudgmentService;
   authService: AuthService;
   roomService: RoomService;
   submissionService: SubmissionService;
+  csrfOptions?: CsrfOptions;
 }
 
 /** Firma de manejador de ruta HTTP nativo. */

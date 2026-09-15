@@ -13,8 +13,11 @@ import {
 import { AuthService } from './services/auth.js';
 import { RoomService } from './services/rooms.js';
 import { SubmissionService } from './services/submissions.js';
-import { InMemoryJudgeQueue, SubmissionReconciler } from './queue/index.js';
+import { InMemoryJudgeQueue, InMemoryResultChannel, SubmissionReconciler } from './queue/index.js';
 import { seedProblems } from './seeds/seeder.js';
+import { JudgmentService } from './services/judgment.js';
+import { validateCsrfOrigin } from './plugins/csrf.js';
+import { HttpError } from './plugins/body-parser.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -76,6 +79,15 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       logger,
     });
 
+  const resultPublisher = options.resultPublisher ?? new InMemoryResultChannel();
+  const judgmentService =
+    options.judgmentService ??
+    new JudgmentService({
+      submissionRepo,
+      resultPublisher,
+      logger,
+    });
+
   const ctx: ApiContext = {
     serviceName,
     version,
@@ -89,9 +101,12 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     problemRepo,
     judgeQueue,
     submissionReconciler,
+    resultPublisher,
+    judgmentService,
     authService,
     roomService,
     submissionService,
+    ...(options.csrfOptions !== undefined ? { csrfOptions: options.csrfOptions } : {}),
     ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };
 
@@ -115,6 +130,19 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
         duration_ms: elapsedMs,
       });
     });
+
+    // Control de origen y protección CSRF para operaciones de mutación (doc 04 §2)
+    try {
+      validateCsrfOrigin(req, options.csrfOptions);
+    } catch (csrfErr) {
+      if (csrfErr instanceof HttpError) {
+        res.setHeader('content-type', 'application/json');
+        res.statusCode = csrfErr.statusCode;
+        res.end(JSON.stringify(csrfErr.toApiError(requestId)));
+        return;
+      }
+      throw csrfErr;
+    }
 
     await dispatchRoute(req, res, ctx, requestId);
   };
