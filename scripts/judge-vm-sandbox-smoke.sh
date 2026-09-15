@@ -63,8 +63,9 @@ assert s13.exit_code == 0
 
 # S08: ejecuciones repetidas no dejan contenedores del juez activos.
 for _ in range(50):
-    s08 = run(('sh', '-c', 'true'))
-    assert s08.exit_code == 0 and not s08.system_error
+    s08 = run(('sh', '-c', 'true'), time_limit_ms=5000)
+    if s08.exit_code != 0 or s08.system_error:
+        raise AssertionError((_, s08.exit_code, s08.system_error, s08.stderr[:256]))
 assert not subprocess.check_output(['docker', 'ps', '--format', '{{.ID}}'], text=True).strip()
 
 # S09: un comando corrupto es un fallo del envío, no del supervisor.
