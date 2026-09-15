@@ -55,5 +55,25 @@ s13 = run((
 ))
 assert s13.exit_code == 0
 
-print('S02, S04, S05, S07 y S13 verificados en VM rootless.')
+# S08: ejecuciones repetidas no dejan contenedores del juez activos.
+for _ in range(50):
+    s08 = run(('sh', '-c', 'true'))
+    assert s08.exit_code == 0 and not s08.system_error
+assert not subprocess.check_output(['docker', 'ps', '--format', '{{.ID}}'], text=True).strip()
+
+# S09: un comando corrupto es un fallo del envío, no del supervisor.
+s09 = run(('/command-does-not-exist',))
+assert s09.exit_code != 0 and not s09.system_error
+s09_recovery = run(('sh', '-c', 'true'))
+assert s09_recovery.exit_code == 0 and not s09_recovery.system_error
+
+# S12: /tmp es una tmpfs de 64 MiB y no puede llenar el disco de la VM.
+s12 = run(('sh', '-c', 'dd if=/dev/zero of=/tmp/too-big bs=1M count=65 >/dev/null 2>&1 && exit 1 || exit 0'))
+assert s12.exit_code == 0
+
+# S14: bytes binarios no rompen al supervisor ni se decodifican como control.
+s14 = run(('sh', '-c', 'head -c 16 /dev/urandom'))
+assert len(s14.stdout) == 16 and not s14.system_error
+
+print('S02, S04, S05, S07-S09 y S12-S14 verificados en VM rootless.')
 PY"
