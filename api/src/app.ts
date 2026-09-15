@@ -3,8 +3,13 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { createLogger } from '@duelodev/shared';
 import type { ApiAppOptions, ApiContext } from './types.js';
-import { InMemoryRefreshTokenRepository, InMemoryUserRepository } from './repositories/memory.js';
+import {
+  InMemoryRefreshTokenRepository,
+  InMemoryRoomRepository,
+  InMemoryUserRepository,
+} from './repositories/memory.js';
 import { AuthService } from './services/auth.js';
+import { RoomService } from './services/rooms.js';
 import { dispatchRoute } from './routes/router.js';
 
 export interface ApiApp {
@@ -26,6 +31,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
 
   const userRepo = options.userRepo ?? new InMemoryUserRepository();
   const refreshTokenRepo = options.refreshTokenRepo ?? new InMemoryRefreshTokenRepository();
+  const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
   const authSecret =
     options.authSecret ??
     process.env['AUTH_SECRET'] ??
@@ -37,6 +43,13 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       refreshTokenRepo,
       authSecret,
     });
+  const roomService =
+    options.roomService ??
+    new RoomService({
+      roomRepo,
+      userRepo,
+      authService,
+    });
 
   const ctx: ApiContext = {
     serviceName,
@@ -46,7 +59,9 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     logger,
     userRepo,
     refreshTokenRepo,
+    roomRepo,
     authService,
+    roomService,
     ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };
 

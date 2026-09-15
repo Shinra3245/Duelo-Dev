@@ -1,7 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '@duelodev/shared';
-import type { RefreshTokenRepository, UserRepository } from './repositories/types.js';
+import type {
+  RefreshTokenRepository,
+  RoomRepository,
+  UserRepository,
+} from './repositories/types.js';
 import type { AuthService } from './services/auth.js';
+import type { RoomService } from './services/rooms.js';
 
 /** Sonda de verificación de dependencias para /readyz. */
 export type ReadinessProbe = () => Promise<void>;
@@ -25,8 +30,12 @@ export interface ApiAppOptions {
   userRepo?: UserRepository;
   /** Repositorio de refresh tokens. Si no se especifica, se crea uno en memoria. */
   refreshTokenRepo?: RefreshTokenRepository;
+  /** Repositorio de salas y partidas. Si no se especifica, se crea uno en memoria. */
+  roomRepo?: RoomRepository;
   /** Servicio de autenticación. Si no se especifica, se instancia automáticamente. */
   authService?: AuthService;
+  /** Servicio de salas. Si no se especifica, se instancia automáticamente. */
+  roomService?: RoomService;
   /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
   authSecret?: string;
 }
@@ -41,7 +50,9 @@ export interface ApiContext {
   logger: Logger;
   userRepo: UserRepository;
   refreshTokenRepo: RefreshTokenRepository;
+  roomRepo: RoomRepository;
   authService: AuthService;
+  roomService: RoomService;
 }
 
 /** Firma de manejador de ruta HTTP nativo. */

@@ -10,6 +10,12 @@ import {
   handleRefresh,
   handleRegister,
 } from './auth.js';
+import {
+  handleCreateRoom,
+  handleGetRoomDetails,
+  handleJoinRoom,
+  handleStartRoom,
+} from './rooms.js';
 
 export function sendJson(
   req: IncomingMessage,
@@ -76,6 +82,32 @@ export async function dispatchRoute(
 
     if (pathname === '/api/v1/users/convert') {
       await handleConvertGuest(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/rooms') {
+      await handleCreateRoom(req, res, ctx);
+      return;
+    }
+
+    const roomJoinMatch = pathname.match(/^\/api\/v1\/rooms\/([^/]+)\/join$/);
+    if (roomJoinMatch) {
+      const roomCode = roomJoinMatch[1]!;
+      await handleJoinRoom(req, res, ctx, roomCode);
+      return;
+    }
+
+    const roomStartMatch = pathname.match(/^\/api\/v1\/rooms\/([^/]+)\/start$/);
+    if (roomStartMatch) {
+      const roomCode = roomStartMatch[1]!;
+      await handleStartRoom(req, res, ctx, roomCode);
+      return;
+    }
+
+    const roomDetailsMatch = pathname.match(/^\/api\/v1\/rooms\/([^/]+)$/);
+    if (roomDetailsMatch) {
+      const roomCode = roomDetailsMatch[1]!;
+      await handleGetRoomDetails(req, res, ctx, roomCode);
       return;
     }
 

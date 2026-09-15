@@ -1,9 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import type { RefreshTokenEntity, UserEntity } from '@duelodev/shared';
 import type {
+  MatchEntity,
+  MatchPlayerEntity,
+  RefreshTokenEntity,
+  UserEntity,
+} from '@duelodev/shared';
+import type {
+  CreateMatchInput,
+  CreateMatchPlayerInput,
   CreateRefreshTokenInput,
   CreateUserInput,
   RefreshTokenRepository,
+  RoomRepository,
   UpdateUserInput,
   UserRepository,
 } from './types.js';
@@ -158,5 +166,172 @@ export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
   clear(): void {
     this.tokens.clear();
     this.tokenHashToId.clear();
+  }
+}
+
+/**
+ * Repositorio de salas y jugadores de partida en memoria (doc 04 §2).
+ */
+export class InMemoryRoomRepository implements RoomRepository {
+  private readonly matches = new Map<string, MatchEntity>();
+  private readonly roomCodeToId = new Map<string, string>();
+  private readonly players = new Map<string, MatchPlayerEntity[]>();
+
+  async createMatch(input: CreateMatchInput): Promise<MatchEntity> {
+    const now = new Date().toISOString();
+    const match: MatchEntity = {
+      id: input.id ?? randomUUID(),
+      room_code: input.room_code.trim().toUpperCase(),
+      mode: input.mode,
+      status: input.status ?? 'lobby',
+      config: input.config,
+      host_id: input.host_id,
+      state_version: input.state_version ?? 1,
+      admission_seq: input.admission_seq ?? 0,
+      winner_ids: input.winner_ids ?? [],
+      winner_id: input.winner_id ?? null,
+      finish_reason: input.finish_reason ?? null,
+      started_at: input.started_at ?? null,
+      ends_at: input.ends_at ?? null,
+      finished_at: input.finished_at ?? null,
+      created_at: input.created_at ?? now,
+    };
+
+    this.matches.set(match.id, match);
+    this.roomCodeToId.set(match.room_code, match.id);
+    this.players.set(match.id, []);
+    return { ...match };
+  }
+
+  async findMatchById(id: string): Promise<MatchEntity | null> {
+    const match = this.matches.get(id);
+    return match ? { ...match } : null;
+  }
+
+  async findMatchByRoomCode(roomCode: string): Promise<MatchEntity | null> {
+    const id = this.roomCodeToId.get(roomCode.trim().toUpperCase());
+    if (!id) return null;
+    const match = this.matches.get(id);
+    return match ? { ...match } : null;
+  }
+
+  async updateMatch(
+    id: string,
+    input: Partial<
+      Pick<
+        MatchEntity,
+        | 'status'
+        | 'started_at'
+        | 'ends_at'
+        | 'finished_at'
+        | 'winner_id'
+        | 'winner_ids'
+        | 'finish_reason'
+        | 'state_version'
+        | 'admission_seq'
+      >
+    >,
+  ): Promise<MatchEntity | null> {
+    const existing = this.matches.get(id);
+    if (!existing) return null;
+
+    const updated: MatchEntity = {
+      ...existing,
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.started_at !== undefined ? { started_at: input.started_at } : {}),
+      ...(input.ends_at !== undefined ? { ends_at: input.ends_at } : {}),
+      ...(input.finished_at !== undefined ? { finished_at: input.finished_at } : {}),
+      ...(input.winner_id !== undefined ? { winner_id: input.winner_id } : {}),
+      ...(input.winner_ids !== undefined ? { winner_ids: input.winner_ids } : {}),
+      ...(input.finish_reason !== undefined ? { finish_reason: input.finish_reason } : {}),
+      ...(input.state_version !== undefined ? { state_version: input.state_version } : {}),
+      ...(input.admission_seq !== undefined ? { admission_seq: input.admission_seq } : {}),
+    };
+
+    this.matches.set(id, updated);
+    return { ...updated };
+  }
+
+  async addPlayer(input: CreateMatchPlayerInput): Promise<MatchPlayerEntity> {
+    const now = new Date().toISOString();
+    const player: MatchPlayerEntity = {
+      id: input.id ?? randomUUID(),
+      match_id: input.match_id,
+      user_id: input.user_id,
+      score: input.score ?? 0,
+      cases_total: input.cases_total ?? 0,
+      time_total_ms: input.time_total_ms ?? 0,
+      current_problem_idx: input.current_problem_idx ?? 0,
+      is_ready: input.is_ready ?? true,
+      is_revealed: input.is_revealed ?? false,
+      connection_status: input.connection_status ?? 'connected',
+      joined_at: input.joined_at ?? now,
+      left_at: input.left_at ?? null,
+    };
+
+    const matchPlayers = this.players.get(input.match_id) ?? [];
+    matchPlayers.push(player);
+    this.players.set(input.match_id, matchPlayers);
+
+    return { ...player };
+  }
+
+  async findPlayersByMatchId(matchId: string): Promise<MatchPlayerEntity[]> {
+    const matchPlayers = this.players.get(matchId) ?? [];
+    return matchPlayers.map((p) => ({ ...p }));
+  }
+
+  async findPlayer(matchId: string, userId: string): Promise<MatchPlayerEntity | null> {
+    const matchPlayers = this.players.get(matchId) ?? [];
+    const player = matchPlayers.find((p) => p.user_id === userId);
+    return player ? { ...player } : null;
+  }
+
+  async updatePlayer(
+    id: string,
+    input: Partial<
+      Pick<
+        MatchPlayerEntity,
+        | 'score'
+        | 'cases_total'
+        | 'time_total_ms'
+        | 'current_problem_idx'
+        | 'is_ready'
+        | 'is_revealed'
+        | 'connection_status'
+        | 'left_at'
+      >
+    >,
+  ): Promise<MatchPlayerEntity | null> {
+    for (const matchPlayers of this.players.values()) {
+      const idx = matchPlayers.findIndex((p) => p.id === id);
+      if (idx >= 0) {
+        const existing = matchPlayers[idx]!;
+        const updated: MatchPlayerEntity = {
+          ...existing,
+          ...(input.score !== undefined ? { score: input.score } : {}),
+          ...(input.cases_total !== undefined ? { cases_total: input.cases_total } : {}),
+          ...(input.time_total_ms !== undefined ? { time_total_ms: input.time_total_ms } : {}),
+          ...(input.current_problem_idx !== undefined
+            ? { current_problem_idx: input.current_problem_idx }
+            : {}),
+          ...(input.is_ready !== undefined ? { is_ready: input.is_ready } : {}),
+          ...(input.is_revealed !== undefined ? { is_revealed: input.is_revealed } : {}),
+          ...(input.connection_status !== undefined
+            ? { connection_status: input.connection_status }
+            : {}),
+          ...(input.left_at !== undefined ? { left_at: input.left_at } : {}),
+        };
+        matchPlayers[idx] = updated;
+        return { ...updated };
+      }
+    }
+    return null;
+  }
+
+  clear(): void {
+    this.matches.clear();
+    this.roomCodeToId.clear();
+    this.players.clear();
   }
 }
