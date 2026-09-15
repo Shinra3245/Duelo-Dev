@@ -6,10 +6,13 @@ que la construcción de la invocación pueda probarse sin iniciar contenedores.
 
 from dataclasses import dataclass
 from math import ceil
+import os
 import subprocess
+import tempfile
 import threading
-from time import monotonic
+from time import monotonic, sleep
 from typing import IO, Protocol
+from uuid import uuid4
 
 from judge.capture import BoundedCapture
 from judge.evaluation import CaseExecution
@@ -53,52 +56,111 @@ class SubprocessDockerInvoker:
             raise ValueError("stdin debe ser bytes")
 
         started = monotonic()
+        cidfile: str | None = None
+        run_token: str | None = None
+        runtime_argv = argv
+        if len(argv) >= 2 and argv[0] == "docker" and argv[1] == "run":
+            fd, cidfile = tempfile.mkstemp(prefix="duelodev-judge-", suffix=".cid")
+            os.close(fd)
+            os.unlink(cidfile)
+            run_token = uuid4().hex
+            runtime_argv = (
+                argv[:2]
+                + ("--cidfile", cidfile, "--label", f"duelodev.judge.run={run_token}")
+                + argv[2:]
+            )
         try:
             process = subprocess.Popen(
-                argv,
+                runtime_argv,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
             )
         except OSError:
+            if cidfile is not None:
+                self._remove_container(argv[0], cidfile, run_token)
             return RuntimeObservation(b"", b"", -1, 0, system_error=True)
+        try:
+            assert process.stdin is not None
+            assert process.stdout is not None
+            assert process.stderr is not None
+            stdout = BoundedCapture(self._output_limit_bytes)
+            stderr = BoundedCapture(self._output_limit_bytes)
+            overflow = threading.Event()
+            threads = [
+                self._start_reader(process.stdout, stdout, overflow),
+                self._start_reader(process.stderr, stderr, overflow),
+                self._start_writer(process.stdin, stdin),
+            ]
 
-        assert process.stdin is not None
-        assert process.stdout is not None
-        assert process.stderr is not None
-        stdout = BoundedCapture(self._output_limit_bytes)
-        stderr = BoundedCapture(self._output_limit_bytes)
-        overflow = threading.Event()
-        threads = [
-            self._start_reader(process.stdout, stdout, overflow),
-            self._start_reader(process.stderr, stderr, overflow),
-            self._start_writer(process.stdin, stdin),
-        ]
+            deadline = started + timeout_ms / 1000
+            timed_out = False
+            while process.poll() is None:
+                if overflow.wait(timeout=0.01):
+                    process.kill()
+                    break
+                if monotonic() >= deadline:
+                    timed_out = True
+                    process.kill()
+                    break
 
-        deadline = started + timeout_ms / 1000
-        timed_out = False
-        while process.poll() is None:
-            if overflow.wait(timeout=0.01):
-                process.kill()
-                break
-            if monotonic() >= deadline:
-                timed_out = True
-                process.kill()
-                break
+            process.wait()
+            for thread in threads:
+                thread.join(timeout=1)
+            elapsed_ms = round((monotonic() - started) * 1000)
+            return RuntimeObservation(
+                stdout.data,
+                stderr.data,
+                process.returncode,
+                elapsed_ms,
+                timed_out=timed_out,
+                output_exceeded=overflow.is_set(),
+            )
+        finally:
+            if cidfile is not None:
+                self._remove_container(argv[0], cidfile, run_token)
 
-        process.wait()
-        for thread in threads:
-            thread.join(timeout=1)
-        elapsed_ms = round((monotonic() - started) * 1000)
-        return RuntimeObservation(
-            stdout.data,
-            stderr.data,
-            process.returncode,
-            elapsed_ms,
-            timed_out=timed_out,
-            output_exceeded=overflow.is_set(),
-        )
+    @staticmethod
+    def _remove_container(docker: str, cidfile: str, run_token: str | None) -> None:
+        try:
+            container_id = ""
+            with open(cidfile, encoding="utf-8") as file:
+                container_id = file.read().strip()
+        except OSError:
+            container_id = ""
+        try:
+            if container_id:
+                subprocess.run(
+                    (docker, "rm", "-f", container_id),
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                )
+            if run_token:
+                for _ in range(10):
+                    leftovers = subprocess.check_output(
+                        (docker, "ps", "-aq", "--filter", f"label=duelodev.judge.run={run_token}"),
+                        text=True,
+                        timeout=10,
+                    ).split()
+                    if leftovers:
+                        subprocess.run(
+                            (docker, "rm", "-f", *leftovers),
+                            check=False,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=10,
+                        )
+                    sleep(0.1)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        finally:
+            try:
+                os.unlink(cidfile)
+            except FileNotFoundError:
+                pass
 
     @staticmethod
     def _start_reader(
