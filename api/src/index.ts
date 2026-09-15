@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { createApp, type ApiApp } from './app.js';
 
 export * from './types.js';
+export * from './schemas/index.js';
+export * from './plugins/index.js';
 export * from './routes/health.js';
 export * from './routes/router.js';
 export { createApp, type ApiApp };

@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ERROR_CODES, ERROR_MESSAGES, type ApiError } from '@duelodev/shared';
 import type { ApiContext } from '../types.js';
+import { HttpError } from '../plugins/body-parser.js';
 import { handleHealthz, handleReadyz } from './health.js';
 
-function sendJson(
+export function sendJson(
   req: IncomingMessage,
   res: ServerResponse,
   statusCode: number,
@@ -55,6 +56,15 @@ export async function dispatchRoute(
     };
     sendJson(req, res, 404, notFoundBody);
   } catch (err) {
+    if (err instanceof HttpError) {
+      if (!res.headersSent) {
+        sendJson(req, res, err.statusCode, err.toApiError(requestId));
+      } else {
+        res.end();
+      }
+      return;
+    }
+
     ctx.logger.error('Error no capturado procesando solicitud', {
       request_id: requestId,
       url: req.url,
