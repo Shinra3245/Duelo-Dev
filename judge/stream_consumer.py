@@ -30,6 +30,10 @@ class EntryCoordinator(Protocol):
 
 
 class StreamTransport(Protocol):
+    def claim_stale(
+        self, consumer_name: str, count: int, min_idle_ms: int
+    ) -> Sequence[StreamEntry]: ...
+
     def read_new(self, consumer_name: str, count: int, block_ms: int) -> Sequence[StreamEntry]: ...
 
     def ack(self, message_id: str) -> bool: ...
@@ -38,10 +42,12 @@ class StreamTransport(Protocol):
 @dataclass(frozen=True)
 class ConsumerBatchStats:
     read: int = 0
+    recovered: int = 0
     acknowledged: int = 0
     retried: int = 0
     ack_failures: int = 0
     read_failed: bool = False
+    recovery_failed: bool = False
 
 
 class StreamConsumer:
@@ -55,6 +61,7 @@ class StreamConsumer:
         *,
         count: int = 1,
         block_ms: int = 1000,
+        recovery_idle_ms: int = 120_000,
     ) -> None:
         if not isinstance(consumer_name, str) or not consumer_name:
             raise ValueError("consumer_name es obligatorio")
@@ -62,15 +69,28 @@ class StreamConsumer:
             raise ValueError("count debe ser positivo")
         if type(block_ms) is not int or block_ms < 1:
             raise ValueError("block_ms debe ser positivo")
+        if type(recovery_idle_ms) is not int or recovery_idle_ms < 1:
+            raise ValueError("recovery_idle_ms debe ser positivo")
         self._consumer_name = consumer_name
         self._transport = transport
         self._coordinator = coordinator
         self._count = count
         self._block_ms = block_ms
+        self._recovery_idle_ms = recovery_idle_ms
 
     def poll_once(self) -> ConsumerBatchStats:
         try:
-            entries = self._transport.read_new(self._consumer_name, self._count, self._block_ms)
+            recovered = self._transport.claim_stale(
+                self._consumer_name, self._count, self._recovery_idle_ms
+            )
+        except Exception:
+            return ConsumerBatchStats(recovery_failed=True)
+        try:
+            entries = (
+                recovered
+                if recovered
+                else self._transport.read_new(self._consumer_name, self._count, self._block_ms)
+            )
         except Exception:
             return ConsumerBatchStats(read_failed=True)
 
@@ -96,6 +116,7 @@ class StreamConsumer:
                 ack_failures += 1
         return ConsumerBatchStats(
             read=len(entries),
+            recovered=len(recovered),
             acknowledged=acknowledged,
             retried=retried,
             ack_failures=ack_failures,
@@ -142,6 +163,26 @@ class RedisPyStreamTransport:
         except Exception:
             raise StreamTransportError("No se pudo leer el stream") from None
 
+    def claim_stale(
+        self, consumer_name: str, count: int, min_idle_ms: int
+    ) -> Sequence[StreamEntry]:
+        try:
+            response = self._client.xautoclaim(
+                self._stream,
+                self._group,
+                consumer_name,
+                min_idle_ms,
+                "0-0",
+                count=count,
+            )
+            if not isinstance(response, (list, tuple)) or len(response) not in (2, 3):
+                raise StreamTransportError("Redis devolvió una recuperación inválida")
+            return self._decode_entries(response[1])
+        except StreamTransportError:
+            raise
+        except Exception:
+            raise StreamTransportError("No se pudieron recuperar pendientes") from None
+
     def ack(self, message_id: str) -> bool:
         try:
             return int(self._client.xack(self._stream, self._group, message_id)) == 1
@@ -160,13 +201,21 @@ class RedisPyStreamTransport:
             stream_name = _redis_text(stream_data[0], "stream")
             if stream_name != self._stream or not isinstance(stream_data[1], (list, tuple)):
                 raise StreamTransportError("Redis devolvió un stream inesperado")
-            for raw_entry in stream_data[1]:
-                if not isinstance(raw_entry, (list, tuple)) or len(raw_entry) != 2:
-                    raise StreamTransportError("Redis devolvió una entrada inválida")
-                message_id = _redis_text(raw_entry[0], "message_id")
-                if not isinstance(raw_entry[1], Mapping):
-                    raise StreamTransportError("Redis devolvió campos inválidos")
-                entries.append(StreamEntry(message_id, raw_entry[1]))
+            entries.extend(self._decode_entries(stream_data[1]))
+        return tuple(entries)
+
+    @staticmethod
+    def _decode_entries(response: object) -> tuple[StreamEntry, ...]:
+        if not isinstance(response, (list, tuple)):
+            raise StreamTransportError("Redis devolvió entradas inválidas")
+        entries: list[StreamEntry] = []
+        for raw_entry in response:
+            if not isinstance(raw_entry, (list, tuple)) or len(raw_entry) != 2:
+                raise StreamTransportError("Redis devolvió una entrada inválida")
+            message_id = _redis_text(raw_entry[0], "message_id")
+            if not isinstance(raw_entry[1], Mapping):
+                raise StreamTransportError("Redis devolvió campos inválidos")
+            entries.append(StreamEntry(message_id, raw_entry[1]))
         return tuple(entries)
 
 

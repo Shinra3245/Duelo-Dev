@@ -18,10 +18,17 @@ from judge.worker import EntryDisposition, EntryOutcome
 @dataclass
 class FakeTransport:
     entries: list[StreamEntry]
+    stale_entries: list[StreamEntry] = field(default_factory=list)
     ack_result: bool = True
     read_error: Exception | None = None
+    recovery_error: Exception | None = None
     ack_error: Exception | None = None
     acked_ids: list[str] = field(default_factory=list)
+
+    def claim_stale(self, consumer_name: str, count: int, min_idle_ms: int) -> list[StreamEntry]:
+        if self.recovery_error:
+            raise self.recovery_error
+        return self.stale_entries[:count]
 
     def read_new(self, consumer_name: str, count: int, block_ms: int) -> list[StreamEntry]:
         if self.read_error:
@@ -94,9 +101,33 @@ def test_read_failure_is_sanitized_as_stats() -> None:
     assert stats == ConsumerBatchStats(read_failed=True)
 
 
+def test_stale_entries_are_prioritized_and_counted_as_recovered() -> None:
+    transport = FakeTransport([entry("new-0")], stale_entries=[entry("stale-0")])
+
+    stats = StreamConsumer(
+        "worker-2",
+        transport,
+        FakeCoordinator([EntryOutcome(EntryDisposition.ACK_RESULT)]),
+        recovery_idle_ms=10,
+    ).poll_once()
+
+    assert stats == ConsumerBatchStats(read=1, recovered=1, acknowledged=1)
+    assert transport.acked_ids == ["stale-0"]
+
+
+def test_recovery_failure_does_not_read_or_ack_new_messages() -> None:
+    transport = FakeTransport([entry("new-0")], recovery_error=RuntimeError("redis password"))
+
+    stats = StreamConsumer("worker-2", transport, FakeCoordinator([])).poll_once()
+
+    assert stats == ConsumerBatchStats(recovery_failed=True)
+    assert transport.acked_ids == []
+
+
 @dataclass
 class FakeRedis:
     response: object = field(default_factory=list)
+    autoclaim_response: object = field(default_factory=lambda: (b"0-0", [], []))
     group_error: Exception | None = None
     ack_value: int = 1
     calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = field(default_factory=list)
@@ -110,6 +141,10 @@ class FakeRedis:
     def xreadgroup(self, *args: Any, **kwargs: Any) -> object:
         self.calls.append(("xreadgroup", args, kwargs))
         return self.response
+
+    def xautoclaim(self, *args: Any, **kwargs: Any) -> object:
+        self.calls.append(("xautoclaim", args, kwargs))
+        return self.autoclaim_response
 
     def xack(self, *args: Any, **kwargs: Any) -> int:
         self.calls.append(("xack", args, kwargs))
@@ -151,6 +186,22 @@ def test_existing_group_is_not_an_error_but_other_failures_are_sanitized() -> No
     assert "password" not in str(captured.value)
 
 
+def test_redis_adapter_recovers_stale_entries_with_xautoclaim() -> None:
+    redis = FakeRedis(autoclaim_response=(b"0-0", [(b"1-0", {b"submission_id": b"one"})], []))
+    transport = RedisPyStreamTransport(redis)
+
+    entries = transport.claim_stale("worker-2", 5, 120_000)
+
+    assert entries == (StreamEntry("1-0", {b"submission_id": b"one"}),)
+    assert redis.calls == [
+        (
+            "xautoclaim",
+            ("judge:stream", "judges", "worker-2", 120_000, "0-0"),
+            {"count": 5},
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     "response",
     [
@@ -165,3 +216,14 @@ def test_invalid_redis_responses_are_rejected_without_payload(response: object) 
 
     with pytest.raises(StreamTransportError):
         transport.read_new("worker-1", 1, 10)
+
+
+@pytest.mark.parametrize(
+    "response",
+    ["invalid", (b"0-0", "not-entries"), (b"0-0", [(b"1-0", "not-fields")])],
+)
+def test_invalid_autoclaim_responses_are_rejected(response: object) -> None:
+    transport = RedisPyStreamTransport(FakeRedis(autoclaim_response=response))
+
+    with pytest.raises(StreamTransportError):
+        transport.claim_stale("worker-2", 1, 10)

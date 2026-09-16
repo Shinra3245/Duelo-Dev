@@ -51,6 +51,8 @@ done
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
   "PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
+from time import sleep
+
 from redis import Redis
 
 from judge.stream_consumer import RedisPyStreamTransport, StreamConsumer
@@ -82,8 +84,25 @@ assert stats.acknowledged == 1
 assert stats.retried == 1
 pending = client.xpending('judge:stream', 'judges')
 assert pending['pending'] == 1
-assert transport.ack(second.decode())
+sleep(0.02)
+
+class Recover:
+    def handle(self, message_id, fields):
+        assert message_id == second.decode()
+        return EntryOutcome(EntryDisposition.ACK_RESULT)
+
+recovered = StreamConsumer(
+    'worker-recovery',
+    transport,
+    Recover(),
+    count=2,
+    block_ms=100,
+    recovery_idle_ms=1,
+).poll_once()
+assert recovered.read == 1
+assert recovered.recovered == 1
+assert recovered.acknowledged == 1
 assert client.xpending('judge:stream', 'judges')['pending'] == 0
 assert first != second
-print('XREADGROUP, decisión de ACK y pendientes verificados con Redis rootless desechable.')
+print('XREADGROUP, XAUTOCLAIM, ACK seguro y recuperación PEL verificados con Redis rootless.')
 PY"
