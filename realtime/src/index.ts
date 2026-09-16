@@ -7,6 +7,7 @@ export * from './store/index.js';
 export * from './routes/health.js';
 export * from './socket/index.js';
 export * from './yjs/index.js';
+export * from './gamemodes/index.js';
 export { createRealtimeServer, type RealtimeServer };
 export { InMemoryMatchStore };
 
