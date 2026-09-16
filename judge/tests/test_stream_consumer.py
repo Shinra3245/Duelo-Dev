@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from judge.pipeline import DurableJudgeResult
 from judge.stream_consumer import (
     ConsumerBatchStats,
     RedisPyStreamTransport,
@@ -12,6 +13,7 @@ from judge.stream_consumer import (
     StreamEntry,
     StreamTransportError,
 )
+from judge.verdicts import Verdict
 from judge.worker import EntryDisposition, EntryOutcome
 
 
@@ -56,6 +58,17 @@ class FakeCoordinator:
         return self.outcomes[index]
 
 
+@dataclass
+class FakeNotifier:
+    error: Exception | None = None
+    outcomes: list[EntryOutcome] = field(default_factory=list)
+
+    def notify(self, outcome: EntryOutcome) -> None:
+        self.outcomes.append(outcome)
+        if self.error:
+            raise self.error
+
+
 def entry(message_id: str) -> StreamEntry:
     return StreamEntry(message_id, {"source_code": "private"})
 
@@ -93,6 +106,64 @@ def test_ack_failure_is_reported_and_message_is_not_counted_as_acknowledged(
     stats = StreamConsumer("worker-1", transport, coordinator, recovery_idle_ms=10).poll_once()
 
     assert stats == ConsumerBatchStats(read=1, ack_failures=1)
+
+
+def test_durable_result_is_notified_before_ack() -> None:
+    transport = FakeTransport([entry("1-0")])
+    result = DurableJudgeResult("submission-1", Verdict.AC, 1, 1, 5, 1_700_000_000_000)
+    outcome = EntryOutcome(EntryDisposition.ACK_RESULT, "submission-1", result)
+    notifier = FakeNotifier()
+
+    stats = StreamConsumer(
+        "worker-1",
+        transport,
+        FakeCoordinator([outcome]),
+        recovery_idle_ms=10,
+        notifier=notifier,
+    ).poll_once()
+
+    assert stats == ConsumerBatchStats(read=1, acknowledged=1)
+    assert notifier.outcomes == [outcome]
+    assert transport.acked_ids == ["1-0"]
+
+
+def test_notification_failure_is_counted_but_durable_result_is_still_acked() -> None:
+    transport = FakeTransport([entry("1-0")])
+    result = DurableJudgeResult("submission-1", Verdict.AC, 1, 1, 5, 1_700_000_000_000)
+    outcome = EntryOutcome(EntryDisposition.ACK_RESULT, "submission-1", result)
+
+    stats = StreamConsumer(
+        "worker-1",
+        transport,
+        FakeCoordinator([outcome]),
+        recovery_idle_ms=10,
+        notifier=FakeNotifier(error=RuntimeError("redis unavailable")),
+    ).poll_once()
+
+    assert stats == ConsumerBatchStats(read=1, acknowledged=1, notification_failures=1)
+    assert transport.acked_ids == ["1-0"]
+
+
+def test_retry_and_duplicate_outcomes_do_not_publish_notifications() -> None:
+    transport = FakeTransport([entry("1-0"), entry("2-0")])
+    notifier = FakeNotifier()
+
+    stats = StreamConsumer(
+        "worker-1",
+        transport,
+        FakeCoordinator(
+            [
+                EntryOutcome(EntryDisposition.RETRY),
+                EntryOutcome(EntryDisposition.ACK_DUPLICATE),
+            ]
+        ),
+        count=2,
+        recovery_idle_ms=10,
+        notifier=notifier,
+    ).poll_once()
+
+    assert stats == ConsumerBatchStats(read=2, acknowledged=1, retried=1)
+    assert notifier.outcomes == []
 
 
 def test_read_failure_is_sanitized_as_stats() -> None:

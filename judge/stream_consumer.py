@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from judge.worker import EntryOutcome
+from judge.worker import EntryDisposition, EntryOutcome
 
 
 JUDGE_STREAM_KEY = "judge:stream"
@@ -29,6 +29,12 @@ class EntryCoordinator(Protocol):
     def handle(self, message_id: str, fields: Mapping[Any, Any]) -> EntryOutcome: ...
 
 
+class DurableResultNotifier(Protocol):
+    """Emite un aviso ligero después de que PostgreSQL confirmó el resultado."""
+
+    def notify(self, outcome: EntryOutcome) -> None: ...
+
+
 class StreamTransport(Protocol):
     def claim_stale(
         self, consumer_name: str, count: int, min_idle_ms: int
@@ -46,6 +52,7 @@ class ConsumerBatchStats:
     acknowledged: int = 0
     retried: int = 0
     ack_failures: int = 0
+    notification_failures: int = 0
     read_failed: bool = False
     recovery_failed: bool = False
 
@@ -62,6 +69,7 @@ class StreamConsumer:
         count: int = 1,
         block_ms: int = 1000,
         recovery_idle_ms: int,
+        notifier: DurableResultNotifier | None = None,
     ) -> None:
         if not isinstance(consumer_name, str) or not consumer_name:
             raise ValueError("consumer_name es obligatorio")
@@ -77,6 +85,7 @@ class StreamConsumer:
         self._count = count
         self._block_ms = block_ms
         self._recovery_idle_ms = recovery_idle_ms
+        self._notifier = notifier
 
     def poll_once(self) -> ConsumerBatchStats:
         try:
@@ -97,6 +106,7 @@ class StreamConsumer:
         acknowledged = 0
         retried = 0
         ack_failures = 0
+        notification_failures = 0
         for entry in entries:
             try:
                 outcome = self._coordinator.handle(entry.message_id, entry.fields)
@@ -106,6 +116,16 @@ class StreamConsumer:
             if not outcome.should_ack:
                 retried += 1
                 continue
+            if (
+                outcome.disposition == EntryDisposition.ACK_RESULT
+                and outcome.result is not None
+                and self._notifier is not None
+            ):
+                try:
+                    self._notifier.notify(outcome)
+                except Exception:
+                    # El resultado durable permite reconciliar aunque Pub/Sub falle.
+                    notification_failures += 1
             try:
                 acked = self._transport.ack(entry.message_id)
             except Exception:
@@ -120,6 +140,7 @@ class StreamConsumer:
             acknowledged=acknowledged,
             retried=retried,
             ack_failures=ack_failures,
+            notification_failures=notification_failures,
         )
 
 
