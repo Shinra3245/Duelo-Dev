@@ -8,6 +8,13 @@ import type {
 } from '@duelodev/shared';
 import type { MatchStore } from './store/types.js';
 import type { CodeSnapshot } from './yjs/types.js';
+import type {
+  ProcessedSubmissionStore,
+  ResultSubscriber,
+  SubmissionProvider,
+} from './queue/types.js';
+import type { JudgeResultsConsumer } from './queue/consumer.js';
+import type { MatchStateReconciler } from './queue/reconciler.js';
 
 export type StructuredLogger = Logger;
 
@@ -61,6 +68,10 @@ export interface RealtimeAppOptions {
   yjsSnapshotIntervalMs?: number | undefined;
   onYjsSnapshotPersist?: ((snapshot: CodeSnapshot) => Promise<void>) | undefined;
   authSecret?: string | undefined;
+  resultSubscriber?: ResultSubscriber | undefined;
+  submissionProvider?: SubmissionProvider | undefined;
+  processedSubmissionStore?: ProcessedSubmissionStore | undefined;
+  reconciliationIntervalMs?: number | undefined;
 }
 
 export interface RealtimeContext {
@@ -71,4 +82,10 @@ export interface RealtimeContext {
   startTime: number;
   readinessProbes: ReadinessProbe[];
   authSecret?: string | undefined;
+  resultSubscriber?: ResultSubscriber | undefined;
+  submissionProvider?: SubmissionProvider | undefined;
+  processedSubmissionStore?: ProcessedSubmissionStore | undefined;
+  reconciliationIntervalMs?: number | undefined;
+  resultsConsumer?: JudgeResultsConsumer | undefined;
+  stateReconciler?: MatchStateReconciler | undefined;
 }

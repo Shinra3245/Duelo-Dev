@@ -36,4 +36,9 @@ export interface MatchStore {
    * Cuenta las partidas activas (status !== 'finished' && status !== 'abandoned').
    */
   countActiveMatches(): Promise<number>;
+
+  /**
+   * Lista los identificadores de partidas activas (status !== 'finished' && status !== 'abandoned').
+   */
+  listActiveMatchIds?(): Promise<string[]>;
 }

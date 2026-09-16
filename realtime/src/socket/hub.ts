@@ -1052,4 +1052,15 @@ export class MatchHub {
     const sockets = this.userSockets.get(userId);
     return sockets !== undefined && sockets.size > 0;
   }
+
+  /** Lista los identificadores de partidas con salas activas. */
+  getActiveMatchIds(): string[] {
+    const ids: string[] = [];
+    for (const name of this.rooms.keys()) {
+      if (name.startsWith('match:')) {
+        ids.push(name.slice(6));
+      }
+    }
+    return ids;
+  }
 }

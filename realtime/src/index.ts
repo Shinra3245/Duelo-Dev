@@ -9,6 +9,7 @@ export * from './socket/index.js';
 export * from './yjs/index.js';
 export * from './gamemodes/index.js';
 export * from './transport/index.js';
+export * from './queue/index.js';
 export { createRealtimeServer, type RealtimeServer };
 export { InMemoryMatchStore };
 

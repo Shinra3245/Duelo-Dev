@@ -96,6 +96,16 @@ export class InMemoryMatchStore implements MatchStore {
     return count;
   }
 
+  async listActiveMatchIds(): Promise<string[]> {
+    const activeIds: string[] = [];
+    for (const session of this.sessions.values()) {
+      if (session.status !== 'finished' && session.status !== 'abandoned') {
+        activeIds.push(session.match_id);
+      }
+    }
+    return activeIds;
+  }
+
   /**
    * Limpia todas las sesiones almacenadas en memoria.
    * Utilizado para aislamiento estricto en suites de prueba.

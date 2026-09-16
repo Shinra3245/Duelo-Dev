@@ -11,6 +11,10 @@ import {
   setupRealtimeUpgradeHandler,
   type RealtimeUpgradeController,
 } from './transport/adapter.js';
+import { InMemoryProcessedSubmissionStore } from './queue/memory.js';
+import { JudgeResultsConsumer } from './queue/consumer.js';
+import { MatchStateReconciler } from './queue/reconciler.js';
+import type { ProcessedSubmissionStore } from './queue/types.js';
 
 export interface RealtimeServer {
   server: Server;
@@ -18,6 +22,9 @@ export interface RealtimeServer {
   matchHub: MatchHub;
   yjsHub: YjsHub;
   upgradeController: RealtimeUpgradeController;
+  resultsConsumer?: JudgeResultsConsumer | undefined;
+  stateReconciler?: MatchStateReconciler | undefined;
+  processedSubmissionStore?: ProcessedSubmissionStore | undefined;
   requestListener: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   start: (port?: number, host?: string) => Promise<{ port: number; host: string }>;
   close: () => Promise<void>;
@@ -49,6 +56,35 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     onSnapshotPersist: options.onYjsSnapshotPersist,
   });
 
+  const processedSubmissionStore =
+    options.processedSubmissionStore ?? new InMemoryProcessedSubmissionStore();
+
+  let resultsConsumer: JudgeResultsConsumer | undefined;
+  if (options.resultSubscriber) {
+    resultsConsumer = new JudgeResultsConsumer({
+      subscriber: options.resultSubscriber,
+      matchHub,
+      matchStore,
+      processedStore: processedSubmissionStore,
+      submissionProvider: options.submissionProvider,
+      logger,
+    });
+    resultsConsumer.start();
+  }
+
+  let stateReconciler: MatchStateReconciler | undefined;
+  if (options.submissionProvider) {
+    stateReconciler = new MatchStateReconciler({
+      matchStore,
+      matchHub,
+      submissionProvider: options.submissionProvider,
+      processedStore: processedSubmissionStore,
+      intervalMs: options.reconciliationIntervalMs,
+      logger,
+    });
+    stateReconciler.start();
+  }
+
   const ctx: RealtimeContext = {
     serviceName,
     version,
@@ -57,6 +93,12 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     startTime,
     readinessProbes,
     authSecret,
+    resultSubscriber: options.resultSubscriber,
+    submissionProvider: options.submissionProvider,
+    processedSubmissionStore,
+    reconciliationIntervalMs: options.reconciliationIntervalMs,
+    resultsConsumer,
+    stateReconciler,
   };
 
   const requestListener = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -172,6 +214,8 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   };
 
   const close = (): Promise<void> => {
+    resultsConsumer?.stop();
+    stateReconciler?.stop();
     upgradeController.close();
     matchHub.clearAllTimers();
     yjsHub.close();
@@ -196,6 +240,9 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     matchHub,
     yjsHub,
     upgradeController,
+    resultsConsumer,
+    stateReconciler,
+    processedSubmissionStore,
     requestListener,
     start,
     close,

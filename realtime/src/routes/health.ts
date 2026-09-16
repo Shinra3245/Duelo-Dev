@@ -100,9 +100,20 @@ export async function handleReadyz(
     probes[probe.name] = probe.check;
   }
 
+  const processedCount = ctx.processedSubmissionStore
+    ? await ctx.processedSubmissionStore.countProcessed()
+    : 0;
+  const reconciledCount = ctx.stateReconciler ? ctx.stateReconciler.getReconciledCount() : 0;
+  const consumerActive = ctx.resultsConsumer ? (ctx.resultsConsumer.isRunning() ? 1 : 0) : 0;
+  const reconcilerActive = ctx.stateReconciler ? (ctx.stateReconciler.isRunning() ? 1 : 0) : 0;
+
   const metrics: Record<string, number> = {
     active_matches: activeMatches,
     uptime_s,
+    processed_submissions: processedCount,
+    reconciled_submissions: reconciledCount,
+    consumer_active: consumerActive,
+    reconciler_active: reconcilerActive,
   };
 
   const result: ReadyResponse = await runReadyChecks(ctx.serviceName, probes, metrics);
