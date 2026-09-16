@@ -109,3 +109,28 @@ def test_oom_state_is_read_before_container_cleanup(
     monkeypatch.setattr(subprocess, "check_output", inspect)
 
     assert SubprocessDockerInvoker._container_oom_killed("docker", str(cidfile))
+
+
+def test_successful_cid_cleanup_skips_delayed_label_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cidfile = tmp_path / "container.cid"
+    cidfile.write_text("controlled-container\n", encoding="utf-8")
+    calls: list[tuple[object, ...]] = []
+
+    def remove(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        calls.append(args)
+        return subprocess.CompletedProcess(("docker", "rm"), 0)
+
+    def unexpected_scan(*args: object, **kwargs: object) -> str:
+        raise AssertionError("No debe buscar por etiqueta tras eliminar el CID")
+
+    monkeypatch.setattr(subprocess, "run", remove)
+    monkeypatch.setattr(subprocess, "check_output", unexpected_scan)
+
+    SubprocessDockerInvoker._remove_container("docker", str(cidfile), "run-token")
+
+    assert calls == [
+        (("docker", "rm", "-f", "controlled-container"),),
+    ]
+    assert not cidfile.exists()

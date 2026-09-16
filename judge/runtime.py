@@ -110,7 +110,9 @@ class SubprocessDockerInvoker:
                 thread.join(timeout=1)
             elapsed_ms = round((monotonic() - started) * 1000)
             oom_killed = (
-                self._container_oom_killed(argv[0], cidfile) if cidfile is not None else False
+                self._container_oom_killed(argv[0], cidfile)
+                if cidfile is not None and process.returncode == 137
+                else False
             )
             return RuntimeObservation(
                 stdout.data,
@@ -130,15 +132,17 @@ class SubprocessDockerInvoker:
     def _remove_container(docker: str, cidfile: str, run_token: str | None) -> None:
         container_id = SubprocessDockerInvoker._read_container_id(cidfile)
         try:
+            removed = False
             if container_id:
-                subprocess.run(
+                removal = subprocess.run(
                     (docker, "rm", "-f", container_id),
                     check=False,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=10,
                 )
-            if run_token:
+                removed = removal.returncode == 0
+            if run_token and not removed:
                 sleep(0.2)
                 leftovers = subprocess.check_output(
                     (docker, "ps", "-aq", "--filter", f"label=duelodev.judge.run={run_token}"),
