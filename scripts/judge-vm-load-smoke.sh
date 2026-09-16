@@ -12,7 +12,8 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p
   "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/case_store.py judge/compiler.py \
   judge/docker_compiler.py judge/evaluation.py judge/languages.py judge/limits.py \
-  judge/pipeline.py judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
+  judge/docker_session.py judge/pipeline.py judge/runtime.py judge/sandbox.py \
+  judge/session_runtime.py judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
@@ -31,8 +32,10 @@ from time import monotonic, time
 from judge.case_store import DirectoryCasesProvider
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES
 from judge.docker_compiler import DockerCompilationBackend
+from judge.docker_session import DockerSessionBackend
 from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
+from judge.session_runtime import DockerSubmissionRunner
 from judge.verdicts import Verdict
 
 
@@ -69,6 +72,7 @@ with tempfile.TemporaryDirectory(prefix='duelodev-load-cases-') as case_root_val
         DockerCaseRunner(invoker),
         backend,
         lambda: int(time() * 1000),
+        submission_runner=DockerSubmissionRunner(DockerSessionBackend(invoker)),
     )
     admitted_at = monotonic()
 

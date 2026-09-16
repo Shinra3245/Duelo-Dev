@@ -42,13 +42,18 @@ _RESET = (
     '[ "$key" = "Uid:" ] && { uid=$value; break; }; '
     'done < "$status"; '
     f'[ "$uid" = "{RUNNER_UID}" ] && exit 1; '
-    'done; printf "clean\\n"'
+    "done; oom=; "
+    "while read key value; do "
+    '[ "$key" = "oom_kill" ] && { oom=$value; break; }; '
+    "done < /sys/fs/cgroup/memory.events; "
+    '[ -n "$oom" ] || exit 1; printf "clean %s\\n" "$oom"'
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Session:
     token: str
+    oom_count: int
 
 
 class DockerSessionBackend:
@@ -78,8 +83,12 @@ class DockerSessionBackend:
         if not _successful(started):
             self._remove(session_id, token)
             raise RuntimeError("No se pudo iniciar la sesión Docker")
+        oom_count = self._read_oom_count(session_id)
+        if oom_count is None:
+            self._remove(session_id, token)
+            raise RuntimeError("No se pudo leer el contador OOM de la sesión")
         with self._lock:
-            self._sessions[session_id] = _Session(token)
+            self._sessions[session_id] = _Session(token, oom_count)
         return session_id
 
     def execute(
@@ -89,8 +98,8 @@ class DockerSessionBackend:
         stdin: bytes,
         timeout_ms: int,
     ) -> RuntimeObservation:
-        self._known(session_id)
-        before_oom = self._oom_count(session_id)
+        session = self._known(session_id)
+        before_oom = session.oom_count
         observation = self._invoker.invoke(
             (
                 "docker",
@@ -106,8 +115,18 @@ class DockerSessionBackend:
         )
         oom_killed = observation.oom_killed
         if observation.exit_code == 137 and not observation.timed_out:
-            after_oom = self._oom_count(session_id)
-            oom_killed = before_oom is not None and after_oom is not None and after_oom > before_oom
+            after_oom = self._read_oom_count(session_id)
+            if after_oom is None:
+                return RuntimeObservation(
+                    observation.stdout,
+                    observation.stderr,
+                    observation.exit_code,
+                    observation.time_ms,
+                    system_error=True,
+                )
+            oom_killed = after_oom > before_oom
+            with self._lock:
+                session.oom_count = after_oom
         return RuntimeObservation(
             observation.stdout,
             observation.stderr,
@@ -120,13 +139,18 @@ class DockerSessionBackend:
         )
 
     def reset(self, session_id: str) -> bool:
-        self._known(session_id)
+        session = self._known(session_id)
         observation = self._invoker.invoke(
             ("docker", "exec", "--user", "0:0", session_id, "/bin/sh", "-c", _RESET),
             b"",
             RESET_TIMEOUT_MS,
         )
-        return _successful(observation) and observation.stdout == b"clean\n"
+        match = re.fullmatch(rb"clean ([0-9]+)\n", observation.stdout)
+        if not _successful(observation) or match is None:
+            return False
+        with self._lock:
+            session.oom_count = int(match.group(1))
+        return True
 
     def close(self, session_id: str) -> bool:
         session = self._known(session_id)
@@ -145,7 +169,7 @@ class DockerSessionBackend:
             raise ValueError("La sesión no pertenece a este backend")
         return session
 
-    def _oom_count(self, session_id: str) -> int | None:
+    def _read_oom_count(self, session_id: str) -> int | None:
         observation = self._invoker.invoke(
             ("docker", "exec", "--user", "0:0", session_id, "/bin/sh", "-c", _OOM_COUNT),
             b"",

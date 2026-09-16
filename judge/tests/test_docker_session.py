@@ -32,7 +32,14 @@ def spec() -> SandboxSpec:
 
 
 def started_backend(*later: RuntimeObservation) -> tuple[DockerSessionBackend, FakeInvoker]:
-    invoker = FakeInvoker([observation((CONTAINER_ID + "\n").encode()), observation(), *later])
+    invoker = FakeInvoker(
+        [
+            observation((CONTAINER_ID + "\n").encode()),
+            observation(),
+            observation(b"0\n"),
+            *later,
+        ]
+    )
     backend = DockerSessionBackend(invoker, lambda: TOKEN)
     assert backend.start(spec()) == CONTAINER_ID
     return backend, invoker
@@ -51,7 +58,7 @@ def test_create_argv_has_no_network_mount_or_player_command() -> None:
 
 
 def test_execute_uses_unprivileged_uid_and_forwards_only_stdin() -> None:
-    backend, invoker = started_backend(observation(b"0\n"), observation(b"answer\n"))
+    backend, invoker = started_backend(observation(b"answer\n"))
 
     result = backend.execute(CONTAINER_ID, spec().command, b"private-input", 1500)
 
@@ -70,9 +77,7 @@ def test_execute_uses_unprivileged_uid_and_forwards_only_stdin() -> None:
 
 
 def test_oom_is_attributed_from_cgroup_counter() -> None:
-    backend, _ = started_backend(
-        observation(b"4\n"), observation(exit_code=137), observation(b"5\n")
-    )
+    backend, _ = started_backend(observation(exit_code=137), observation(b"1\n"))
 
     result = backend.execute(CONTAINER_ID, spec().command, b"", 1500)
 
@@ -80,22 +85,51 @@ def test_oom_is_attributed_from_cgroup_counter() -> None:
 
 
 def test_exit_137_without_cgroup_increment_is_not_mle() -> None:
-    backend, _ = started_backend(
-        observation(b"4\n"), observation(exit_code=137), observation(b"4\n")
-    )
+    backend, _ = started_backend(observation(exit_code=137), observation(b"0\n"))
 
     result = backend.execute(CONTAINER_ID, spec().command, b"", 1500)
 
     assert not result.oom_killed
 
 
+def test_exit_137_with_unreadable_counter_becomes_system_error() -> None:
+    backend, _ = started_backend(observation(exit_code=137), observation(b"unavailable", 1))
+
+    result = backend.execute(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert result.system_error
+    assert not result.oom_killed
+
+
 def test_reset_runs_fixed_root_controller_and_requires_exact_proof() -> None:
-    backend, invoker = started_backend(observation(b"clean\n"))
+    backend, invoker = started_backend(observation(b"clean 0\n"))
 
     assert backend.reset(CONTAINER_ID)
     argv = invoker.calls[-1][0]
     assert argv[:6] == ("docker", "exec", "--user", "0:0", CONTAINER_ID, "/bin/sh")
     assert "65532" in argv[-1]
+
+
+def test_reset_requires_cleanup_and_a_valid_oom_counter() -> None:
+    backend, _ = started_backend(observation(b"clean\n"))
+
+    assert not backend.reset(CONTAINER_ID)
+
+
+def test_start_fails_closed_when_oom_counter_is_unavailable() -> None:
+    invoker = FakeInvoker(
+        [
+            observation((CONTAINER_ID + "\n").encode()),
+            observation(),
+            observation(b"unavailable", 1),
+            observation(),
+        ]
+    )
+    backend = DockerSessionBackend(invoker, lambda: TOKEN)
+
+    with pytest.raises(RuntimeError, match="contador OOM"):
+        backend.start(spec())
+    assert invoker.calls[-1][0] == ("docker", "rm", "--force", CONTAINER_ID)
 
 
 def test_close_falls_back_to_label_and_forgets_only_after_removal() -> None:
