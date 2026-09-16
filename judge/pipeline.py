@@ -8,7 +8,13 @@ from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, CompilationBackend, prepare
 from judge.evaluation import SubmissionResult, compilation_error
 from judge.limits import LANGUAGES, MEMORY_LIMIT_MB, SOURCE_CODE_MAX_BYTES, Language
 from judge.sandbox import SandboxSpec
-from judge.supervisor import CaseRunner, JudgeCase, judge_cases
+from judge.supervisor import (
+    CaseRunner,
+    JudgeCase,
+    SubmissionRunner,
+    judge_cases,
+    judge_cases_in_session,
+)
 from judge.verdicts import Verdict
 
 
@@ -138,12 +144,14 @@ class JudgePipeline:
         runner: CaseRunner,
         cleaner: ArtifactCleaner,
         clock_ms: Callable[[], int],
+        submission_runner: SubmissionRunner | None = None,
     ) -> None:
         self._cases_provider = cases_provider
         self._compiler = compiler
         self._runner = runner
         self._cleaner = cleaner
         self._clock_ms = clock_ms
+        self._submission_runner = submission_runner
 
     def process(self, job: JudgeJob) -> DurableJudgeResult:
         artifact_reference: str | None = None
@@ -174,7 +182,11 @@ class JudgePipeline:
                 job.time_limit_ms,
                 job.memory_limit_mb,
             )
-            submission = judge_cases(self._runner, prepared.artifact, sandbox, cases)
+            submission = (
+                judge_cases_in_session(self._submission_runner, prepared.artifact, sandbox, cases)
+                if self._submission_runner is not None
+                else judge_cases(self._runner, prepared.artifact, sandbox, cases)
+            )
             result = self._durable(
                 job,
                 submission,

@@ -1,6 +1,7 @@
 """Pruebas del pipeline completo con fronteras inyectadas y sin Docker."""
 
 from dataclasses import dataclass, field
+from typing import Sequence
 
 import pytest
 
@@ -8,7 +9,7 @@ from judge.compiler import CompilationObservation, CompilationRequest
 from judge.evaluation import CaseExecution
 from judge.pipeline import DurableJudgeResult, JudgeJob, JudgePipeline
 from judge.sandbox import SandboxSpec
-from judge.supervisor import CompiledArtifact, JudgeCase
+from judge.supervisor import CaseInput, CompiledArtifact, JudgeCase
 from judge.verdicts import Verdict
 
 
@@ -47,6 +48,21 @@ class FakeRunner:
         if self.error:
             raise self.error
         return self.executions[ordinal - 1]
+
+
+@dataclass
+class FakeSubmissionRunner:
+    executions: list[CaseExecution]
+    inputs: list[CaseInput] = field(default_factory=list)
+
+    def run_cases(
+        self,
+        artifact: CompiledArtifact,
+        sandbox: SandboxSpec,
+        cases: Sequence[CaseInput],
+    ) -> list[CaseExecution]:
+        self.inputs.extend(cases)
+        return self.executions
 
 
 @dataclass
@@ -115,6 +131,26 @@ def test_successful_job_returns_durable_result_and_always_cleans() -> None:
     }
     assert cleaner.references == [ARTIFACT]
     assert "source_code" not in repr(result)
+
+
+def test_pipeline_can_use_one_submission_session_without_exposing_expected() -> None:
+    session_runner = FakeSubmissionRunner([CaseExecution(1, b"42\n", time_ms=7)])
+    cleaner = FakeCleaner()
+    subject = JudgePipeline(
+        FakeCasesProvider(),
+        FakeCompiler(CompilationObservation(ARTIFACT)),
+        FakeRunner([], RuntimeError("per-case runner must not run")),
+        cleaner,
+        lambda: 1_700_000_000_100,
+        submission_runner=session_runner,
+    )
+
+    result = subject.process(job())
+
+    assert result.verdict == Verdict.AC
+    assert session_runner.inputs == [CaseInput(1, b"41\n")]
+    assert b"42\n" not in [case.stdin for case in session_runner.inputs]
+    assert cleaner.references == [ARTIFACT]
 
 
 def test_compilation_error_does_not_run_or_create_cleanup_work() -> None:
