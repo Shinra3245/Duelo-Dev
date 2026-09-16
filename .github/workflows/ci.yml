@@ -1,7 +1,8 @@
 # CI de DueloDev — obligatorio desde la Semana 0 (contexto H11).
 #
-# Etapa actual: evaluación pura del juez. El gate explícito impide añadir
-# ejecución de código sin integrar la validación del sandbox (docs/06).
+# El CI compartido valida contratos puros y construcción de invocaciones. Las
+# pruebas con código no confiable se ejecutan únicamente en la VM rootless
+# desechable mediante los scripts judge-vm-*.
 name: CI
 
 on:
@@ -108,7 +109,7 @@ jobs:
       - run: npm run test:integration --workspace api
 
   juez:
-    name: Juez — evaluación pura y preflight
+    name: Juez — contratos, pipeline y preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,14 +123,13 @@ jobs:
       - run: black --check judge/
       - run: mypy judge/
       - run: python -m pytest judge/tests -v
-      - name: Estado de la validación del sandbox
+      - name: Validar scripts reproducibles de VM
+        run: bash -n scripts/judge-vm-*.sh
+      - name: Alcance de seguridad del runner compartido
         shell: bash
         run: |
-          if [[ -f judge/executor.py || -f judge/Dockerfile.judge ]]; then
-            echo "::error::Antes de incorporar el ejecutor, configurar aquí la suite S01–S20 en un entorno desechable con rootless validado."
-            exit 1
-          fi
-          echo "Solo evaluación pura verificada. Sandbox S01–S20 pendiente; F1 no está cerrada." >> "$GITHUB_STEP_SUMMARY"
+          echo "El CI valida evaluación, compilación, sesiones, stream y fencing con fronteras inyectadas." >> "$GITHUB_STEP_SUMMARY"
+          echo "No ejecuta soluciones no confiables: los smokes S01–S20 requieren la VM desechable con Docker rootless." >> "$GITHUB_STEP_SUMMARY"
 
   auditoria:
     name: Auditoría de dependencias
