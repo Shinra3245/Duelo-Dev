@@ -12,7 +12,7 @@ from judge.supervisor import JudgeCase
 
 
 CASE_BUNDLE_SCHEMA_VERSION: Final[int] = 1
-MAX_CASES_PER_PROBLEM: Final[int] = 100
+MAX_CASES_PER_PROBLEM: Final[int] = 12
 MAX_CASE_BYTES: Final[int] = 1024 * 1024
 MAX_MANIFEST_BYTES: Final[int] = 16 * 1024 * 1024
 _IDENTIFIER: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")

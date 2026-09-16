@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from judge.case_store import DirectoryCasesProvider, MAX_CASE_BYTES
+from judge.case_store import DirectoryCasesProvider, MAX_CASE_BYTES, MAX_CASES_PER_PROBLEM
 
 
 PROBLEM_ID = "550e8400-e29b-41d4-a716-446655440000"
@@ -142,6 +142,29 @@ def test_rejects_case_larger_than_limit(tmp_path: Path) -> None:
     write_bundle(tmp_path, value)
 
     with pytest.raises(ValueError, match="tamaño"):
+        DirectoryCasesProvider(tmp_path).load_cases(f"cases/{PROBLEM_ID}", PROBLEM_ID, 1)
+
+
+def test_accepts_at_most_twelve_hidden_cases(tmp_path: Path) -> None:
+    cases = [
+        {"ordinal": ordinal, "input": str(ordinal), "expected": str(ordinal)}
+        for ordinal in range(1, MAX_CASES_PER_PROBLEM + 1)
+    ]
+    write_bundle(tmp_path, manifest(cases=cases))
+
+    loaded = DirectoryCasesProvider(tmp_path).load_cases(f"cases/{PROBLEM_ID}", PROBLEM_ID, 1)
+
+    assert len(loaded) == MAX_CASES_PER_PROBLEM
+
+
+def test_rejects_more_cases_than_the_mvp_content_contract(tmp_path: Path) -> None:
+    cases = [
+        {"ordinal": ordinal, "input": "", "expected": ""}
+        for ordinal in range(1, MAX_CASES_PER_PROBLEM + 2)
+    ]
+    write_bundle(tmp_path, manifest(cases=cases))
+
+    with pytest.raises(ValueError, match="Cantidad"):
         DirectoryCasesProvider(tmp_path).load_cases(f"cases/{PROBLEM_ID}", PROBLEM_ID, 1)
 
 
