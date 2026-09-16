@@ -45,6 +45,10 @@ export interface RealtimeMatchSession {
   started_at?: string | undefined;
   finished_at?: string | undefined;
   winner_ids?: string[] | undefined;
+  problem_ids?: string[] | undefined;
+  round_opened_at?: number | undefined;
+  round_ends_at?: number | undefined;
+  match_ends_at?: number | undefined;
 }
 
 export interface RealtimeAppOptions {

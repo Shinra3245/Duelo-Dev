@@ -163,4 +163,24 @@ describe('InMemoryMatchStore', () => {
     expect(await store.getMatch('match-1')).toBeNull();
     expect(await store.getMatch('match-2')).toBeNull();
   });
+
+  it('clona defensivamente problem_ids y campos de temporización', async () => {
+    const session = createSampleSession('match-timing');
+    session.problem_ids = ['prob-1', 'prob-2'];
+    session.round_opened_at = 1000;
+    session.round_ends_at = 60000;
+    session.match_ends_at = 300000;
+
+    await store.saveMatch(session);
+
+    // Mutar array original
+    session.problem_ids.push('prob-mutated');
+    session.round_opened_at = 9999;
+
+    const retrieved = await store.getMatch('match-timing');
+    expect(retrieved?.problem_ids).toEqual(['prob-1', 'prob-2']);
+    expect(retrieved?.round_opened_at).toBe(1000);
+    expect(retrieved?.round_ends_at).toBe(60000);
+    expect(retrieved?.match_ends_at).toBe(300000);
+  });
 });

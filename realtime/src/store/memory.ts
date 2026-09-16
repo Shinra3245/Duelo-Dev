@@ -36,6 +36,10 @@ function cloneSession(session: RealtimeMatchSession): RealtimeMatchSession {
     ...(session.started_at !== undefined ? { started_at: session.started_at } : {}),
     ...(session.finished_at !== undefined ? { finished_at: session.finished_at } : {}),
     ...(session.winner_ids !== undefined ? { winner_ids: [...session.winner_ids] } : {}),
+    ...(session.problem_ids !== undefined ? { problem_ids: [...session.problem_ids] } : {}),
+    ...(session.round_opened_at !== undefined ? { round_opened_at: session.round_opened_at } : {}),
+    ...(session.round_ends_at !== undefined ? { round_ends_at: session.round_ends_at } : {}),
+    ...(session.match_ends_at !== undefined ? { match_ends_at: session.match_ends_at } : {}),
   };
 }
 

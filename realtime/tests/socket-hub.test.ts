@@ -4,6 +4,10 @@ import {
   S2C,
   type MatchFinishedPayload,
   type MatchStartedPayload,
+  type MatchSyncPayload,
+  type ProblemBeginPayload,
+  type ScoreUpdatePayload,
+  type SubmissionVerdictContext,
   type VerdictPayload,
 } from '@duelodev/shared';
 import { MatchHub } from '../src/socket/hub.js';
@@ -515,6 +519,313 @@ describe('MatchHub', () => {
 
       const finished = client.emittedEvents.find((e) => e.event === S2C.MATCH_FINISHED);
       expect(finished?.payload).toEqual(payload);
+    });
+  });
+
+  describe('Orquestación de modos de juego y temporizadores (F3 Unidad 5)', () => {
+    it('startMatch en modo Puntos difunde MATCH_STARTED con problem_order y PROBLEM_BEGIN', async () => {
+      const session = createSampleSession('match-puntos');
+      session.status = 'lobby';
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+
+      await hub.handleJoinMatch(client1, { match_id: 'match-puntos' });
+      await hub.handleJoinMatch(client2, { match_id: 'match-puntos' });
+
+      client1.emittedEvents.length = 0;
+      client2.emittedEvents.length = 0;
+
+      await hub.startMatch('match-puntos', ['p1', 'p2', 'p3']);
+
+      // Verifica MATCH_STARTED
+      const start1 = client1.emittedEvents.find((e) => e.event === S2C.MATCH_STARTED);
+      const start2 = client2.emittedEvents.find((e) => e.event === S2C.MATCH_STARTED);
+      expect(start1).toBeDefined();
+      expect(start2).toBeDefined();
+      const startPayload = start1?.payload as MatchStartedPayload;
+      expect(startPayload.mode).toBe('puntos');
+      expect(startPayload.problem_order).toEqual(['p1', 'p2', 'p3']);
+
+      // Verifica PROBLEM_BEGIN
+      const begin1 = client1.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      const begin2 = client2.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      expect(begin1).toBeDefined();
+      expect(begin2).toBeDefined();
+      const beginPayload = begin1?.payload as ProblemBeginPayload;
+      expect(beginPayload.round_id).toBe('round-1');
+      expect(beginPayload.problem_id).toBe('p1');
+      expect(beginPayload.index).toBe(0);
+
+      // Verifica sesión en store
+      const updated = await store.getMatch('match-puntos');
+      expect(updated?.status).toBe('running');
+      expect(updated?.problem_ids).toEqual(['p1', 'p2', 'p3']);
+      expect(updated?.round_ends_at).toBeGreaterThan(0);
+    });
+
+    it('startMatch en modo Rondas difunde MATCH_STARTED sin problem_order y envía PROBLEM_BEGIN a cada jugador', async () => {
+      const session = createSampleSession('match-rondas');
+      session.status = 'lobby';
+      session.mode = 'rondas';
+      session.config = {
+        mode: 'rondas',
+        num_problems: 3,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 300,
+        target: 3,
+      };
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+
+      await hub.handleJoinMatch(client1, { match_id: 'match-rondas' });
+      await hub.handleJoinMatch(client2, { match_id: 'match-rondas' });
+
+      client1.emittedEvents.length = 0;
+      client2.emittedEvents.length = 0;
+
+      await hub.startMatch('match-rondas', ['p1', 'p2', 'p3']);
+
+      // Verifica MATCH_STARTED sin problem_order
+      const start1 = client1.emittedEvents.find((e) => e.event === S2C.MATCH_STARTED);
+      expect(start1).toBeDefined();
+      const startPayload = start1?.payload as MatchStartedPayload;
+      expect(startPayload.mode).toBe('rondas');
+      expect(startPayload.problem_order).toBeUndefined();
+
+      // Verifica PROBLEM_BEGIN individual
+      const begin1 = client1.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      const begin2 = client2.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      expect(begin1).toBeDefined();
+      expect(begin2).toBeDefined();
+
+      const begin1Payload = begin1?.payload as ProblemBeginPayload;
+      expect(begin1Payload.round_id).toBe('round-u-user-1-1');
+      expect(begin1Payload.problem_id).toBe('p1');
+      expect(begin1Payload.index).toBe(0);
+
+      const begin2Payload = begin2?.payload as ProblemBeginPayload;
+      expect(begin2Payload.round_id).toBe('round-u-user-2-1');
+      expect(begin2Payload.problem_id).toBe('p1');
+      expect(begin2Payload.index).toBe(0);
+    });
+
+    it('processSubmissionVerdict en modo Puntos: AC adjudica punto, avanza ronda y difunde PROBLEM_BEGIN', async () => {
+      const session = createSampleSession('match-puntos-verdict');
+      session.status = 'lobby';
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+
+      await hub.handleJoinMatch(client1, { match_id: 'match-puntos-verdict' });
+      await hub.handleJoinMatch(client2, { match_id: 'match-puntos-verdict' });
+
+      await hub.startMatch('match-puntos-verdict', ['p1', 'p2']);
+
+      client1.emittedEvents.length = 0;
+      client2.emittedEvents.length = 0;
+
+      const submission: SubmissionVerdictContext = {
+        submission_id: 'sub-1',
+        user_id: 'user-1',
+        round_id: 'round-1',
+        problem_id: 'p1',
+        admission_seq: 1,
+        received_at: 1000,
+        verdict: 'AC',
+        passed_cases: 10,
+        total_cases: 10,
+        exec_time_ms: 150,
+      };
+
+      await hub.processSubmissionVerdict('match-puntos-verdict', submission, 'Compilation OK');
+
+      // Veredicto: compile_output solo para user-1
+      const v1 = client1.emittedEvents.find((e) => e.event === S2C.VERDICT)
+        ?.payload as VerdictPayload;
+      const v2 = client2.emittedEvents.find((e) => e.event === S2C.VERDICT)
+        ?.payload as VerdictPayload;
+      expect(v1.compile_output).toBe('Compilation OK');
+      expect(v2.compile_output).toBeUndefined();
+
+      // Score update
+      const scoreEvent = client1.emittedEvents.find((e) => e.event === S2C.SCORE_UPDATE);
+      expect(scoreEvent).toBeDefined();
+      const scorePayload = scoreEvent?.payload as ScoreUpdatePayload;
+      expect(scorePayload.scores.find((s) => s.user_id === 'user-1')?.score).toBe(1);
+
+      // Siguiente ronda (p2)
+      const nextRound = client1.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      expect(nextRound).toBeDefined();
+      const nextRoundPayload = nextRound?.payload as ProblemBeginPayload;
+      expect(nextRoundPayload.round_id).toBe('round-2');
+      expect(nextRoundPayload.problem_id).toBe('p2');
+      expect(nextRoundPayload.index).toBe(1);
+    });
+
+    it('processSubmissionVerdict en modo Rondas: target alcanzado finaliza partida', async () => {
+      const session = createSampleSession('match-rondas-target');
+      session.status = 'lobby';
+      session.mode = 'rondas';
+      session.config = {
+        mode: 'rondas',
+        num_problems: 3,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 300,
+        target: 3,
+      };
+      // user-1 ya tiene score 2
+      session.scores[0]!.score = 2;
+      session.scores[0]!.current_problem_idx = 2;
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      hub.registerClient(client1);
+      await hub.handleJoinMatch(client1, { match_id: 'match-rondas-target' });
+
+      // Iniciar
+      await hub.startMatch('match-rondas-target', ['p1', 'p2', 'p3']);
+
+      client1.emittedEvents.length = 0;
+
+      const submission: SubmissionVerdictContext = {
+        submission_id: 'sub-win',
+        user_id: 'user-1',
+        round_id: 'round-u-user-1-3',
+        problem_id: 'p3',
+        admission_seq: 1,
+        received_at: 1000,
+        verdict: 'AC',
+        passed_cases: 10,
+        total_cases: 10,
+        exec_time_ms: 100,
+      };
+
+      await hub.processSubmissionVerdict('match-rondas-target', submission);
+
+      const finished = client1.emittedEvents.find((e) => e.event === S2C.MATCH_FINISHED);
+      expect(finished).toBeDefined();
+      const finishPayload = finished?.payload as MatchFinishedPayload;
+      expect(finishPayload.winner_ids).toEqual(['user-1']);
+      expect(finishPayload.winner_id).toBe('user-1');
+      expect(finishPayload.finish_reason).toBe('target_reached');
+      expect(finishPayload.summary_url).toBe('/api/v1/matches/match-rondas-target/summary');
+    });
+
+    it('processTimeout en modo Puntos avanza a la siguiente ronda', async () => {
+      const session = createSampleSession('match-timeout-puntos');
+      session.status = 'lobby';
+      await store.saveMatch(session);
+
+      const client = createMockClient('sock-1', 'user-1', 'coder1');
+      hub.registerClient(client);
+      await hub.handleJoinMatch(client, { match_id: 'match-timeout-puntos' });
+
+      await hub.startMatch('match-timeout-puntos', ['p1', 'p2']);
+      client.emittedEvents.length = 0;
+
+      // Simular timeout
+      await hub.processTimeout('match-timeout-puntos');
+
+      const begin = client.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
+      expect(begin).toBeDefined();
+      const beginPayload = begin?.payload as ProblemBeginPayload;
+      expect(beginPayload.round_id).toBe('round-2');
+      expect(beginPayload.problem_id).toBe('p2');
+    });
+
+    it('expireReconnectGrace finaliza la partida por abandono si se van todos los jugadores o rival en 1v1', async () => {
+      const session = createSampleSession('match-grace-abandon');
+      session.status = 'lobby';
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+
+      await hub.handleJoinMatch(client1, { match_id: 'match-grace-abandon' });
+      await hub.handleJoinMatch(client2, { match_id: 'match-grace-abandon' });
+      await hub.startMatch('match-grace-abandon', ['p1', 'p2']);
+
+      // Desconectar user-2
+      await hub.handleDisconnect(client2);
+
+      client1.emittedEvents.length = 0;
+
+      // Avanzar temporizador más allá de la gracia (5000ms)
+      await vi.advanceTimersByTimeAsync(5500);
+
+      const finished = client1.emittedEvents.find((e) => e.event === S2C.MATCH_FINISHED);
+      expect(finished).toBeDefined();
+      const finishPayload = finished?.payload as MatchFinishedPayload;
+      expect(finishPayload.finish_reason).toBe('abandonment');
+      expect(finishPayload.winner_ids).toEqual(['user-1']);
+    });
+
+    it('MATCH_SYNC incluye datos específicos de ronda en Puntos y Rondas', async () => {
+      // Puntos
+      const sessionPuntos = createSampleSession('m-sync-p');
+      sessionPuntos.problem_ids = ['p-alpha', 'p-beta'];
+      sessionPuntos.current_round_id = 'round-1';
+      sessionPuntos.current_round_idx = 0;
+      sessionPuntos.round_ends_at = 99999;
+      await store.saveMatch(sessionPuntos);
+
+      const clientP = createMockClient('sock-p', 'user-1', 'coder1');
+      hub.registerClient(clientP);
+      await hub.handleJoinMatch(clientP, { match_id: 'm-sync-p' });
+
+      const syncP = clientP.emittedEvents.find((e) => e.event === S2C.MATCH_SYNC)
+        ?.payload as MatchSyncPayload;
+      expect(syncP.round_id).toBe('round-1');
+      expect(syncP.problem_id).toBe('p-alpha');
+      expect(syncP.ends_at).toBe(99999);
+
+      // Rondas
+      const sessionRondas = createSampleSession('m-sync-r');
+      sessionRondas.mode = 'rondas';
+      sessionRondas.config = {
+        mode: 'rondas',
+        num_problems: 3,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 300,
+        target: 3,
+      };
+      sessionRondas.problem_ids = ['p-x', 'p-y', 'p-z'];
+      sessionRondas.match_ends_at = 88888;
+      await store.saveMatch(sessionRondas);
+
+      const clientR = createMockClient('sock-r', 'user-1', 'coder1');
+      hub.registerClient(clientR);
+      await hub.handleJoinMatch(clientR, { match_id: 'm-sync-r' });
+
+      const syncR = clientR.emittedEvents.find((e) => e.event === S2C.MATCH_SYNC)
+        ?.payload as MatchSyncPayload;
+      expect(syncR.round_id).toBe('round-u-user-1-1');
+      expect(syncR.problem_id).toBe('p-x');
+      expect(syncR.ends_at).toBe(88888);
+      expect((syncR as Record<string, unknown>).problem_order).toBeUndefined();
+    });
+
+    it('clearAllTimers cancela graceTimers, roundTimers y matchTimers', () => {
+      hub.scheduleRoundTimeout('match-t1', 10000);
+      hub.scheduleMatchTimeout('match-t2', 10000);
+
+      expect(() => hub.clearAllTimers()).not.toThrow();
     });
   });
 });

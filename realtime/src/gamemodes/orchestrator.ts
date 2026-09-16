@@ -57,6 +57,41 @@ export function buildMatchContext(options: BuildMatchContextOptions): MatchConte
     playersRecord[userId] = p.connection === 'reconnecting' ? 'disconnected' : p.connection;
   }
 
+  let resolvedCurrentRound: RoundContext | undefined = currentRound;
+  if (!resolvedCurrentRound && session.mode === 'puntos' && session.current_round_id) {
+    const pId = problemIds[session.current_round_idx] ?? '';
+    resolvedCurrentRound = {
+      round_id: session.current_round_id,
+      problem_id: pId,
+      problem_index: session.current_round_idx,
+      status: session.round_status ?? 'open',
+      opened_at:
+        session.round_opened_at ??
+        (session.started_at ? new Date(session.started_at).getTime() : now),
+      ends_at: session.round_ends_at ?? now,
+    };
+  }
+
+  let resolvedPlayerRounds: Record<string, RoundContext> | undefined = playerRounds;
+  if (!resolvedPlayerRounds && session.mode === 'rondas') {
+    resolvedPlayerRounds = {};
+    for (const [userId, p] of session.players) {
+      const idx = p.current_problem_idx ?? 0;
+      const pId = problemIds[idx] ?? '';
+      resolvedPlayerRounds[userId] = {
+        round_id: `round-u-${userId}-${idx + 1}`,
+        problem_id: pId,
+        problem_index: idx,
+        status: session.round_status ?? 'open',
+        opened_at:
+          session.round_opened_at ??
+          (session.started_at ? new Date(session.started_at).getTime() : now),
+        ends_at: session.match_ends_at ?? session.round_ends_at ?? now,
+        user_id: userId,
+      };
+    }
+  }
+
   const ctx: MatchContext = {
     now,
     match_id: session.match_id,
@@ -67,15 +102,9 @@ export function buildMatchContext(options: BuildMatchContextOptions): MatchConte
     scores: scoresRecord,
     players: playersRecord,
     problem_ids: problemIds,
+    ...(resolvedCurrentRound ? { current_round: resolvedCurrentRound } : {}),
+    ...(resolvedPlayerRounds ? { player_rounds: resolvedPlayerRounds } : {}),
   };
-
-  if (currentRound) {
-    return { ...ctx, current_round: currentRound };
-  }
-
-  if (playerRounds) {
-    return { ...ctx, player_rounds: playerRounds };
-  }
 
   return ctx;
 }
@@ -114,6 +143,10 @@ export function applyModeActions(
       case 'advance_round': {
         session.current_round_id = action.next_round_id;
         session.current_round_idx = action.next_problem_index;
+        session.round_ends_at = action.ends_at;
+        session.round_opened_at =
+          action.ends_at -
+          (session.config.mode === 'puntos' ? session.config.time_per_problem_s * 1000 : 0);
         // Avanzar índice para todos los participantes en Puntos
         for (const player of session.players.values()) {
           player.current_problem_idx = action.next_problem_index;
@@ -131,6 +164,8 @@ export function applyModeActions(
         if (scoreEntry) {
           scoreEntry.current_problem_idx = action.next_problem_index;
         }
+        session.round_ends_at = action.ends_at;
+        session.match_ends_at = action.ends_at;
         modified = true;
         break;
       }
@@ -156,6 +191,7 @@ export function applyModeActions(
 
       case 'finish_match': {
         session.status = 'finished';
+        session.round_status = 'closed';
         session.winner_ids = [...action.winner_ids];
         session.finished_at = new Date().toISOString();
         modified = true;
@@ -164,6 +200,7 @@ export function applyModeActions(
 
       case 'abandon_match': {
         session.status = 'abandoned';
+        session.round_status = 'closed';
         session.finished_at = new Date().toISOString();
         modified = true;
         break;

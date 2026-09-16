@@ -155,7 +155,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   };
 
   const close = (): Promise<void> => {
-    matchHub.clearAllGraceTimers();
+    matchHub.clearAllTimers();
     yjsHub.close();
     return new Promise((resolve, reject) => {
       server.close((err) => {

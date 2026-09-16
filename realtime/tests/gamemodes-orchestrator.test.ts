@@ -146,9 +146,30 @@ describe('Gamemodes Orchestrator', () => {
       expect(res.modified).toBe(true);
       expect(session.players.get('user-1')?.current_problem_idx).toBe(1);
       expect(session.scores[0]?.current_problem_idx).toBe(1);
+      expect(session.round_ends_at).toBe(60000);
+      expect(session.match_ends_at).toBe(60000);
     });
 
-    it('aplica finish_match y abandon_match actualizando estados y timestamps', () => {
+    it('aplica advance_round actualizando tiempos de apertura y fin de ronda', () => {
+      const session = createSampleSession();
+      const actions: ModeAction[] = [
+        {
+          type: 'advance_round',
+          next_problem_id: 'p2',
+          next_problem_index: 1,
+          next_round_id: 'round-2',
+          ends_at: 360000,
+        },
+      ];
+
+      const res = applyModeActions(session, actions);
+      expect(res.modified).toBe(true);
+      expect(session.round_ends_at).toBe(360000);
+      // time_per_problem_s = 300 s -> 300,000 ms. 360,000 - 300,000 = 60,000
+      expect(session.round_opened_at).toBe(60000);
+    });
+
+    it('aplica finish_match y abandon_match actualizando estados, timestamps y round_status closed', () => {
       const session1 = createSampleSession();
       applyModeActions(session1, [
         {
@@ -159,6 +180,7 @@ describe('Gamemodes Orchestrator', () => {
         },
       ]);
       expect(session1.status).toBe('finished');
+      expect(session1.round_status).toBe('closed');
       expect(session1.winner_ids).toEqual(['user-1']);
       expect(session1.finished_at).toBeDefined();
 
@@ -170,7 +192,72 @@ describe('Gamemodes Orchestrator', () => {
         },
       ]);
       expect(session2.status).toBe('abandoned');
+      expect(session2.round_status).toBe('closed');
       expect(session2.finished_at).toBeDefined();
+    });
+  });
+
+  describe('buildMatchContext auto-resolución', () => {
+    it('construye automáticamente current_round en modo puntos si no es provisto', () => {
+      const session = createSampleSession();
+      session.round_opened_at = 10000;
+      session.round_ends_at = 70000;
+      session.current_round_id = 'round-puntos-1';
+      session.current_round_idx = 0;
+
+      const ctx = buildMatchContext({
+        session,
+        problemIds: ['p-10', 'p-20'],
+        now: 15000,
+      });
+
+      expect(ctx.current_round).toBeDefined();
+      expect(ctx.current_round?.round_id).toBe('round-puntos-1');
+      expect(ctx.current_round?.problem_id).toBe('p-10');
+      expect(ctx.current_round?.problem_index).toBe(0);
+      expect(ctx.current_round?.status).toBe('open');
+      expect(ctx.current_round?.opened_at).toBe(10000);
+      expect(ctx.current_round?.ends_at).toBe(70000);
+    });
+
+    it('construye automáticamente player_rounds en modo rondas para cada jugador', () => {
+      const session = createSampleSession();
+      session.mode = 'rondas';
+      session.config = {
+        mode: 'rondas',
+        num_problems: 5,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 600,
+        target: 3,
+      };
+      session.match_ends_at = 600000;
+      session.players.set('user-2', {
+        user_id: 'user-2',
+        gamertag: 'coder2',
+        connection: 'connected',
+        is_ready: true,
+        is_revealed: false,
+        current_problem_idx: 1,
+        last_seen_at: 1000,
+      });
+
+      const ctx = buildMatchContext({
+        session,
+        problemIds: ['p-1', 'p-2', 'p-3'],
+        now: 5000,
+      });
+
+      expect(ctx.player_rounds).toBeDefined();
+      expect(ctx.player_rounds?.['user-1']?.round_id).toBe('round-u-user-1-1');
+      expect(ctx.player_rounds?.['user-1']?.problem_id).toBe('p-1');
+      expect(ctx.player_rounds?.['user-1']?.problem_index).toBe(0);
+      expect(ctx.player_rounds?.['user-1']?.ends_at).toBe(600000);
+
+      expect(ctx.player_rounds?.['user-2']?.round_id).toBe('round-u-user-2-2');
+      expect(ctx.player_rounds?.['user-2']?.problem_id).toBe('p-2');
+      expect(ctx.player_rounds?.['user-2']?.problem_index).toBe(1);
+      expect(ctx.player_rounds?.['user-2']?.ends_at).toBe(600000);
     });
   });
 });

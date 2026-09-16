@@ -26,10 +26,14 @@ import {
   type MatchFinishedPayload,
   type MatchStartedPayload,
   type MatchSyncPayload,
+  type ModeAction,
   type PlayerConnection as SharedPlayerConnection,
   type PlayerScore,
+  type ProblemBeginPayload,
+  type SubmissionVerdictContext,
   type VerdictPayload,
 } from '@duelodev/shared';
+import { applyModeActions, buildMatchContext, getGameMode } from '../gamemodes/orchestrator.js';
 import type { MatchStore } from '../store/types.js';
 import type { RealtimeMatchSession } from '../types.js';
 import type { SocketClient, MatchRoom } from './types.js';
@@ -64,6 +68,10 @@ export class MatchHub {
   private readonly userSockets = new Map<string, Set<string>>();
   /** Timers de gracia de reconexión por clave `{matchId}:{userId}`. */
   private readonly graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Timers de fin de ronda compartida (modo Puntos) indexados por matchId. */
+  private readonly roundTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Timers de fin de partida global (modo Rondas) indexados por matchId. */
+  private readonly matchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(options: MatchHubOptions) {
     this.matchStore = options.matchStore;
@@ -503,6 +511,373 @@ export class MatchHub {
     });
   }
 
+  /**
+   * Difunde un evento PROBLEM_BEGIN a toda la sala de partida (modo Puntos).
+   */
+  broadcastProblemBegin(matchId: string, payload: ProblemBeginPayload): void {
+    const roomName = matchRoom(matchId);
+    const room = this.getRoom(roomName);
+    if (!room) return;
+
+    room.broadcast(S2C.PROBLEM_BEGIN, payload);
+
+    this.logger?.info('Inicio de problema difundido a la sala', {
+      match_id: matchId,
+      round_id: payload.round_id,
+      problem_id: payload.problem_id,
+      index: payload.index,
+      ends_at: payload.ends_at,
+    });
+  }
+
+  /**
+   * Envía un evento PROBLEM_BEGIN exclusivamente a un usuario específico (modo Rondas).
+   */
+  sendProblemBeginToUser(matchId: string, userId: string, payload: ProblemBeginPayload): void {
+    const socketIds = this.userSockets.get(userId);
+    if (!socketIds) return;
+
+    for (const socketId of socketIds) {
+      const client = this.clients.get(socketId);
+      if (client && client.matchId === matchId) {
+        client.emit(S2C.PROBLEM_BEGIN, payload);
+      }
+    }
+
+    this.logger?.info('Inicio de problema enviado a usuario individual', {
+      match_id: matchId,
+      user_id: userId,
+      round_id: payload.round_id,
+      problem_id: payload.problem_id,
+      index: payload.index,
+      ends_at: payload.ends_at,
+    });
+  }
+
+  // ─────────────────────── Orquestación de modos de juego ─────────────────
+
+  /**
+   * Inicia una partida en tiempo real:
+   * - Obtiene la sesión de matchStore. Si no existe o status !== 'lobby', retorna.
+   * - Guarda session.problem_ids = [...problemIds].
+   * - Obtiene mode = getGameMode(session.mode).
+   * - Construye ctx = buildMatchContext({ session, problemIds, now: Date.now() }).
+   * - Ejecuta actions = mode.onMatchStart(ctx).
+   * - Aplica acciones con applyModeActions(session, actions).
+   * - Guarda la sesión en matchStore.
+   * - Difunde MATCH_STARTED (problem_order se incluye sólo en modo 'puntos', jamás en 'rondas').
+   * - Si es Puntos: difunde PROBLEM_BEGIN para el problema 0 y programa scheduleRoundTimeout.
+   * - Si es Rondas: envía PROBLEM_BEGIN a cada jugador para su problema 0 y programa scheduleMatchTimeout.
+   */
+  async startMatch(matchId: string, problemIds: string[]): Promise<void> {
+    const session = await this.matchStore.getMatch(matchId);
+    if (!session || session.status !== 'lobby') {
+      return;
+    }
+
+    session.problem_ids = [...problemIds];
+    const now = Date.now();
+    const mode = getGameMode(session.mode);
+    const ctx = buildMatchContext({ session, problemIds, now });
+    const actions = mode.onMatchStart(ctx);
+
+    applyModeActions(session, actions);
+    await this.matchStore.saveMatch(session);
+
+    // Difunde MATCH_STARTED (problem_order se incluye sólo en modo 'puntos', jamás en 'rondas')
+    const matchStartedPayload: MatchStartedPayload = {
+      match_id: matchId,
+      state_version: session.state_version,
+      server_time: now,
+      mode: session.mode,
+      round_id: session.current_round_id,
+      config: session.config,
+      ...(session.mode === 'puntos' ? { problem_order: [...problemIds] } : {}),
+    };
+    this.broadcastMatchStarted(matchId, matchStartedPayload);
+
+    if (session.mode === 'puntos') {
+      const advanceAction = actions.find(
+        (a): a is Extract<ModeAction, { type: 'advance_round' }> => a.type === 'advance_round',
+      );
+      if (advanceAction) {
+        const problemBeginPayload: ProblemBeginPayload = {
+          match_id: matchId,
+          state_version: session.state_version,
+          server_time: now,
+          round_id: advanceAction.next_round_id,
+          problem_id: advanceAction.next_problem_id,
+          index: advanceAction.next_problem_index,
+          ends_at: advanceAction.ends_at,
+        };
+        this.broadcastProblemBegin(matchId, problemBeginPayload);
+        this.scheduleRoundTimeout(matchId, advanceAction.ends_at - now);
+      }
+    } else if (session.mode === 'rondas') {
+      const advancePlayers = actions.filter(
+        (a): a is Extract<ModeAction, { type: 'advance_player' }> => a.type === 'advance_player',
+      );
+      let matchEndsAt: number | undefined;
+      for (const act of advancePlayers) {
+        matchEndsAt = act.ends_at;
+        const problemBeginPayload: ProblemBeginPayload = {
+          match_id: matchId,
+          state_version: session.state_version,
+          server_time: now,
+          round_id: act.next_round_id,
+          problem_id: act.next_problem_id,
+          index: act.next_problem_index,
+          ends_at: act.ends_at,
+        };
+        this.sendProblemBeginToUser(matchId, act.user_id, problemBeginPayload);
+      }
+      if (matchEndsAt !== undefined) {
+        this.scheduleMatchTimeout(matchId, matchEndsAt - now);
+      }
+    }
+  }
+
+  /**
+   * Procesa el veredicto de un envío evaluado por el juez:
+   * - Difunde VERDICT con aislamiento estricto de compile_output (solo al autor).
+   * - Ejecuta onSubmissionVerdict en el PureGameMode correspondiente.
+   * - Aplica acciones y actualiza MatchStore.
+   * - Si hubo award_score: difunde SCORE_UPDATE.
+   * - Si hubo advance_round: cancela timeout previo de ronda, difunde PROBLEM_BEGIN y programa nuevo scheduleRoundTimeout.
+   * - Si hubo advance_player: envía PROBLEM_BEGIN al jugador avanzado.
+   * - Si hubo finish_match o abandon_match: cancela round y match timers y difunde MATCH_FINISHED.
+   */
+  async processSubmissionVerdict(
+    matchId: string,
+    submission: SubmissionVerdictContext,
+    compileOutput?: string,
+  ): Promise<void> {
+    const session = await this.matchStore.getMatch(matchId);
+    if (!session) return;
+
+    const now = Date.now();
+
+    // Difunde VERDICT con aislamiento estricto de compile_output (solo al autor)
+    const verdictPayload: VerdictPayload = {
+      match_id: matchId,
+      round_id: submission.round_id,
+      submission_id: submission.submission_id,
+      user_id: submission.user_id,
+      verdict: submission.verdict,
+      passed: submission.passed_cases,
+      total: submission.total_cases,
+      exec_time_ms: submission.exec_time_ms,
+      server_time: now,
+      ...(compileOutput !== undefined ? { compile_output: compileOutput } : {}),
+    };
+    this.broadcastVerdict(matchId, verdictPayload);
+
+    const mode = getGameMode(session.mode);
+    const ctx = buildMatchContext({
+      session,
+      problemIds: session.problem_ids ?? [],
+      now,
+    });
+    const actions = mode.onSubmissionVerdict(ctx, submission);
+    if (actions.length === 0) return;
+
+    applyModeActions(session, actions);
+    await this.matchStore.saveMatch(session);
+
+    // Si hubo award_score: difunde SCORE_UPDATE
+    const hasAward = actions.some((a) => a.type === 'award_score');
+    if (hasAward) {
+      this.broadcastScoreUpdate(
+        matchId,
+        session.scores,
+        session.state_version,
+        session.current_round_id,
+      );
+    }
+
+    // Si hubo advance_round: cancela timeout previo de ronda, difunde PROBLEM_BEGIN y programa nuevo scheduleRoundTimeout
+    const advanceRound = actions.find(
+      (a): a is Extract<ModeAction, { type: 'advance_round' }> => a.type === 'advance_round',
+    );
+    if (advanceRound) {
+      this.cancelRoundTimeout(matchId);
+      const problemBeginPayload: ProblemBeginPayload = {
+        match_id: matchId,
+        state_version: session.state_version,
+        server_time: now,
+        round_id: advanceRound.next_round_id,
+        problem_id: advanceRound.next_problem_id,
+        index: advanceRound.next_problem_index,
+        ends_at: advanceRound.ends_at,
+      };
+      this.broadcastProblemBegin(matchId, problemBeginPayload);
+      this.scheduleRoundTimeout(matchId, advanceRound.ends_at - now);
+    }
+
+    // Si hubo advance_player: envía PROBLEM_BEGIN al jugador avanzado
+    const advancePlayers = actions.filter(
+      (a): a is Extract<ModeAction, { type: 'advance_player' }> => a.type === 'advance_player',
+    );
+    for (const act of advancePlayers) {
+      const problemBeginPayload: ProblemBeginPayload = {
+        match_id: matchId,
+        state_version: session.state_version,
+        server_time: now,
+        round_id: act.next_round_id,
+        problem_id: act.next_problem_id,
+        index: act.next_problem_index,
+        ends_at: act.ends_at,
+      };
+      this.sendProblemBeginToUser(matchId, act.user_id, problemBeginPayload);
+    }
+
+    // Si hubo finish_match o abandon_match: cancela round y match timers y difunde MATCH_FINISHED
+    const finishAct = actions.find(
+      (a): a is Extract<ModeAction, { type: 'finish_match' | 'abandon_match' }> =>
+        a.type === 'finish_match' || a.type === 'abandon_match',
+    );
+    if (finishAct) {
+      this.cancelRoundTimeout(matchId);
+      this.cancelMatchTimeout(matchId);
+
+      const winnerIds = finishAct.type === 'finish_match' ? finishAct.winner_ids : [];
+      const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
+      const matchFinishedPayload: MatchFinishedPayload = {
+        match_id: matchId,
+        state_version: session.state_version,
+        server_time: now,
+        winner_ids: winnerIds,
+        winner_id: winnerId,
+        finish_reason: finishAct.finish_reason,
+        final_scores: session.scores,
+        summary_url: `/api/v1/matches/${matchId}/summary`,
+      };
+      this.broadcastMatchFinished(matchId, matchFinishedPayload);
+    }
+  }
+
+  /**
+   * Procesa la expiración de temporizador de ronda o partida:
+   * - Ejecuta onTimeout en el modo correspondiente.
+   * - Si hubo advance_round: difunde PROBLEM_BEGIN y programa nuevo timeout.
+   * - Si hubo finish_match: cancela timers y difunde MATCH_FINISHED.
+   */
+  async processTimeout(matchId: string): Promise<void> {
+    const session = await this.matchStore.getMatch(matchId);
+    if (!session) return;
+
+    const now = Date.now();
+    const ctx = buildMatchContext({
+      session,
+      problemIds: session.problem_ids ?? [],
+      now,
+    });
+    const mode = getGameMode(session.mode);
+    const actions = mode.onTimeout(ctx);
+    if (actions.length === 0) return;
+
+    applyModeActions(session, actions);
+    await this.matchStore.saveMatch(session);
+
+    // Si hubo advance_round: difunde PROBLEM_BEGIN y programa nuevo timeout
+    const advanceRound = actions.find(
+      (a): a is Extract<ModeAction, { type: 'advance_round' }> => a.type === 'advance_round',
+    );
+    if (advanceRound) {
+      this.cancelRoundTimeout(matchId);
+      const problemBeginPayload: ProblemBeginPayload = {
+        match_id: matchId,
+        state_version: session.state_version,
+        server_time: now,
+        round_id: advanceRound.next_round_id,
+        problem_id: advanceRound.next_problem_id,
+        index: advanceRound.next_problem_index,
+        ends_at: advanceRound.ends_at,
+      };
+      this.broadcastProblemBegin(matchId, problemBeginPayload);
+      this.scheduleRoundTimeout(matchId, advanceRound.ends_at - now);
+    }
+
+    // Si hubo finish_match o abandon_match: cancela timers y difunde MATCH_FINISHED
+    const finishAct = actions.find(
+      (a): a is Extract<ModeAction, { type: 'finish_match' | 'abandon_match' }> =>
+        a.type === 'finish_match' || a.type === 'abandon_match',
+    );
+    if (finishAct) {
+      this.cancelRoundTimeout(matchId);
+      this.cancelMatchTimeout(matchId);
+
+      const winnerIds = finishAct.type === 'finish_match' ? finishAct.winner_ids : [];
+      const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
+      const matchFinishedPayload: MatchFinishedPayload = {
+        match_id: matchId,
+        state_version: session.state_version,
+        server_time: now,
+        winner_ids: winnerIds,
+        winner_id: winnerId,
+        finish_reason: finishAct.finish_reason,
+        final_scores: session.scores,
+        summary_url: `/api/v1/matches/${matchId}/summary`,
+      };
+      this.broadcastMatchFinished(matchId, matchFinishedPayload);
+    }
+  }
+
+  // ─────────────────────── Gestión de temporizadores de juego ────────────
+
+  /** Programa un timer para el fin de ronda compartida (modo Puntos). */
+  scheduleRoundTimeout(matchId: string, durationMs: number): void {
+    this.cancelRoundTimeout(matchId);
+    const delay = Math.max(0, durationMs);
+    const timer = setTimeout(() => {
+      this.roundTimers.delete(matchId);
+      void this.processTimeout(matchId);
+    }, delay);
+    this.roundTimers.set(matchId, timer);
+  }
+
+  /** Cancela el timer de ronda compartida para una partida si existe. */
+  cancelRoundTimeout(matchId: string): void {
+    const timer = this.roundTimers.get(matchId);
+    if (timer) {
+      clearTimeout(timer);
+      this.roundTimers.delete(matchId);
+    }
+  }
+
+  /** Programa un timer para el fin global de la partida (modo Rondas). */
+  scheduleMatchTimeout(matchId: string, durationMs: number): void {
+    this.cancelMatchTimeout(matchId);
+    const delay = Math.max(0, durationMs);
+    const timer = setTimeout(() => {
+      this.matchTimers.delete(matchId);
+      void this.processTimeout(matchId);
+    }, delay);
+    this.matchTimers.set(matchId, timer);
+  }
+
+  /** Cancela el timer de fin global para una partida si existe. */
+  cancelMatchTimeout(matchId: string): void {
+    const timer = this.matchTimers.get(matchId);
+    if (timer) {
+      clearTimeout(timer);
+      this.matchTimers.delete(matchId);
+    }
+  }
+
+  /** Limpia todos los temporizadores (gracia, rondas y partidas). */
+  clearAllTimers(): void {
+    this.clearAllGraceTimers();
+    for (const timer of this.roundTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.roundTimers.clear();
+    for (const timer of this.matchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.matchTimers.clear();
+  }
+
   // ─────────────────────── Métodos internos ───────────────────────────────
 
   /**
@@ -523,16 +898,35 @@ export class MatchHub {
 
     const player = session.players.get(userId);
 
+    let roundId: string | null = session.current_round_id || null;
+    let problemId: string | null = null;
+    let problemIndex = player?.current_problem_idx ?? 0;
+    let endsAt: number | null = null;
+
+    if (session.mode === 'puntos') {
+      problemIndex = session.current_round_idx;
+      problemId = session.problem_ids ? (session.problem_ids[problemIndex] ?? null) : null;
+      endsAt = session.round_ends_at ?? null;
+    } else if (session.mode === 'rondas') {
+      problemIndex = player?.current_problem_idx ?? 0;
+      roundId =
+        session.status === 'lobby'
+          ? session.current_round_id || null
+          : `round-u-${userId}-${problemIndex + 1}`;
+      problemId = session.problem_ids ? (session.problem_ids[problemIndex] ?? null) : null;
+      endsAt = session.match_ends_at ?? session.round_ends_at ?? null;
+    }
+
     const payload: MatchSyncPayload = {
       match_id: session.match_id,
       state_version: session.state_version,
       server_time: Date.now(),
       status: session.status,
       mode: session.mode,
-      round_id: session.current_round_id || null,
-      problem_id: null, // Se resuelve por la lógica de rondas externa
-      problem_index: player?.current_problem_idx ?? 0,
-      ends_at: null, // Se resuelve por la lógica de rondas externa
+      round_id: roundId,
+      problem_id: problemId,
+      problem_index: problemIndex,
+      ends_at: endsAt,
       round_status: session.round_status || null,
       scores: session.scores,
       reveal_flags: revealFlags,
@@ -541,6 +935,7 @@ export class MatchHub {
 
     if (session.winner_ids) {
       payload.winner_ids = session.winner_ids;
+      payload.winner_id = session.winner_ids.length === 1 ? session.winner_ids[0]! : null;
     }
 
     return payload;
@@ -566,6 +961,7 @@ export class MatchHub {
     const player = session.players.get(userId);
     if (!player || player.connection !== 'reconnecting') return;
 
+    const now = Date.now();
     player.connection = 'disconnected';
     session.state_version += 1;
     await this.matchStore.saveMatch(session);
@@ -577,7 +973,7 @@ export class MatchHub {
         match_id: matchId,
         user_id: userId,
         status: 'disconnected',
-        server_time: Date.now(),
+        server_time: now,
       });
     }
 
@@ -585,6 +981,41 @@ export class MatchHub {
       match_id: matchId,
       user_id: userId,
     });
+
+    const mode = getGameMode(session.mode);
+    const ctx = buildMatchContext({
+      session,
+      problemIds: session.problem_ids ?? [],
+      now,
+    });
+    const actions = mode.onPlayerStatusChange(ctx, userId, 'disconnected');
+    if (actions.length > 0) {
+      applyModeActions(session, actions);
+      await this.matchStore.saveMatch(session);
+
+      const finishAct = actions.find(
+        (a): a is Extract<ModeAction, { type: 'finish_match' | 'abandon_match' }> =>
+          a.type === 'finish_match' || a.type === 'abandon_match',
+      );
+      if (finishAct) {
+        this.cancelRoundTimeout(matchId);
+        this.cancelMatchTimeout(matchId);
+
+        const winnerIds = finishAct.type === 'finish_match' ? finishAct.winner_ids : [];
+        const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
+        const matchFinishedPayload: MatchFinishedPayload = {
+          match_id: matchId,
+          state_version: session.state_version,
+          server_time: now,
+          winner_ids: winnerIds,
+          winner_id: winnerId,
+          finish_reason: finishAct.finish_reason,
+          final_scores: session.scores,
+          summary_url: `/api/v1/matches/${matchId}/summary`,
+        };
+        this.broadcastMatchFinished(matchId, matchFinishedPayload);
+      }
+    }
   }
 
   /** Cancela un timer de gracia si existe. */
