@@ -36,6 +36,12 @@ export interface UserRepository {
   create(input: CreateUserInput): Promise<UserEntity>;
   update(id: string, input: UpdateUserInput): Promise<UserEntity | null>;
   count(): Promise<number>;
+  findInactiveGuests?(olderThanIso: string): Promise<UserEntity[]>;
+  anonymizeGuest?(
+    id: string,
+    tombstoneGamertag: string,
+    updatedAtIso?: string,
+  ): Promise<UserEntity | null>;
 }
 
 export interface CreateRefreshTokenInput {
@@ -54,6 +60,7 @@ export interface RefreshTokenRepository {
   revoke(id: string): Promise<void>;
   revokeFamily(userId: string, familyId: string): Promise<number>;
   deleteExpired(nowIso?: string): Promise<number>;
+  revokeAllForUser?(userId: string): Promise<number>;
 }
 
 export interface CreateMatchInput {
@@ -131,6 +138,7 @@ export interface RoomRepository {
   ): Promise<MatchPlayerEntity | null>;
   saveSnapshot(input: CreateMatchCodeSnapshotInput): Promise<MatchCodeSnapshotEntity>;
   findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]>;
+  deleteSnapshotsByUser?(userId: string, onlyUnrevealed?: boolean): Promise<number>;
 }
 
 export interface CreateMatchCodeSnapshotInput {

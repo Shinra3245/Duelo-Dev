@@ -96,6 +96,39 @@ export class InMemoryUserRepository implements UserRepository {
     return this.users.size;
   }
 
+  async findInactiveGuests(olderThanIso: string): Promise<UserEntity[]> {
+    const threshold = new Date(olderThanIso).getTime();
+    const result: UserEntity[] = [];
+    for (const user of this.users.values()) {
+      if (user.role === 'guest' && new Date(user.updated_at).getTime() <= threshold) {
+        result.push({ ...user });
+      }
+    }
+    return result;
+  }
+
+  async anonymizeGuest(
+    id: string,
+    tombstoneGamertag: string,
+    updatedAtIso?: string,
+  ): Promise<UserEntity | null> {
+    const existing = this.users.get(id);
+    if (!existing) {
+      return null;
+    }
+
+    const updated: UserEntity = {
+      ...existing,
+      gamertag: tombstoneGamertag.trim(),
+      email: null,
+      password_hash: null,
+      updated_at: updatedAtIso ?? new Date().toISOString(),
+    };
+
+    this.users.set(id, updated);
+    return { ...updated };
+  }
+
   /** Limpia todos los registros (útil entre pruebas). */
   clear(): void {
     this.users.clear();
@@ -168,6 +201,17 @@ export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
     }
 
     return deleted;
+  }
+
+  async revokeAllForUser(userId: string): Promise<number> {
+    let count = 0;
+    for (const token of this.tokens.values()) {
+      if (token.user_id === userId && !token.revoked) {
+        token.revoked = true;
+        count++;
+      }
+    }
+    return count;
   }
 
   /** Limpia todos los tokens (útil entre pruebas). */
@@ -361,6 +405,30 @@ export class InMemoryRoomRepository implements RoomRepository {
   async findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]> {
     const list = this.snapshots.get(matchId) ?? [];
     return list.map((s) => ({ ...s }));
+  }
+
+  async deleteSnapshotsByUser(userId: string, onlyUnrevealed = false): Promise<number> {
+    let deleted = 0;
+    for (const [matchId, snapshotList] of this.snapshots.entries()) {
+      if (onlyUnrevealed) {
+        const matchPlayers = this.players.get(matchId) ?? [];
+        const player = matchPlayers.find((p) => p.user_id === userId);
+        if (player?.is_revealed) {
+          continue;
+        }
+      }
+
+      const remaining: MatchCodeSnapshotEntity[] = [];
+      for (const snap of snapshotList) {
+        if (snap.user_id === userId) {
+          deleted++;
+        } else {
+          remaining.push(snap);
+        }
+      }
+      this.snapshots.set(matchId, remaining);
+    }
+    return deleted;
   }
 
   clear(): void {

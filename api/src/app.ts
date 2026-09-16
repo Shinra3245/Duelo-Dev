@@ -16,6 +16,7 @@ import { SubmissionService } from './services/submissions.js';
 import { InMemoryJudgeQueue, InMemoryResultChannel, SubmissionReconciler } from './queue/index.js';
 import { seedProblems } from './seeds/seeder.js';
 import { JudgmentService } from './services/judgment.js';
+import { RetentionService } from './services/retention.js';
 import { validateCsrfOrigin } from './plugins/csrf.js';
 import { HttpError } from './plugins/body-parser.js';
 import { dispatchRoute } from './routes/router.js';
@@ -87,6 +88,9 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       resultPublisher,
       logger,
     });
+  const retentionService =
+    options.retentionService ??
+    new RetentionService(userRepo, refreshTokenRepo, roomRepo, options.retentionOptions, logger);
 
   const ctx: ApiContext = {
     serviceName,
@@ -106,6 +110,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     authService,
     roomService,
     submissionService,
+    retentionService,
     ...(options.csrfOptions !== undefined ? { csrfOptions: options.csrfOptions } : {}),
     ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };

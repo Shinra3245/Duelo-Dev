@@ -11,6 +11,7 @@ import type { AuthService } from './services/auth.js';
 import type { RoomService } from './services/rooms.js';
 import type { SubmissionService } from './services/submissions.js';
 import type { JudgmentService } from './services/judgment.js';
+import type { RetentionService, RetentionServiceOptions } from './services/retention.js';
 import type { JudgeQueue, SubmissionReconciler, ResultPublisher } from './queue/index.js';
 import type { CsrfOptions } from './plugins/csrf.js';
 
@@ -56,6 +57,10 @@ export interface ApiAppOptions {
   resultPublisher?: ResultPublisher;
   /** Servicio de aplicación de resultados durables del juez. Si no se especifica, se instancia automáticamente. */
   judgmentService?: JudgmentService;
+  /** Servicio de retención y purga de invitados. Si no se especifica, se instancia automáticamente. */
+  retentionService?: RetentionService;
+  /** Opciones de configuración para el servicio de retención y purga de invitados. */
+  retentionOptions?: RetentionServiceOptions;
   /** Opciones de verificación de origen y CSRF. */
   csrfOptions?: CsrfOptions;
   /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
@@ -84,6 +89,7 @@ export interface ApiContext {
   authService: AuthService;
   roomService: RoomService;
   submissionService: SubmissionService;
+  retentionService: RetentionService;
   csrfOptions?: CsrfOptions;
 }
 
