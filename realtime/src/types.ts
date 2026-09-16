@@ -7,6 +7,7 @@ import type {
   RoundStatus,
 } from '@duelodev/shared';
 import type { MatchStore } from './store/types.js';
+import type { CodeSnapshot } from './yjs/types.js';
 
 export type StructuredLogger = Logger;
 
@@ -53,6 +54,8 @@ export interface RealtimeAppOptions {
   readinessProbes?: ReadinessProbe[] | undefined;
   logger?: StructuredLogger | undefined;
   reconnectGraceMs?: number | undefined;
+  yjsSnapshotIntervalMs?: number | undefined;
+  onYjsSnapshotPersist?: ((snapshot: CodeSnapshot) => Promise<void>) | undefined;
 }
 
 export interface RealtimeContext {

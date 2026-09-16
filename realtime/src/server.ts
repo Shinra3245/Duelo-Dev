@@ -6,11 +6,13 @@ import type { RealtimeAppOptions, RealtimeContext } from './types.js';
 import { InMemoryMatchStore } from './store/memory.js';
 import { handleHealthz, handleReadyz } from './routes/health.js';
 import { MatchHub } from './socket/hub.js';
+import { YjsHub } from './yjs/hub.js';
 
 export interface RealtimeServer {
   server: Server;
   ctx: RealtimeContext;
   matchHub: MatchHub;
+  yjsHub: YjsHub;
   requestListener: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   start: (port?: number, host?: string) => Promise<{ port: number; host: string }>;
   close: () => Promise<void>;
@@ -31,6 +33,13 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     matchStore,
     logger,
     reconnectGraceMs: options.reconnectGraceMs,
+  });
+
+  const yjsHub = new YjsHub({
+    matchStore,
+    logger,
+    snapshotIntervalMs: options.yjsSnapshotIntervalMs,
+    onSnapshotPersist: options.onYjsSnapshotPersist,
   });
 
   const ctx: RealtimeContext = {
@@ -147,6 +156,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
 
   const close = (): Promise<void> => {
     matchHub.clearAllGraceTimers();
+    yjsHub.close();
     return new Promise((resolve, reject) => {
       server.close((err) => {
         if (err) {
@@ -162,6 +172,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     server,
     ctx,
     matchHub,
+    yjsHub,
     requestListener,
     start,
     close,
