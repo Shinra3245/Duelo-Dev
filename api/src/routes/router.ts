@@ -86,7 +86,7 @@ export async function dispatchRoute(
       return;
     }
 
-    if (pathname === '/api/v1/users/convert') {
+    if (pathname === '/api/v1/users/convert' || pathname === '/api/v1/auth/convert-guest') {
       await handleConvertGuest(req, res, ctx);
       return;
     }
