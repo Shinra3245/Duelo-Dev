@@ -21,7 +21,7 @@ if [[ "$(id -un)" != "judge" ]]; then
 fi
 
 sudo apt-get update
-sudo apt-get install --yes ca-certificates curl dbus-user-session uidmap
+sudo apt-get install --yes ca-certificates curl dbus-user-session python3-venv uidmap
 sudo install --directory --mode 0755 /etc/apt/keyrings
 sudo curl --fail --location --silent --show-error \
   https://download.docker.com/linux/ubuntu/gpg \
