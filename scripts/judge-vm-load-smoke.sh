@@ -66,17 +66,44 @@ with tempfile.TemporaryDirectory(prefix='duelodev-load-cases-') as case_root_val
         'problem_version': 1,
         'cases': cases,
     }), encoding='utf-8')
-    pipeline = JudgePipeline(
-        DirectoryCasesProvider(case_root),
-        backend,
-        DockerCaseRunner(invoker),
-        backend,
-        lambda: int(time() * 1000),
-        submission_runner=DockerSubmissionRunner(DockerSessionBackend(invoker)),
-    )
+    provider = DirectoryCasesProvider(case_root)
     admitted_at = monotonic()
 
     def execute(index):
+        phase = {}
+
+        class TimedCompiler:
+            def prepare(self, request):
+                started = monotonic()
+                result = backend.prepare(request)
+                phase['compile_ms'] = round((monotonic() - started) * 1000)
+                return result
+
+        class TimedSubmissionRunner:
+            def __init__(self):
+                self.delegate = DockerSubmissionRunner(DockerSessionBackend(invoker))
+
+            def run_cases(self, artifact, sandbox, cases):
+                started = monotonic()
+                result = self.delegate.run_cases(artifact, sandbox, cases)
+                phase['session_ms'] = round((monotonic() - started) * 1000)
+                return result
+
+        class TimedCleaner:
+            def cleanup(self, reference):
+                started = monotonic()
+                result = backend.cleanup(reference)
+                phase['cleanup_ms'] = round((monotonic() - started) * 1000)
+                return result
+
+        pipeline = JudgePipeline(
+            provider,
+            TimedCompiler(),
+            DockerCaseRunner(invoker),
+            TimedCleaner(),
+            lambda: int(time() * 1000),
+            submission_runner=TimedSubmissionRunner(),
+        )
         worker_started = monotonic()
         result = pipeline.process(JudgeJob(
             schema_version=1,
@@ -93,6 +120,7 @@ with tempfile.TemporaryDirectory(prefix='duelodev-load-cases-') as case_root_val
         completed = monotonic()
         assert result.verdict == Verdict.AC and result.passed == 12 and result.total == 12
         return {
+            **phase,
             'queue_ms': round((worker_started - admitted_at) * 1000),
             'judge_ms': round((completed - worker_started) * 1000),
             'total_ms': round((completed - admitted_at) * 1000),
@@ -113,6 +141,12 @@ summary = {
     'jobs': len(measurements),
     'workers': 3,
     'cases_per_job': 12,
+    'compile_p50_ms': percentile([item['compile_ms'] for item in measurements], 0.50),
+    'compile_p95_ms': percentile([item['compile_ms'] for item in measurements], 0.95),
+    'session_p50_ms': percentile([item['session_ms'] for item in measurements], 0.50),
+    'session_p95_ms': percentile([item['session_ms'] for item in measurements], 0.95),
+    'cleanup_p50_ms': percentile([item['cleanup_ms'] for item in measurements], 0.50),
+    'cleanup_p95_ms': percentile([item['cleanup_ms'] for item in measurements], 0.95),
     'queue_p50_ms': percentile([item['queue_ms'] for item in measurements], 0.50),
     'queue_p95_ms': percentile([item['queue_ms'] for item in measurements], 0.95),
     'judge_p50_ms': percentile([item['judge_ms'] for item in measurements], 0.50),
