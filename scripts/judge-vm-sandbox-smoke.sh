@@ -19,9 +19,11 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" 
 import os
 import subprocess
 
+from judge.evaluation import evaluate_case
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
 from judge.sandbox import SandboxSpec
 from judge.supervisor import CompiledArtifact
+from judge.verdicts import Verdict
 
 image = subprocess.check_output(
     ['docker', 'image', 'inspect', 'alpine:3.20', '--format', '{{.Id}}'], text=True
@@ -34,9 +36,25 @@ def run(command, time_limit_ms=1000, output_limit=1024 * 1024):
         CompiledArtifact(image), spec, b'', 1
     )
 
+# S01: el límite de PIDs contiene una ráfaga de procesos y el supervisor se recupera.
+s01 = run((
+    'sh', '-c',
+    'i=0; while [ \$i -lt 200 ]; do sleep 5 2>/dev/null & i=\$((i+1)); done; wait',
+), time_limit_ms=500)
+assert s01.exit_code != 0 and not s01.system_error
+s01_recovery = run(('sh', '-c', 'true'))
+assert s01_recovery.exit_code == 0 and not s01_recovery.system_error
+
 # S02: el timeout externo finaliza un proceso que no termina.
 s02 = run(('sh', '-c', 'sleep 2'), 50)
 assert s02.timed_out
+
+# S03: OOMKilled se consulta antes de eliminar el contenedor y se clasifica como MLE.
+s03 = run(('awk', 'BEGIN { value="12345678"; while (1) value=value value }'), 10000)
+assert s03.oom_killed and not s03.timed_out and not s03.system_error
+assert evaluate_case(s03, b'').verdict == Verdict.MLE
+s03_recovery = run(('sh', '-c', 'true'))
+assert s03_recovery.exit_code == 0 and not s03_recovery.system_error
 
 # S04: sin red, wget debe fallar; el shell convierte ese fallo en éxito de la prueba.
 s04 = run(('sh', '-c', 'wget -qO- --timeout=1 http://1.1.1.1 >/dev/null 2>&1 && exit 1 || exit 0'))
@@ -88,5 +106,5 @@ assert s18_first.exit_code == 0
 s18_next = run(('sh', '-c', 'test ! -e /tmp/case-marker'))
 assert s18_next.exit_code == 0
 
-print('S02, S04-S09, S12-S14, S16 y parte de S18 verificados en VM rootless.')
+print('S01-S09, S12-S14, S16 y parte de S18 verificados en VM rootless.')
 PY"

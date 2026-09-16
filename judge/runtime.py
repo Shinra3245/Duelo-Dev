@@ -109,13 +109,18 @@ class SubprocessDockerInvoker:
             for thread in threads:
                 thread.join(timeout=1)
             elapsed_ms = round((monotonic() - started) * 1000)
+            oom_killed = (
+                self._container_oom_killed(argv[0], cidfile) if cidfile is not None else False
+            )
             return RuntimeObservation(
                 stdout.data,
                 stderr.data,
                 process.returncode,
                 elapsed_ms,
                 timed_out=timed_out,
+                oom_killed=oom_killed,
                 output_exceeded=overflow.is_set(),
+                system_error=process.returncode == 125 and not timed_out and not overflow.is_set(),
             )
         finally:
             if cidfile is not None:
@@ -123,12 +128,7 @@ class SubprocessDockerInvoker:
 
     @staticmethod
     def _remove_container(docker: str, cidfile: str, run_token: str | None) -> None:
-        try:
-            container_id = ""
-            with open(cidfile, encoding="utf-8") as file:
-                container_id = file.read().strip()
-        except OSError:
-            container_id = ""
+        container_id = SubprocessDockerInvoker._read_container_id(cidfile)
         try:
             if container_id:
                 subprocess.run(
@@ -160,6 +160,30 @@ class SubprocessDockerInvoker:
                 os.unlink(cidfile)
             except FileNotFoundError:
                 pass
+
+    @staticmethod
+    def _container_oom_killed(docker: str, cidfile: str) -> bool:
+        container_id = SubprocessDockerInvoker._read_container_id(cidfile)
+        if not container_id:
+            return False
+        try:
+            value = subprocess.check_output(
+                (docker, "inspect", "--format", "{{.State.OOMKilled}}", container_id),
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            ).strip()
+            return value == "true"
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    @staticmethod
+    def _read_container_id(cidfile: str) -> str:
+        try:
+            with open(cidfile, encoding="utf-8") as file:
+                return file.read().strip()
+        except OSError:
+            return ""
 
     @staticmethod
     def _start_reader(
@@ -194,7 +218,6 @@ def docker_run_argv(spec: SandboxSpec) -> tuple[str, ...]:
     return (
         "docker",
         "run",
-        "--rm",
         "--interactive",
         "--pull",
         "never",

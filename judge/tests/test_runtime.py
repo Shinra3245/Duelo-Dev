@@ -1,6 +1,8 @@
 """El adaptador se prueba sin Docker; el invoker real se valida solo en la VM."""
 
 from dataclasses import dataclass
+from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -22,7 +24,8 @@ def spec() -> SandboxSpec:
 
 def test_docker_argv_has_no_shell_network_or_host_mounts() -> None:
     argv = docker_run_argv(spec())
-    assert argv[:7] == ("docker", "run", "--rm", "--interactive", "--pull", "never", "--network")
+    assert argv[:6] == ("docker", "run", "--interactive", "--pull", "never", "--network")
+    assert "--rm" not in argv
     assert "none" in argv
     assert "--read-only" in argv
     assert "--volume" not in argv and "-v" not in argv and "--mount" not in argv
@@ -85,3 +88,24 @@ def test_subprocess_invoker_enforces_wall_timeout() -> None:
     )
 
     assert observation.timed_out
+
+
+def test_oom_state_is_read_before_container_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cidfile = tmp_path / "container.cid"
+    cidfile.write_text("controlled-container\n", encoding="utf-8")
+
+    def inspect(*args: object, **kwargs: object) -> str:
+        assert args[0] == (
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.OOMKilled}}",
+            "controlled-container",
+        )
+        return "true\n"
+
+    monkeypatch.setattr(subprocess, "check_output", inspect)
+
+    assert SubprocessDockerInvoker._container_oom_killed("docker", str(cidfile))
