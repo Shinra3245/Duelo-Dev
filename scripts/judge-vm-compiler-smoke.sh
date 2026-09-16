@@ -12,7 +12,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p
   "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/compiler.py \
   judge/docker_compiler.py judge/evaluation.py judge/languages.py judge/limits.py \
-  judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
+  judge/pipeline.py judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
@@ -23,12 +23,13 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
   "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
 import subprocess
+import time
 
-from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, prepare_submission
+from judge.compiler import MAX_COMPILE_OUTPUT_BYTES
 from judge.docker_compiler import DockerCompilationBackend
+from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
-from judge.sandbox import SandboxSpec
-from judge.supervisor import JudgeCase, judge_cases
+from judge.supervisor import JudgeCase
 from judge.verdicts import Verdict
 
 
@@ -47,6 +48,23 @@ base_images = {
 invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES)
 backend = DockerCompilationBackend(invoker, base_images)
 runner = DockerCaseRunner(invoker)
+
+
+class StaticCasesProvider:
+    def load_cases(self, cases_ref, problem_id, problem_version):
+        assert cases_ref == 'pilot/sum-one/v1'
+        assert problem_id == 'sum-one'
+        assert problem_version == 1
+        return [JudgeCase(1, b'41\n', b'42\n')]
+
+
+pipeline = JudgePipeline(
+    StaticCasesProvider(),
+    backend,
+    runner,
+    backend,
+    lambda: int(time.time() * 1000),
+)
 solutions = {
     'python': 'value = int(input())\nprint(value + 1)\n',
     'cpp': '#include <iostream>\nint main(){long long value; std::cin >> value; std::cout << value + 1 << std::endl;}\n',
@@ -54,24 +72,34 @@ solutions = {
 }
 
 for language, source in solutions.items():
-    prepared = prepare_submission(backend, language, source)
-    assert prepared.succeeded, (language, prepared.verdict, prepared.compile_output, prepared.judge_error)
-    assert prepared.artifact is not None
-    try:
-        spec = SandboxSpec(prepared.artifact.reference, prepared.run_argv, 2000)
-        judged = judge_cases(
-            runner,
-            prepared.artifact,
-            spec,
-            [JudgeCase(1, b'41\n', b'42\n')],
-        )
-        assert judged.verdict == Verdict.AC, (language, judged)
-    finally:
-        assert backend.cleanup(prepared.artifact.reference)
+    judged = pipeline.process(JudgeJob(
+        schema_version=1,
+        submission_id=f'smoke-{language}',
+        problem_id='sum-one',
+        problem_version=1,
+        language=language,
+        source_code=source,
+        time_limit_ms=2000,
+        memory_limit_mb=256,
+        cases_ref='pilot/sum-one/v1',
+        enqueued_at_ms=int(time.time() * 1000),
+    ))
+    assert judged.verdict == Verdict.AC, (language, judged)
+    assert judged.passed == 1 and judged.total == 1
 
-invalid = prepare_submission(backend, 'cpp', 'int main( {')
+invalid = pipeline.process(JudgeJob(
+    schema_version=1,
+    submission_id='smoke-cpp-ce',
+    problem_id='sum-one',
+    problem_version=1,
+    language='cpp',
+    source_code='int main( {',
+    time_limit_ms=2000,
+    memory_limit_mb=256,
+    cases_ref='pilot/sum-one/v1',
+    enqueued_at_ms=int(time.time() * 1000),
+))
 assert invalid.verdict == Verdict.CE
-assert invalid.artifact is None
 assert invalid.compile_output
 
 leftovers = subprocess.check_output(
