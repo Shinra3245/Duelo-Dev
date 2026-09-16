@@ -29,10 +29,12 @@ from pathlib import Path
 import tempfile
 
 from judge.case_store import DirectoryCasesProvider
-from judge.compiler import MAX_COMPILE_OUTPUT_BYTES
+from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, prepare_submission
 from judge.docker_compiler import DockerCompilationBackend
 from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
+from judge.sandbox import SandboxSpec
+from judge.supervisor import JudgeCase, judge_cases
 from judge.verdicts import Verdict
 
 
@@ -104,6 +106,52 @@ invalid = pipeline.process(JudgeJob(
 ))
 assert invalid.verdict == Verdict.CE
 assert invalid.compile_output
+
+# S11: un artefacto posterior no puede leer el código del envío anterior.
+marker = 'cross-submission-secret-7f31'
+first_source = '# ' + marker + '\nprint(' + repr('first') + ')\n'
+first = prepare_submission(backend, 'python', first_source)
+assert first.succeeded and first.artifact is not None
+try:
+    first_result = judge_cases(
+        runner,
+        first.artifact,
+        SandboxSpec(first.artifact.reference, first.run_argv, 2000),
+        [JudgeCase(1, b'', b'first\n')],
+    )
+    assert first_result.verdict == Verdict.AC
+finally:
+    assert backend.cleanup(first.artifact.reference)
+
+marker_codes = ','.join(str(ord(character)) for character in marker)
+scanner_source = f'''from pathlib import Path
+marker = bytes([{marker_codes}])
+found = any(marker in path.read_bytes() for path in Path('/app').rglob('*') if path.is_file())
+print('leaked' if found else 'isolated')
+'''
+second = prepare_submission(backend, 'python', scanner_source)
+assert marker not in scanner_source
+assert second.succeeded and second.artifact is not None
+try:
+    second_result = judge_cases(
+        runner,
+        second.artifact,
+        SandboxSpec(second.artifact.reference, second.run_argv, 2000),
+        [JudgeCase(1, b'', b'isolated\n')],
+    )
+    assert second_result.verdict == Verdict.AC
+finally:
+    assert backend.cleanup(second.artifact.reference)
+
+# S15: una referencia autorizada no puede atravesar un componente symlink.
+(case_root / 'cases' / 'linked-problem').symlink_to(case_directory, target_is_directory=True)
+try:
+    DirectoryCasesProvider(case_root).load_cases('cases/linked-problem', 'linked-problem', 1)
+except ValueError:
+    pass
+else:
+    raise AssertionError('El proveedor siguió un symlink de casos')
+
 case_store.cleanup()
 
 leftovers = subprocess.check_output(

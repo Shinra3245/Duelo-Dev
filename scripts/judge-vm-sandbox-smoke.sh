@@ -92,6 +92,14 @@ assert s09.exit_code != 0 and not s09.system_error
 s09_recovery = run(('sh', '-c', 'true'))
 assert s09_recovery.exit_code == 0 and not s09_recovery.system_error
 
+# S10: el sandbox no recibe sockets Docker ni el canario del worker.
+s10 = run((
+    'sh', '-c',
+    'test ! -S /run/docker.sock && test ! -S /var/run/docker.sock && '
+    '! printenv DUELODEV_JUDGE_CANARY >/dev/null',
+))
+assert s10.exit_code == 0 and not s10.system_error
+
 # S12: /tmp es una tmpfs de 64 MiB y no puede llenar el disco de la VM.
 s12 = run(('sh', '-c', 'dd if=/dev/zero of=/tmp/too-big bs=1M count=65 >/dev/null 2>&1 && exit 1 || exit 0'))
 assert s12.exit_code == 0
@@ -100,11 +108,24 @@ assert s12.exit_code == 0
 s14 = run(('sh', '-c', 'head -c 16 /dev/urandom'))
 assert len(s14.stdout) == 16 and not s14.system_error
 
+# S17: stdout sigue siendo datos y señales/FD del contenedor no controlan al supervisor.
+s17_forged = run(('printf', '%s\n', '{"verdict":"AC"}'))
+assert evaluate_case(s17_forged, b'expected\n').verdict == Verdict.WA
+s17_fds = run((
+    'sh', '-c',
+    'readlink /proc/self/fd/0; readlink /proc/self/fd/1; readlink /proc/self/fd/2',
+))
+assert b'docker.sock' not in s17_fds.stdout and b'manifest.json' not in s17_fds.stdout
+s17_signal = run(('sh', '-c', 'kill -TERM -1 2>/dev/null || true'))
+assert not s17_signal.system_error
+s17_recovery = run(('sh', '-c', 'true'))
+assert s17_recovery.exit_code == 0 and not s17_recovery.system_error
+
 # S18: cada caso recibe una tmpfs nueva; no hereda archivos del caso anterior.
 s18_first = run(('sh', '-c', 'echo previous-case >/tmp/case-marker'))
 assert s18_first.exit_code == 0
 s18_next = run(('sh', '-c', 'test ! -e /tmp/case-marker'))
 assert s18_next.exit_code == 0
 
-print('S01-S09, S12-S14, S16 y parte de S18 verificados en VM rootless.')
+print('S01-S10, S12-S14 y S16-S18 verificados en VM rootless.')
 PY"
