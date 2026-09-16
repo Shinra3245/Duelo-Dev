@@ -56,6 +56,7 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
+from time import sleep
 
 import psycopg
 
@@ -127,6 +128,17 @@ claims = (first, second)
 assert sorted(claim.status for claim in claims) == [ClaimStatus.ACQUIRED, ClaimStatus.BUSY]
 original = next(claim for claim in claims if claim.status == ClaimStatus.ACQUIRED)
 assert original.attempt_token is not None
+
+with connect() as connection:
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT lease_until FROM submissions WHERE id = %s', (job.submission_id,))
+        lease_before = cursor.fetchone()[0]
+sleep(0.02)
+assert repository.renew(job, 'worker-1' if first.status == ClaimStatus.ACQUIRED else 'worker-2', original.attempt_token)
+with connect() as connection:
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT lease_until FROM submissions WHERE id = %s', (job.submission_id,))
+        assert cursor.fetchone()[0] > lease_before
 
 with connect() as connection:
     with connection.cursor() as cursor:

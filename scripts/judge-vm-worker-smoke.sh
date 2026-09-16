@@ -125,7 +125,8 @@ with connection:
               '00000000-0000-0000-0000-000000000004',
               '00000000-0000-0000-0000-000000000001',
               '00000000-0000-0000-0000-000000000002',
-              'python', 'print(int(input()) + 1)', 6000, 256, 1, 'queued'
+              'python', 'import time; time.sleep(2); print(int(input()) + 1)',
+              6000, 256, 1, 'queued'
             );
             '''
         )
@@ -138,8 +139,8 @@ DATABASE_URL='postgresql://duelodev:test@127.0.0.1:5432/duelodev_test' \
 REDIS_URL='redis://127.0.0.1:6379/0' \
 JUDGE_CASES_ROOT='${REMOTE_DIR}/cases' \
 JUDGE_WORKER_ID='worker-e2e-1' \
-JUDGE_LEASE_MS='120000' \
-JUDGE_RECOVERY_IDLE_MS='125000' \
+JUDGE_LEASE_MS='3000' \
+JUDGE_RECOVERY_IDLE_MS='4000' \
 JUDGE_BLOCK_MS='100' \
 JUDGE_IMAGE_PYTHON=\"\$python_image\" \
 JUDGE_IMAGE_CPP=\"\$cpp_image\" \
@@ -154,6 +155,7 @@ if ! kill -0 \"\$worker_pid\" 2>/dev/null; then \
 fi; \
 PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
 import json
+from datetime import datetime, timezone
 from time import monotonic, sleep, time
 
 import psycopg
@@ -170,7 +172,7 @@ client.xadd('judge:stream', {
     'problem_id': '00000000-0000-0000-0000-000000000002',
     'problem_version': '1',
     'language': 'python',
-    'source_code': 'print(int(input()) + 1)',
+    'source_code': 'import time; time.sleep(2); print(int(input()) + 1)',
     'time_limit_ms': '6000',
     'memory_limit_mb': '256',
     'cases_ref': 'cases/00000000-0000-0000-0000-000000000002',
@@ -178,8 +180,10 @@ client.xadd('judge:stream', {
 })
 
 deadline = monotonic() + 60
+started = monotonic()
 notification = None
 row = None
+heartbeat_observed = False
 while monotonic() < deadline:
     message = pubsub.get_message(timeout=0.1)
     if message and message.get('type') == 'message':
@@ -195,11 +199,20 @@ while monotonic() < deadline:
                 (submission_id,),
             )
             row = cursor.fetchone()
+    if (
+        row
+        and row[0] == 'judging'
+        and monotonic() - started > 3.2
+        and row[6] is not None
+        and row[6] > datetime.now(timezone.utc)
+    ):
+        heartbeat_observed = True
     if row and row[0] == 'completed' and notification is not None:
         break
     sleep(0.1)
 
 assert row == ('completed', 'AC', 2, 2, None, None, None), row
+assert heartbeat_observed, 'el lease no fue renovado durante el procesamiento'
 assert notification == {
     'submission_id': submission_id,
     'match_id': '00000000-0000-0000-0000-000000000003',

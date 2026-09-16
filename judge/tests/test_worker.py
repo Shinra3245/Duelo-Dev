@@ -1,6 +1,7 @@
 """El coordinador solo habilita ACK después de una decisión durable."""
 
 from dataclasses import dataclass, field
+import threading
 
 import pytest
 
@@ -65,6 +66,10 @@ class FakeResults:
     claim_error: Exception | None = None
     persist_error: Exception | None = None
     persisted_tokens: list[str] = field(default_factory=list)
+    renew_result: bool = True
+    renew_error: Exception | None = None
+    renewed_tokens: list[str] = field(default_factory=list)
+    renewed: threading.Event = field(default_factory=threading.Event)
 
     def claim(self, received: JudgeJob, worker_id: str) -> ClaimResult:
         if self.claim_error:
@@ -76,6 +81,13 @@ class FakeResults:
         if self.persist_error:
             raise self.persist_error
         return self.persist_status
+
+    def renew(self, received: JudgeJob, worker_id: str, attempt_token: str) -> bool:
+        self.renewed_tokens.append(attempt_token)
+        self.renewed.set()
+        if self.renew_error:
+            raise self.renew_error
+        return self.renew_result
 
 
 @dataclass
@@ -134,6 +146,56 @@ def test_system_error_is_retried_once_inside_the_same_lease() -> None:
     assert outcome.disposition == EntryDisposition.ACK_RESULT
     assert outcome.result == RESULT
     assert results.persisted_tokens == ["attempt-1"]
+
+
+def test_long_processing_renews_lease_until_result_is_ready() -> None:
+    results = FakeResults()
+
+    class BlockingProcessor:
+        def process(self, received: JudgeJob) -> DurableJudgeResult:
+            assert results.renewed.wait(timeout=1)
+            return RESULT
+
+    subject = StreamEntryCoordinator(
+        "worker-1",
+        BlockingProcessor(),
+        results,
+        FakeRejected(),
+        heartbeat_interval_s=0.001,
+    )
+
+    outcome = subject.handle("1-0", encode_stream_fields(job()))
+
+    assert outcome.disposition == EntryDisposition.ACK_RESULT
+    assert results.renewed_tokens
+    assert results.persisted_tokens == ["attempt-1"]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_lost_heartbeat_prevents_persist_and_ack(raises: bool) -> None:
+    results = FakeResults(
+        renew_result=False,
+        renew_error=RuntimeError("db") if raises else None,
+    )
+
+    class SlowProcessor:
+        def process(self, received: JudgeJob) -> DurableJudgeResult:
+            assert results.renewed.wait(timeout=1)
+            return RESULT
+
+    subject = StreamEntryCoordinator(
+        "worker-1",
+        SlowProcessor(),
+        results,
+        FakeRejected(),
+        heartbeat_interval_s=0.001,
+    )
+
+    outcome = subject.handle("1-0", encode_stream_fields(job()))
+
+    assert outcome.disposition == EntryDisposition.RETRY
+    assert not outcome.should_ack
+    assert results.persisted_tokens == []
 
 
 def test_second_system_error_is_persisted_as_definitive() -> None:

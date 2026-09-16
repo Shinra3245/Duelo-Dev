@@ -70,6 +70,27 @@ class PostgresResultRepository:
         except Exception:
             raise PostgresRepositoryError("No se pudo reclamar el envío en PostgreSQL") from None
 
+    def renew(self, job: JudgeJob, worker_id: str, attempt_token: str) -> bool:
+        if not isinstance(worker_id, str) or not 1 <= len(worker_id) <= MAX_WORKER_ID_CHARS:
+            raise ValueError("worker_id debe tener entre 1 y 128 caracteres")
+        if not isinstance(attempt_token, str) or not 1 <= len(attempt_token) <= 64:
+            raise ValueError("attempt_token debe tener entre 1 y 64 caracteres")
+        try:
+            with self._connect() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        _RENEW_SQL,
+                        (
+                            self._lease_duration_ms,
+                            job.submission_id,
+                            worker_id,
+                            attempt_token,
+                        ),
+                    )
+                    return cursor.fetchone() is not None
+        except Exception:
+            raise PostgresRepositoryError("No se pudo renovar el lease en PostgreSQL") from None
+
     def persist_if_current(self, result: DurableJudgeResult, attempt_token: str) -> PersistStatus:
         if not isinstance(attempt_token, str) or not attempt_token:
             raise ValueError("attempt_token es obligatorio")
@@ -217,6 +238,16 @@ RETURNING id
 """
 
 _STATUS_SQL = "SELECT status FROM submissions WHERE id = %s"
+
+_RENEW_SQL = """
+UPDATE submissions
+SET lease_until = clock_timestamp() + (%s * interval '1 millisecond')
+WHERE id = %s
+  AND status = 'judging'
+  AND worker_id = %s
+  AND attempt_token = %s
+RETURNING id
+"""
 
 _RECORD_REJECTED_SQL = """
 INSERT INTO judge_rejected_messages (message_id, reason)

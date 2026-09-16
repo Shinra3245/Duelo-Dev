@@ -58,6 +58,7 @@ def build_consumer(
         pipeline,
         results,
         PostgresRejectedEntryRepository(connect),
+        heartbeat_interval_s=settings.lease_duration_ms / 3000,
     )
     transport = RedisPyStreamTransport(redis_client)
     try:

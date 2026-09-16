@@ -165,6 +165,22 @@ def test_database_exception_is_replaced_with_sanitized_claim_error() -> None:
     assert "secret" not in str(captured.value)
 
 
+@pytest.mark.parametrize(("response", "expected"), [((job().submission_id,), True), (None, False)])
+def test_renew_is_fenced_by_worker_and_attempt(
+    response: tuple[object, ...] | None, expected: bool
+) -> None:
+    database = ScriptedDatabase([response])
+    repository = PostgresResultRepository(database.connect, lease_duration_ms=120_000)
+
+    assert repository.renew(job(), "worker-1", "attempt-current") is expected
+    assert database.calls[0][1] == (
+        120_000,
+        job().submission_id,
+        "worker-1",
+        "attempt-current",
+    )
+
+
 @pytest.mark.parametrize(
     ("responses", "expected"),
     [

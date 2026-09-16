@@ -1,8 +1,9 @@
 """Coordinación pura de una entrada del stream con lease, fencing y ACK seguro."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+import threading
 from typing import Any, Protocol
 
 from judge.pipeline import DurableJudgeResult, JudgeJob
@@ -65,6 +66,8 @@ class ResultRepository(Protocol):
 
     def claim(self, job: JudgeJob, worker_id: str) -> ClaimResult: ...
 
+    def renew(self, job: JudgeJob, worker_id: str, attempt_token: str) -> bool: ...
+
     def persist_if_current(
         self, result: DurableJudgeResult, attempt_token: str
     ) -> PersistStatus: ...
@@ -85,13 +88,20 @@ class StreamEntryCoordinator:
         processor: JobProcessor,
         results: ResultRepository,
         rejected: RejectedEntryRepository,
+        *,
+        heartbeat_interval_s: float | None = None,
     ) -> None:
         if not isinstance(worker_id, str) or not worker_id:
             raise ValueError("worker_id es obligatorio")
+        if heartbeat_interval_s is not None and (
+            isinstance(heartbeat_interval_s, bool) or heartbeat_interval_s <= 0
+        ):
+            raise ValueError("heartbeat_interval_s debe ser positivo")
         self._worker_id = worker_id
         self._processor = processor
         self._results = results
         self._rejected = rejected
+        self._heartbeat_interval_s = heartbeat_interval_s
 
     def handle(self, message_id: str, fields: Mapping[Any, Any]) -> EntryOutcome:
         if not isinstance(message_id, str) or not message_id:
@@ -127,10 +137,26 @@ class StreamEntryCoordinator:
             )
 
         assert claim.attempt_token is not None
+        heartbeat = self._heartbeat(job, claim.attempt_token)
+        heartbeat.start()
         try:
             result = self._processor.process(job)
             if result.verdict == Verdict.SE:
                 result = self._processor.process(job)
+        except Exception:
+            heartbeat.stop()
+            return EntryOutcome(
+                EntryDisposition.RETRY,
+                submission_id=job.submission_id,
+                reason="El procesamiento o guardado no se completó",
+            )
+        if not heartbeat.stop():
+            return EntryOutcome(
+                EntryDisposition.RETRY,
+                submission_id=job.submission_id,
+                reason="El intento perdió el lease durante el procesamiento",
+            )
+        try:
             persisted = self._results.persist_if_current(result, claim.attempt_token)
         except Exception:
             return EntryOutcome(
@@ -151,3 +177,47 @@ class StreamEntryCoordinator:
             submission_id=job.submission_id,
             reason="El intento perdió el fencing antes de persistir",
         )
+
+    def _heartbeat(self, job: JudgeJob, attempt_token: str) -> "_LeaseHeartbeat":
+        if self._heartbeat_interval_s is None:
+            return _LeaseHeartbeat(None, 1)
+        return _LeaseHeartbeat(
+            lambda: self._results.renew(job, self._worker_id, attempt_token),
+            self._heartbeat_interval_s,
+        )
+
+
+class _LeaseHeartbeat:
+    def __init__(self, renew: Callable[[], bool] | None, interval_s: float) -> None:
+        self._renew = renew
+        self._interval_s = interval_s
+        self._stop = threading.Event()
+        self._lost = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._renew is None:
+            return
+        self._thread = threading.Thread(
+            target=self._run,
+            daemon=True,
+            name="judge-lease-heartbeat",
+        )
+        self._thread.start()
+
+    def stop(self) -> bool:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+        return not self._lost.is_set()
+
+    def _run(self) -> None:
+        assert self._renew is not None
+        while not self._stop.wait(self._interval_s):
+            try:
+                renewed = self._renew()
+            except Exception:
+                renewed = False
+            if not renewed:
+                self._lost.set()
+                return
