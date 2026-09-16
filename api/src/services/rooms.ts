@@ -20,6 +20,7 @@ import {
 import { HttpError } from '../plugins/body-parser.js';
 import type { RoomRepository, UserRepository } from '../repositories/types.js';
 import type { AuthService } from './auth.js';
+import type { AuditService } from './audit.js';
 
 const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
@@ -39,6 +40,7 @@ export interface RoomServiceOptions {
   roomRepo: RoomRepository;
   userRepo: UserRepository;
   authService: AuthService;
+  auditService?: AuditService | undefined;
 }
 
 /**
@@ -48,11 +50,13 @@ export class RoomService {
   private readonly roomRepo: RoomRepository;
   private readonly userRepo: UserRepository;
   private readonly authService: AuthService;
+  private readonly auditService?: AuditService | undefined;
 
   constructor(options: RoomServiceOptions) {
     this.roomRepo = options.roomRepo;
     this.userRepo = options.userRepo;
     this.authService = options.authService;
+    this.auditService = options.auditService;
   }
 
   /**
@@ -109,6 +113,10 @@ export class RoomService {
       is_ready: true,
       connection_status: 'connected',
     });
+
+    if (this.auditService) {
+      await this.auditService.recordRoomCreated(match.id, user.id, match.room_code, match.mode);
+    }
 
     const shareUrl = `${baseUrl.replace(/\/+$/, '')}/room/${match.room_code}`;
 
@@ -185,6 +193,7 @@ export class RoomService {
 
     let finalUserId: string;
     let finalGamertag: string;
+    let isGuest = !authenticatedUserId;
     let newGuestTokens: { accessToken: string; refreshToken: string } | undefined;
 
     if (authenticatedUserId) {
@@ -194,11 +203,13 @@ export class RoomService {
       }
       finalUserId = user.id;
       finalGamertag = user.gamertag;
+      isGuest = user.role === 'guest';
     } else {
       // Crear cuenta provisional de invitado (doc 04 §2)
       const guest = await this.authService.createGuest(req.gamertag);
       finalUserId = guest.user.id;
       finalGamertag = guest.user.gamertag;
+      isGuest = true;
       newGuestTokens = {
         accessToken: guest.accessToken,
         refreshToken: guest.refreshToken,
@@ -211,6 +222,10 @@ export class RoomService {
       is_ready: true,
       connection_status: 'connected',
     });
+
+    if (this.auditService && isGuest) {
+      await this.auditService.recordGuestJoined(match.id, finalUserId, finalGamertag);
+    }
 
     const role = match.host_id === finalUserId ? 'host' : 'player';
 
@@ -316,6 +331,10 @@ export class RoomService {
       started_at: new Date().toISOString(),
       state_version: match.state_version + 1,
     });
+
+    if (this.auditService) {
+      await this.auditService.recordMatchStarted(match.id, match.host_id, players.length);
+    }
 
     return {
       match_id: match.id,

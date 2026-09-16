@@ -10,12 +10,15 @@ import type {
   UserEntity,
 } from '@duelodev/shared';
 import type {
+  CreateEventInput,
   CreateMatchCodeSnapshotInput,
   CreateMatchInput,
   CreateMatchPlayerInput,
   CreateRefreshTokenInput,
   CreateSubmissionInput,
   CreateUserInput,
+  EventEntity,
+  EventRepository,
   ProblemRepository,
   RefreshTokenRepository,
   RoomRepository,
@@ -431,6 +434,16 @@ export class InMemoryRoomRepository implements RoomRepository {
     return deleted;
   }
 
+  async countActiveRooms(): Promise<number> {
+    let count = 0;
+    for (const match of this.matches.values()) {
+      if (match.status === 'lobby' || match.status === 'running' || match.status === 'settling') {
+        count++;
+      }
+    }
+    return count;
+  }
+
   clear(): void {
     this.matches.clear();
     this.roomCodeToId.clear();
@@ -592,5 +605,50 @@ export class InMemoryProblemRepository implements ProblemRepository {
   clear(): void {
     this.problems.clear();
     this.testCases.clear();
+  }
+}
+
+/**
+ * Repositorio de eventos de auditoría y producto en memoria (doc 04 §1, doc 08 § Métricas de producto).
+ */
+export class InMemoryEventRepository implements EventRepository {
+  private readonly events: EventEntity[] = [];
+
+  async recordEvent(input: CreateEventInput): Promise<EventEntity> {
+    const now = new Date().toISOString();
+    const event: EventEntity = {
+      id: input.id ?? randomUUID(),
+      aggregate_type: input.aggregate_type,
+      aggregate_id: input.aggregate_id,
+      event_name: input.event_name,
+      payload: { ...input.payload },
+      created_at: input.created_at ?? now,
+    };
+
+    this.events.push(event);
+    return { ...event, payload: { ...event.payload } };
+  }
+
+  async findEventsByAggregate(aggregateType: string, aggregateId: string): Promise<EventEntity[]> {
+    return this.events
+      .filter((e) => e.aggregate_type === aggregateType && e.aggregate_id === aggregateId)
+      .map((e) => ({ ...e, payload: { ...e.payload } }));
+  }
+
+  async findEventsByName(eventName: string, limit?: number): Promise<EventEntity[]> {
+    const matched = this.events.filter((e) => e.event_name === eventName);
+    const sliced = typeof limit === 'number' && limit >= 0 ? matched.slice(0, limit) : matched;
+    return sliced.map((e) => ({ ...e, payload: { ...e.payload } }));
+  }
+
+  async countEvents(eventName?: string): Promise<number> {
+    if (eventName !== undefined) {
+      return this.events.filter((e) => e.event_name === eventName).length;
+    }
+    return this.events.length;
+  }
+
+  clear(): void {
+    this.events.length = 0;
   }
 }

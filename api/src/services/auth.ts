@@ -20,6 +20,7 @@ import {
   verifyAccessToken,
   type AccessTokenPayload,
 } from './tokens.js';
+import type { AuditService } from './audit.js';
 
 export interface AuthResult {
   user: UserProfile;
@@ -33,6 +34,7 @@ export interface AuthServiceOptions {
   authSecret: string;
   refreshTokenMaxAgeS?: number;
   accessTokenMaxAgeS?: number;
+  auditService?: AuditService | undefined;
 }
 
 export function toUserProfile(user: UserEntity): UserProfile {
@@ -54,6 +56,7 @@ export class AuthService {
   private readonly authSecret: string;
   private readonly refreshTokenMaxAgeS: number;
   private readonly accessTokenMaxAgeS: number;
+  private readonly auditService?: AuditService | undefined;
 
   constructor(options: AuthServiceOptions) {
     this.userRepo = options.userRepo;
@@ -61,6 +64,7 @@ export class AuthService {
     this.authSecret = options.authSecret;
     this.refreshTokenMaxAgeS = options.refreshTokenMaxAgeS ?? REFRESH_TOKEN_MAX_AGE_S;
     this.accessTokenMaxAgeS = options.accessTokenMaxAgeS ?? ACCESS_TOKEN_MAX_AGE_S;
+    this.auditService = options.auditService;
   }
 
   /**
@@ -218,6 +222,10 @@ export class AuthService {
 
     if (!updatedUser) {
       throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+    }
+
+    if (this.auditService) {
+      await this.auditService.recordGuestConverted(userId, updatedUser.gamertag);
     }
 
     return this.issueTokensForUser(updatedUser);

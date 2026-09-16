@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '@duelodev/shared';
 import type {
+  EventRepository,
   ProblemRepository,
   RefreshTokenRepository,
   RoomRepository,
@@ -12,6 +13,7 @@ import type { RoomService } from './services/rooms.js';
 import type { SubmissionService } from './services/submissions.js';
 import type { JudgmentService } from './services/judgment.js';
 import type { RetentionService, RetentionServiceOptions } from './services/retention.js';
+import type { AuditService } from './services/audit.js';
 import type { JudgeQueue, SubmissionReconciler, ResultPublisher } from './queue/index.js';
 import type { CsrfOptions } from './plugins/csrf.js';
 
@@ -19,7 +21,7 @@ import type { CsrfOptions } from './plugins/csrf.js';
 export type ReadinessProbe = () => Promise<void>;
 
 /** Proveedor o diccionario de métricas operativas para /readyz. */
-export type MetricsProvider = () => Record<string, number>;
+export type MetricsProvider = () => Promise<Record<string, number>> | Record<string, number>;
 
 /** Opciones de configuración para crear la aplicación API. */
 export interface ApiAppOptions {
@@ -31,6 +33,8 @@ export interface ApiAppOptions {
   probes?: Record<string, ReadinessProbe>;
   /** Métricas operativas incluidas en /readyz. */
   metrics?: Record<string, number> | MetricsProvider;
+  /** Proveedor personalizado de métricas operativas para /readyz. */
+  metricsProvider?: MetricsProvider;
   /** Instancia personalizada del logger estructurado. */
   logger?: Logger;
   /** Repositorio de usuarios. Si no se especifica, se crea uno en memoria. */
@@ -43,6 +47,8 @@ export interface ApiAppOptions {
   submissionRepo?: SubmissionRepository;
   /** Repositorio de problemas. Si no se especifica, se crea uno en memoria. */
   problemRepo?: ProblemRepository;
+  /** Repositorio de eventos de auditoría y producto. Si no se especifica, se crea uno en memoria. */
+  eventRepo?: EventRepository;
   /** Cola de ejecución del juez. Si no se especifica, se crea una en memoria. */
   judgeQueue?: JudgeQueue;
   /** Reconciliador de envíos pendientes. Si no se especifica, se instancia automáticamente. */
@@ -53,6 +59,8 @@ export interface ApiAppOptions {
   roomService?: RoomService;
   /** Servicio de envíos y problemas públicos. Si no se especifica, se instancia automáticamente. */
   submissionService?: SubmissionService;
+  /** Servicio de auditoría y registro de eventos. Si no se especifica, se instancia automáticamente. */
+  auditService?: AuditService;
   /** Publicador de avisos de resultados en judge:results. Si no se especifica, se crea uno en memoria. */
   resultPublisher?: ResultPublisher;
   /** Servicio de aplicación de resultados durables del juez. Si no se especifica, se instancia automáticamente. */
@@ -76,12 +84,14 @@ export interface ApiContext {
   startTime: number;
   probes: Record<string, ReadinessProbe>;
   metrics?: Record<string, number> | MetricsProvider;
+  metricsProvider?: MetricsProvider;
   logger: Logger;
   userRepo: UserRepository;
   refreshTokenRepo: RefreshTokenRepository;
   roomRepo: RoomRepository;
   submissionRepo: SubmissionRepository;
   problemRepo: ProblemRepository;
+  eventRepo?: EventRepository;
   judgeQueue: JudgeQueue;
   submissionReconciler: SubmissionReconciler;
   resultPublisher: ResultPublisher;
@@ -90,6 +100,7 @@ export interface ApiContext {
   roomService: RoomService;
   submissionService: SubmissionService;
   retentionService: RetentionService;
+  auditService?: AuditService;
   csrfOptions?: CsrfOptions;
 }
 

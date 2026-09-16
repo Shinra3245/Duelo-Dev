@@ -89,7 +89,8 @@ export async function handleReadyz(
     return;
   }
 
-  const resolvedMetrics = typeof ctx.metrics === 'function' ? ctx.metrics() : ctx.metrics;
+  const metricSource = ctx.metrics ?? ctx.metricsProvider;
+  const resolvedMetrics = typeof metricSource === 'function' ? await metricSource() : metricSource;
 
   const result: ReadyResponse = await runReadyChecks(ctx.serviceName, ctx.probes, resolvedMetrics);
 

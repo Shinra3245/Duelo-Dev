@@ -19,6 +19,7 @@ import type {
   SubmissionRepository,
 } from '../repositories/types.js';
 import type { JudgeQueue } from '../queue/types.js';
+import type { AuditService } from './audit.js';
 
 /** Cooldown por defecto entre envíos por jugador en una partida (10 segundos, doc 04 §2). */
 export const SUBMISSION_COOLDOWN_S = 10;
@@ -37,6 +38,7 @@ export interface SubmissionServiceOptions {
   logger?: Logger | undefined;
   cooldownSeconds?: number;
   idempotencyWindowSeconds?: number;
+  auditService?: AuditService | undefined;
 }
 
 /**
@@ -50,6 +52,7 @@ export class SubmissionService {
   private readonly logger: Logger;
   private readonly cooldownSeconds: number;
   private readonly idempotencyWindowSeconds: number;
+  private readonly auditService?: AuditService | undefined;
 
   /** Registro de idempotencia en memoria: `${userId}:${endpoint}:${key}` -> record */
   private readonly idempotencyRecords = new Map<string, IdempotencyRecord>();
@@ -66,6 +69,7 @@ export class SubmissionService {
     this.logger = options.logger ?? createLogger('submission-service');
     this.cooldownSeconds = options.cooldownSeconds ?? SUBMISSION_COOLDOWN_S;
     this.idempotencyWindowSeconds = options.idempotencyWindowSeconds ?? IDEMPOTENCY_WINDOW_S;
+    this.auditService = options.auditService;
   }
 
   /**
@@ -170,6 +174,17 @@ export class SubmissionService {
         admission_seq: nextAdmissionSeq,
         status: 'queued',
       });
+
+      if (this.auditService) {
+        await this.auditService.recordSubmission(
+          submission.id,
+          submission.match_id,
+          submission.round_id,
+          submission.user_id,
+          submission.problem_id,
+          submission.language,
+        );
+      }
 
       const acceptedResponse: SubmissionAcceptedResponse = {
         submission_id: submission.id,

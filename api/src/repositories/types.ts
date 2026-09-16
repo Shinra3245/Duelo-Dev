@@ -139,6 +139,7 @@ export interface RoomRepository {
   saveSnapshot(input: CreateMatchCodeSnapshotInput): Promise<MatchCodeSnapshotEntity>;
   findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]>;
   deleteSnapshotsByUser?(userId: string, onlyUnrevealed?: boolean): Promise<number>;
+  countActiveRooms?(): Promise<number>;
 }
 
 export interface CreateMatchCodeSnapshotInput {
@@ -191,4 +192,29 @@ export interface ProblemRepository {
   findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]>;
   createProblem(problem: ProblemEntity): Promise<ProblemEntity>;
   createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity>;
+}
+
+export interface EventEntity {
+  id: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  event_name: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CreateEventInput {
+  id?: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  event_name: string;
+  payload: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface EventRepository {
+  recordEvent(input: CreateEventInput): Promise<EventEntity>;
+  findEventsByAggregate(aggregateType: string, aggregateId: string): Promise<EventEntity[]>;
+  findEventsByName(eventName: string, limit?: number): Promise<EventEntity[]>;
+  countEvents(eventName?: string): Promise<number>;
 }

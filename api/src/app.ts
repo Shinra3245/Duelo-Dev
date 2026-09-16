@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { createLogger } from '@duelodev/shared';
 import type { ApiAppOptions, ApiContext } from './types.js';
 import {
+  InMemoryEventRepository,
   InMemoryProblemRepository,
   InMemoryRefreshTokenRepository,
   InMemoryRoomRepository,
@@ -17,6 +18,8 @@ import { InMemoryJudgeQueue, InMemoryResultChannel, SubmissionReconciler } from 
 import { seedProblems } from './seeds/seeder.js';
 import { JudgmentService } from './services/judgment.js';
 import { RetentionService } from './services/retention.js';
+import { AuditService } from './services/audit.js';
+import { createOperationalMetricsProvider } from './services/metrics.js';
 import { validateCsrfOrigin } from './plugins/csrf.js';
 import { HttpError } from './plugins/body-parser.js';
 import { dispatchRoute } from './routes/router.js';
@@ -33,6 +36,7 @@ export interface ApiApp {
  * Crea la aplicación del servicio API con su contexto, servidor HTTP y router.
  */
 export function createApp(options: ApiAppOptions = {}): ApiApp {
+  const startTime = Date.now();
   const serviceName = options.serviceName ?? 'api';
   const version = options.version ?? '0.1.0';
   const logger = options.logger ?? createLogger(serviceName);
@@ -43,7 +47,20 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
   const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository();
   const problemRepo = options.problemRepo ?? new InMemoryProblemRepository();
+  const eventRepo = options.eventRepo ?? new InMemoryEventRepository();
   const judgeQueue = options.judgeQueue ?? new InMemoryJudgeQueue();
+  const auditService = options.auditService ?? new AuditService(eventRepo, logger);
+
+  const defaultMetricsProvider = createOperationalMetricsProvider(
+    { roomRepo, submissionRepo, userRepo, eventRepo },
+    startTime,
+  );
+  const metricsProvider = options.metricsProvider ?? defaultMetricsProvider;
+  const metrics =
+    options.metrics !== undefined
+      ? options.metrics
+      : (options.metricsProvider ?? defaultMetricsProvider);
+
   const submissionReconciler =
     options.submissionReconciler ??
     new SubmissionReconciler({
@@ -62,6 +79,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       userRepo,
       refreshTokenRepo,
       authSecret,
+      auditService,
     });
   const roomService =
     options.roomService ??
@@ -69,6 +87,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       roomRepo,
       userRepo,
       authService,
+      auditService,
     });
   const submissionService =
     options.submissionService ??
@@ -78,6 +97,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       problemRepo,
       judgeQueue,
       logger,
+      auditService,
     });
 
   const resultPublisher = options.resultPublisher ?? new InMemoryResultChannel();
@@ -90,12 +110,19 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     });
   const retentionService =
     options.retentionService ??
-    new RetentionService(userRepo, refreshTokenRepo, roomRepo, options.retentionOptions, logger);
+    new RetentionService(
+      userRepo,
+      refreshTokenRepo,
+      roomRepo,
+      options.retentionOptions,
+      logger,
+      auditService,
+    );
 
   const ctx: ApiContext = {
     serviceName,
     version,
-    startTime: Date.now(),
+    startTime,
     probes,
     logger,
     userRepo,
@@ -103,6 +130,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     roomRepo,
     submissionRepo,
     problemRepo,
+    eventRepo,
     judgeQueue,
     submissionReconciler,
     resultPublisher,
@@ -111,8 +139,10 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     roomService,
     submissionService,
     retentionService,
+    auditService,
+    metricsProvider,
+    metrics,
     ...(options.csrfOptions !== undefined ? { csrfOptions: options.csrfOptions } : {}),
-    ...(options.metrics !== undefined ? { metrics: options.metrics } : {}),
   };
 
   const requestListener = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {

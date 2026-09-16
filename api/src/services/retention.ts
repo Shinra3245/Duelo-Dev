@@ -5,6 +5,7 @@ import type {
   RoomRepository,
   UserRepository,
 } from '../repositories/types.js';
+import type { AuditService } from './audit.js';
 
 /** Opciones de configuración para el servicio de retención (doc 04 §5, doc 06 §B04). */
 export interface RetentionServiceOptions {
@@ -12,6 +13,8 @@ export interface RetentionServiceOptions {
   guestRetentionDays?: number;
   /** Prefijo para el gamertag de lápida / tombstone (por defecto: 'anon'). */
   tombstonePrefix?: string;
+  /** Servicio opcional de auditoría para registro de eventos de purga. */
+  auditService?: AuditService;
 }
 
 /** Configuración completa requerida cuando se inicializa por objeto de configuración. */
@@ -20,6 +23,7 @@ export interface RetentionServiceConfig extends RetentionServiceOptions {
   refreshTokenRepo: RefreshTokenRepository;
   roomRepo?: RoomRepository;
   logger?: Logger;
+  auditService?: AuditService;
 }
 
 /** Resultado consolidado de la ejecución de purga de invitados inactivos. */
@@ -65,6 +69,7 @@ export class RetentionService {
   private readonly guestRetentionDays: number;
   private readonly tombstonePrefix: string;
   private readonly logger: Logger;
+  private readonly auditService?: AuditService | undefined;
 
   constructor(
     userRepo: UserRepository,
@@ -72,6 +77,7 @@ export class RetentionService {
     roomRepo?: RoomRepository,
     options?: RetentionServiceOptions,
     logger?: Logger,
+    auditService?: AuditService,
   );
   constructor(config: RetentionServiceConfig);
   constructor(
@@ -80,6 +86,7 @@ export class RetentionService {
     roomRepo?: RoomRepository,
     options?: RetentionServiceOptions,
     logger?: Logger,
+    auditService?: AuditService,
   ) {
     if ('userRepo' in userRepoOrConfig) {
       this.userRepo = userRepoOrConfig.userRepo;
@@ -88,6 +95,7 @@ export class RetentionService {
       this.guestRetentionDays = userRepoOrConfig.guestRetentionDays ?? 30;
       this.tombstonePrefix = userRepoOrConfig.tombstonePrefix ?? 'anon';
       this.logger = userRepoOrConfig.logger ?? createLogger('retention-service');
+      this.auditService = userRepoOrConfig.auditService;
     } else {
       this.userRepo = userRepoOrConfig;
       this.refreshTokenRepo = refreshTokenRepo!;
@@ -95,6 +103,7 @@ export class RetentionService {
       this.guestRetentionDays = options?.guestRetentionDays ?? 30;
       this.tombstonePrefix = options?.tombstonePrefix ?? 'anon';
       this.logger = logger ?? createLogger('retention-service');
+      this.auditService = auditService ?? options?.auditService;
     }
   }
 
@@ -135,6 +144,10 @@ export class RetentionService {
         result.purged_user_ids.push(guest.id);
         result.revoked_sessions += revokedSessions;
         result.scrubbed_snapshots += scrubbedSnapshots;
+
+        if (this.auditService) {
+          await this.auditService.recordGuestPurged(guest.id, anonymized.gamertag);
+        }
       }
     }
 
@@ -172,6 +185,10 @@ export class RetentionService {
       revokedSessions,
       scrubbedSnapshots,
     } = await this.processGuestAnonymization(user, nowIso);
+
+    if (anonymized && this.auditService) {
+      await this.auditService.recordGuestPurged(userId, anonymized.gamertag);
+    }
 
     this.logger.info('Invitado anonimizado bajo demanda', {
       user_id: userId,

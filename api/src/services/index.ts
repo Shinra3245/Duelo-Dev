@@ -6,3 +6,5 @@ export * from './rooms.js';
 export * from './submissions.js';
 export * from './judgment.js';
 export * from './retention.js';
+export * from './audit.js';
+export * from './metrics.js';
