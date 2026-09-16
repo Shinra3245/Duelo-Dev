@@ -5,10 +5,12 @@ import { createLogger, ERROR_CODES, type ApiError } from '@duelodev/shared';
 import type { RealtimeAppOptions, RealtimeContext } from './types.js';
 import { InMemoryMatchStore } from './store/memory.js';
 import { handleHealthz, handleReadyz } from './routes/health.js';
+import { MatchHub } from './socket/hub.js';
 
 export interface RealtimeServer {
   server: Server;
   ctx: RealtimeContext;
+  matchHub: MatchHub;
   requestListener: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   start: (port?: number, host?: string) => Promise<{ port: number; host: string }>;
   close: () => Promise<void>;
@@ -24,6 +26,12 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   const logger = options.logger ?? createLogger(serviceName);
   const startTime = Date.now();
   const readinessProbes = options.readinessProbes ? [...options.readinessProbes] : [];
+
+  const matchHub = new MatchHub({
+    matchStore,
+    logger,
+    reconnectGraceMs: options.reconnectGraceMs,
+  });
 
   const ctx: RealtimeContext = {
     serviceName,
@@ -138,6 +146,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   };
 
   const close = (): Promise<void> => {
+    matchHub.clearAllGraceTimers();
     return new Promise((resolve, reject) => {
       server.close((err) => {
         if (err) {
@@ -152,6 +161,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   return {
     server,
     ctx,
+    matchHub,
     requestListener,
     start,
     close,

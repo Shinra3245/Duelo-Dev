@@ -52,6 +52,7 @@ export interface RealtimeAppOptions {
   matchStore?: MatchStore | undefined;
   readinessProbes?: ReadinessProbe[] | undefined;
   logger?: StructuredLogger | undefined;
+  reconnectGraceMs?: number | undefined;
 }
 
 export interface RealtimeContext {

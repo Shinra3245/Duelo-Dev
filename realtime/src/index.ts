@@ -5,6 +5,7 @@ import { InMemoryMatchStore } from './store/memory.js';
 export * from './types.js';
 export * from './store/index.js';
 export * from './routes/health.js';
+export * from './socket/index.js';
 export { createRealtimeServer, type RealtimeServer };
 export { InMemoryMatchStore };
 
