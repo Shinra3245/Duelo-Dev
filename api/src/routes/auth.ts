@@ -77,6 +77,8 @@ export async function handleRegister(
     throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use POST.');
   }
 
+  ctx.rateLimiter?.check(req, res, 'register', ctx.rateLimitConfig?.registerLimit ?? 10);
+
   const body = await parseJsonBody(req);
   const validated = validateRegisterRequest(body);
   if (!validated.ok) {
@@ -107,6 +109,8 @@ export async function handleLogin(
     res.setHeader('Allow', 'POST');
     throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use POST.');
   }
+
+  ctx.rateLimiter?.check(req, res, 'login', ctx.rateLimitConfig?.loginLimit ?? 15);
 
   const body = await parseJsonBody(req);
   const validated = validateLoginRequest(body);

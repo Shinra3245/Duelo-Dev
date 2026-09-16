@@ -22,6 +22,7 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
     app = createApp({
       serviceName: 'api-rooms-test',
       authSecret: 'test-room-secret-duelodev-1234567890',
+      rateLimitConfig: { enabled: false },
     });
     await app.start(0, '127.0.0.1');
     const addr = app.server.address() as AddressInfo;

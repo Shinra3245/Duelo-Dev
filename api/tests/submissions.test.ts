@@ -32,6 +32,7 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
     app = createApp({
       serviceName: 'api-submissions-test',
       authSecret: 'test-submission-secret-duelodev-1234567890',
+      rateLimitConfig: { enabled: false },
     });
 
     // Cargar problema y casos de prueba (públicos y ocultos)

@@ -92,7 +92,26 @@ export async function handleReadyz(
   const metricSource = ctx.metrics ?? ctx.metricsProvider;
   const resolvedMetrics = typeof metricSource === 'function' ? await metricSource() : metricSource;
 
-  const result: ReadyResponse = await runReadyChecks(ctx.serviceName, ctx.probes, resolvedMetrics);
+  const adaptedProbes: Record<string, () => Promise<void>> = {};
+  for (const [name, probe] of Object.entries(ctx.probes)) {
+    adaptedProbes[name] = async () => {
+      const probeResult = await probe();
+      if (
+        probeResult &&
+        typeof probeResult === 'object' &&
+        'status' in probeResult &&
+        probeResult.status === 'degraded'
+      ) {
+        throw new Error(probeResult.message ?? 'Dependencia no disponible');
+      }
+    };
+  }
+
+  const result: ReadyResponse = await runReadyChecks(
+    ctx.serviceName,
+    adaptedProbes,
+    resolvedMetrics,
+  );
 
   const statusCode = result.status === 'ready' ? 200 : 503;
   sendJson(req, res, statusCode, result);

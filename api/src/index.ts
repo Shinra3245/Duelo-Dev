@@ -8,6 +8,7 @@ export * from './services/index.js';
 export * from './repositories/index.js';
 export * from './queue/index.js';
 export * from './seeds/index.js';
+export * from './infrastructure/index.js';
 export * from './routes/health.js';
 export * from './routes/auth.js';
 export * from './routes/rooms.js';

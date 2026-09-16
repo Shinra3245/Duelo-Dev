@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createLogger } from '@duelodev/shared';
-import type { ApiAppOptions, ApiContext } from './types.js';
+import type { ApiAppOptions, ApiContext, ReadinessProbe } from './types.js';
+import { RateLimiter } from './plugins/rate-limit.js';
+import { createPostgresProbe, createRedisProbe } from './infrastructure/probes.js';
 import {
   InMemoryEventRepository,
   InMemoryProblemRepository,
@@ -40,7 +42,23 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const serviceName = options.serviceName ?? 'api';
   const version = options.version ?? '0.1.0';
   const logger = options.logger ?? createLogger(serviceName);
-  const probes = options.probes ?? {};
+  const probes: Record<string, ReadinessProbe> = { ...(options.probes ?? {}) };
+  if (options.databasePing) {
+    probes['postgres'] = createPostgresProbe(options.databasePing);
+  }
+  if (options.redisPing) {
+    probes['redis'] = createRedisProbe(options.redisPing);
+  }
+
+  const rateLimiter =
+    options.rateLimitConfig?.enabled !== false
+      ? (options.rateLimiter ??
+        new RateLimiter(
+          options.rateLimitConfig?.windowMs !== undefined
+            ? { windowMs: options.rateLimitConfig.windowMs }
+            : undefined,
+        ))
+      : undefined;
 
   const userRepo = options.userRepo ?? new InMemoryUserRepository();
   const refreshTokenRepo = options.refreshTokenRepo ?? new InMemoryRefreshTokenRepository();
@@ -142,6 +160,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     auditService,
     metricsProvider,
     metrics,
+    ...(rateLimiter !== undefined ? { rateLimiter } : {}),
+    ...(options.rateLimitConfig !== undefined ? { rateLimitConfig: options.rateLimitConfig } : {}),
     ...(options.csrfOptions !== undefined ? { csrfOptions: options.csrfOptions } : {}),
   };
 

@@ -16,12 +16,21 @@ import type { RetentionService, RetentionServiceOptions } from './services/reten
 import type { AuditService } from './services/audit.js';
 import type { JudgeQueue, SubmissionReconciler, ResultPublisher } from './queue/index.js';
 import type { CsrfOptions } from './plugins/csrf.js';
+import type { RateLimiter } from './plugins/rate-limit.js';
+import type { ReadinessProbe, ReadinessProbeResult } from './infrastructure/probes.js';
 
-/** Sonda de verificación de dependencias para /readyz. */
-export type ReadinessProbe = () => Promise<void>;
+export type { ReadinessProbe, ReadinessProbeResult };
 
 /** Proveedor o diccionario de métricas operativas para /readyz. */
 export type MetricsProvider = () => Promise<Record<string, number>> | Record<string, number>;
+
+/** Configuración de tasa para autenticación pública. */
+export interface RateLimitConfig {
+  registerLimit?: number;
+  loginLimit?: number;
+  windowMs?: number;
+  enabled?: boolean;
+}
 
 /** Opciones de configuración para crear la aplicación API. */
 export interface ApiAppOptions {
@@ -31,6 +40,19 @@ export interface ApiAppOptions {
   version?: string;
   /** Sondas de preparación evaluadas en /readyz. */
   probes?: Record<string, ReadinessProbe>;
+  /** Ping de base de datos evaluado en /readyz. */
+  databasePing?: () => Promise<void>;
+  /** Ping de Redis evaluado en /readyz. */
+  redisPing?: () => Promise<void>;
+  /** Instancia personalizada del limitador de tasa para autenticación. */
+  rateLimiter?: RateLimiter;
+  /** Opciones de configuración de rate limiting para autenticación. */
+  rateLimitConfig?: {
+    registerLimit?: number;
+    loginLimit?: number;
+    windowMs?: number;
+    enabled?: boolean;
+  };
   /** Métricas operativas incluidas en /readyz. */
   metrics?: Record<string, number> | MetricsProvider;
   /** Proveedor personalizado de métricas operativas para /readyz. */
@@ -102,6 +124,13 @@ export interface ApiContext {
   retentionService: RetentionService;
   auditService?: AuditService;
   csrfOptions?: CsrfOptions;
+  rateLimiter?: RateLimiter;
+  rateLimitConfig?: {
+    registerLimit?: number;
+    loginLimit?: number;
+    windowMs?: number;
+    enabled?: boolean;
+  };
 }
 
 /** Firma de manejador de ruta HTTP nativo. */
