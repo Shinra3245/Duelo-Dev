@@ -384,4 +384,220 @@ describe('JudgeResultsConsumer (F3 Unidad 7)', () => {
     await channel.publish(notif);
     expect(consumer.getProcessedCount()).toBe(0);
   });
+
+  it('obtiene admission_seq y received_at fidedignos desde la persistencia durable (doc 04 §131)', async () => {
+    const channel = new InMemoryResultChannel();
+    const matchStore = new InMemoryMatchStore();
+    const processedStore = new InMemoryProcessedSubmissionStore();
+    const submissionProvider = new InMemorySubmissionProvider();
+    const hub = new MatchHub({ matchStore });
+
+    const durableReceivedAt = '2026-09-16T10:15:30.000Z';
+    submissionProvider.addSubmission({
+      id: 'sub-durable-seq',
+      match_id: 'match-seq-test',
+      round_id: 'round-1',
+      user_id: 'u1',
+      problem_id: 'prob-1',
+      admission_seq: 7, // Secuencia real distinta de 1
+      received_at: durableReceivedAt,
+      verdict: VERDICTS.AC,
+      passed_cases: 5,
+      total_cases: 5,
+      exec_time_ms: 60,
+    });
+
+    const session = createMockSession('match-seq-test', 'u1', 'u2');
+    await matchStore.saveMatch(session);
+
+    let capturedCtx: unknown;
+    const originalProcess = hub.processSubmissionVerdict.bind(hub);
+    hub.processSubmissionVerdict = async (matchId, ctx, compileOutput) => {
+      capturedCtx = ctx;
+      return originalProcess(matchId, ctx, compileOutput);
+    };
+
+    const consumer = new JudgeResultsConsumer({
+      subscriber: channel,
+      matchHub: hub,
+      matchStore,
+      processedStore,
+      submissionProvider,
+    });
+    consumer.start();
+
+    const notif: JudgeResultNotification = {
+      submission_id: 'sub-durable-seq',
+      match_id: 'match-seq-test',
+      round_id: 'round-1',
+      user_id: 'u1',
+      verdict: VERDICTS.AC,
+      passed: 5,
+      total: 5,
+      exec_time_ms: 60,
+    };
+
+    const handled = await consumer.handleNotification(notif);
+    expect(handled).toBe(true);
+
+    expect(capturedCtx).toBeDefined();
+    const ctx = capturedCtx as { admission_seq: number; received_at: number };
+    expect(ctx.admission_seq).toBe(7);
+    expect(ctx.received_at).toBe(Date.parse(durableReceivedAt));
+
+    consumer.stop();
+  });
+
+  it('rechaza avisos con discrepancia frente al registro durable en PostgreSQL', async () => {
+    const channel = new InMemoryResultChannel();
+    const matchStore = new InMemoryMatchStore();
+    const processedStore = new InMemoryProcessedSubmissionStore();
+    const submissionProvider = new InMemorySubmissionProvider();
+    const hub = new MatchHub({ matchStore });
+
+    // Fila durable registrada con WA
+    submissionProvider.addSubmission({
+      id: 'sub-mismatch',
+      match_id: 'match-disc',
+      round_id: 'round-1',
+      user_id: 'u1',
+      problem_id: 'prob-1',
+      admission_seq: 2,
+      received_at: new Date().toISOString(),
+      verdict: VERDICTS.WA, // WA en BD
+      passed_cases: 2,
+      total_cases: 5,
+      exec_time_ms: 40,
+    });
+
+    const session = createMockSession('match-disc', 'u1', 'u2');
+    await matchStore.saveMatch(session);
+
+    const consumer = new JudgeResultsConsumer({
+      subscriber: channel,
+      matchHub: hub,
+      matchStore,
+      processedStore,
+      submissionProvider,
+    });
+    consumer.start();
+
+    // Aviso espurio que falsamente clama ser AC
+    const fakeNotif: JudgeResultNotification = {
+      submission_id: 'sub-mismatch',
+      match_id: 'match-disc',
+      round_id: 'round-1',
+      user_id: 'u1',
+      verdict: VERDICTS.AC, // Intento de inyección de AC
+      passed: 5,
+      total: 5,
+      exec_time_ms: 40,
+    };
+
+    const handled = await consumer.handleNotification(fakeNotif);
+    expect(handled).toBe(false);
+
+    // No debe mutar la sesión ni registrarse como procesado
+    const sessionAfter = await matchStore.getMatch('match-disc');
+    const u1Score = sessionAfter?.scores.find((s) => s.user_id === 'u1')?.score ?? 0;
+    expect(u1Score).toBe(0);
+
+    const isProcessed = await processedStore.hasBeenProcessed('match-disc', 'sub-mismatch');
+    expect(isProcessed).toBe(false);
+
+    consumer.stop();
+  });
+
+  it('no fuga el payload corrupto en logs ante avisos inválidos (doc 04 §135)', async () => {
+    const channel = new InMemoryResultChannel();
+    const matchStore = new InMemoryMatchStore();
+    const processedStore = new InMemoryProcessedSubmissionStore();
+    const hub = new MatchHub({ matchStore });
+
+    const logMessages: Array<{ msg: string; meta?: unknown }> = [];
+    const mockLogger = {
+      debug: () => {},
+      info: (msg: string, meta?: unknown) => {
+        logMessages.push({ msg, meta });
+      },
+      warn: (msg: string, meta?: unknown) => {
+        logMessages.push({ msg, meta });
+      },
+      error: (msg: string, meta?: unknown) => {
+        logMessages.push({ msg, meta });
+      },
+    };
+
+    const consumer = new JudgeResultsConsumer({
+      subscriber: channel,
+      matchHub: hub,
+      matchStore,
+      processedStore,
+      logger: mockLogger,
+    });
+    consumer.start();
+
+    const sensitivePayload = {
+      malformed: true,
+      stolen_token: 'secret_token_12345',
+      source_code: 'secret_proprietary_code()',
+      cases: [{ input: 'confidential' }],
+    } as unknown as JudgeResultNotification;
+
+    const handled = await consumer.handleNotification(sensitivePayload);
+    expect(handled).toBe(false);
+
+    const serializedLogs = JSON.stringify(logMessages);
+    expect(serializedLogs).not.toContain('secret_token_12345');
+    expect(serializedLogs).not.toContain('secret_proprietary_code');
+    expect(serializedLogs).not.toContain('confidential');
+
+    consumer.stop();
+  });
+
+  it('procesa exactamente un efecto ante avisos concurrentes con Promise.all', async () => {
+    const channel = new InMemoryResultChannel();
+    const matchStore = new InMemoryMatchStore();
+    const processedStore = new InMemoryProcessedSubmissionStore();
+    const hub = new MatchHub({ matchStore });
+
+    const session = createMockSession('match-concurrent', 'u1', 'u2');
+    await matchStore.saveMatch(session);
+
+    const consumer = new JudgeResultsConsumer({
+      subscriber: channel,
+      matchHub: hub,
+      matchStore,
+      processedStore,
+    });
+    consumer.start();
+
+    const notif: JudgeResultNotification = {
+      submission_id: 'sub-race-1',
+      match_id: 'match-concurrent',
+      round_id: 'round-1',
+      user_id: 'u1',
+      verdict: VERDICTS.AC,
+      passed: 5,
+      total: 5,
+      exec_time_ms: 50,
+    };
+
+    // Disparar concurrentemente dos handleNotification para el mismo envío
+    const [result1, result2] = await Promise.all([
+      consumer.handleNotification(notif),
+      consumer.handleNotification(notif),
+    ]);
+
+    // Exactamente una de las llamadas debe retornar true, la otra false
+    expect([result1, result2].filter(Boolean)).toHaveLength(1);
+
+    // Puntaje final debe ser exactamente 1 (no 2)
+    const sessionAfter = await matchStore.getMatch('match-concurrent');
+    const u1Score = sessionAfter?.scores.find((s) => s.user_id === 'u1')?.score ?? 0;
+    expect(u1Score).toBe(1);
+    expect(consumer.getProcessedCount()).toBe(1);
+
+    consumer.stop();
+  });
 });

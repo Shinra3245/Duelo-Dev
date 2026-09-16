@@ -546,7 +546,7 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
   async claimSubmission(
     submissionId: string,
     workerId: string,
-    leaseDurationMs = 30000,
+    leaseDurationMs = 120000,
     nowIso?: string,
   ): Promise<ClaimResult> {
     const sub = this.submissions.get(submissionId);
@@ -595,7 +595,7 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
       return 'completed';
     }
 
-    if (sub.attempt_token !== attemptToken) {
+    if (sub.status !== 'judging' || sub.attempt_token !== attemptToken) {
       return 'fenced';
     }
 
@@ -608,6 +608,11 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     sub.compile_output = result.compile_output ?? null;
     sub.judge_error = result.judge_error ?? null;
     sub.judged_at = now;
+
+    // Limpiar attempt_token, worker_id, lease_until al completar para mantener invariante
+    sub.attempt_token = null;
+    sub.worker_id = null;
+    sub.lease_until = null;
 
     return 'stored';
   }
@@ -739,12 +744,15 @@ export class InMemoryRejectedMessageRepository implements RejectedMessageReposit
   private readonly messages = new Map<string, RejectedMessageEntity>();
 
   async recordRejected(messageId: string, reason: string): Promise<boolean> {
+    const sanitizedReason = reason.length > 1024 ? reason.slice(0, 1024) : reason;
     if (this.messages.has(messageId)) {
-      return false;
+      // Idempotencia exitosa: si ya existe durablemente, confirma éxito (true)
+      // para permitir al consumidor del juez realizar XACK de forma segura en Redis
+      return true;
     }
     const entry: RejectedMessageEntity = {
       message_id: messageId,
-      reason,
+      reason: sanitizedReason,
       rejected_at: new Date().toISOString(),
     };
     this.messages.set(messageId, entry);

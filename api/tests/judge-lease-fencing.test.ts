@@ -82,10 +82,27 @@ describe('Judge Lease Fencing & Rejected Messages (S19)', () => {
       expect(claim2.status).toBe('acquired');
       expect(claim2.attempt_token).not.toBe(claim1.attempt_token);
     });
+
+    it('usa una duración de lease por defecto de 120000 ms (2 minutos)', async () => {
+      await subRepo.createSubmission(baseSubmissionInput);
+
+      const t0 = new Date('2026-09-16T12:00:00.000Z');
+      const claim = await subRepo.claimSubmission(
+        'sub-test-001',
+        'worker-default',
+        undefined,
+        t0.toISOString(),
+      );
+      expect(claim.status).toBe('acquired');
+
+      const updated = await subRepo.findSubmissionById('sub-test-001');
+      const expectedExpiry = new Date(t0.getTime() + 120000).toISOString();
+      expect((updated as { lease_until?: string | null }).lease_until).toBe(expectedExpiry);
+    });
   });
 
   describe('persistIfCurrent', () => {
-    it('persiste exitosamente el resultado si el attempt_token coincide', async () => {
+    it('persiste exitosamente el resultado si el attempt_token coincide y limpia el lease', async () => {
       await subRepo.createSubmission(baseSubmissionInput);
 
       const claim = await subRepo.claimSubmission('sub-test-001', 'worker-1');
@@ -106,12 +123,26 @@ describe('Judge Lease Fencing & Rejected Messages (S19)', () => {
 
       expect(persistStatus).toBe('stored');
 
-      const finished = await subRepo.findSubmissionById('sub-test-001');
-      expect(finished!.status).toBe('completed');
-      expect(finished!.verdict).toBe('AC');
-      expect(finished!.passed_cases).toBe(5);
-      expect(finished!.total_cases).toBe(5);
-      expect(finished!.exec_time_ms).toBe(120);
+      const finished = (await subRepo.findSubmissionById('sub-test-001')) as {
+        status: string;
+        verdict: string;
+        passed_cases: number;
+        total_cases: number;
+        exec_time_ms: number;
+        attempt_token?: string | null;
+        worker_id?: string | null;
+        lease_until?: string | null;
+      };
+      expect(finished.status).toBe('completed');
+      expect(finished.verdict).toBe('AC');
+      expect(finished.passed_cases).toBe(5);
+      expect(finished.total_cases).toBe(5);
+      expect(finished.exec_time_ms).toBe(120);
+
+      // Invariante de coherencia: los campos de lease deben quedar nulos al completar
+      expect(finished.attempt_token).toBeNull();
+      expect(finished.worker_id).toBeNull();
+      expect(finished.lease_until).toBeNull();
     });
 
     it('bloquea (fenced) a un worker zombi cuyo lease fue tomado por otro', async () => {
@@ -188,6 +219,26 @@ describe('Judge Lease Fencing & Rejected Messages (S19)', () => {
       expect(duplicatePersist).toBe('completed');
     });
 
+    it('retorna fenced si el estado no es judging al persistir', async () => {
+      await subRepo.createSubmission({
+        ...baseSubmissionInput,
+        status: 'queued',
+      });
+
+      const persistStatus = await subRepo.persistIfCurrent(
+        {
+          submission_id: 'sub-test-001',
+          verdict: 'AC',
+          passed_cases: 5,
+          total_cases: 5,
+          exec_time_ms: 100,
+        },
+        'any-token',
+      );
+
+      expect(persistStatus).toBe('fenced');
+    });
+
     it('lanza error si el envío no existe al persistir', async () => {
       await expect(
         subRepo.persistIfCurrent(
@@ -205,32 +256,32 @@ describe('Judge Lease Fencing & Rejected Messages (S19)', () => {
   });
 
   describe('InMemoryRejectedMessageRepository', () => {
-    it('registra mensajes rechazados de forma idempotente', async () => {
+    it('registra mensajes rechazados confirmando true tanto en primera inserción como en duplicado (para XACK)', async () => {
       const recordedFirst = await rejectedRepo.recordRejected(
         'stream-msg-101',
         'Payload corrupto: JSON inválido',
       );
       expect(recordedFirst).toBe(true);
 
+      // Duplicado debe confirmar true para permitir XACK en Redis
       const recordedSecond = await rejectedRepo.recordRejected(
         'stream-msg-101',
         'Payload corrupto: JSON inválido',
       );
-      expect(recordedSecond).toBe(false);
+      expect(recordedSecond).toBe(true);
 
+      // Solo una fila durable debe existir
       expect(await rejectedRepo.countRejectedMessages()).toBe(1);
     });
 
-    it('recupera detalles del mensaje rechazado', async () => {
-      await rejectedRepo.recordRejected(
-        'stream-msg-202',
-        'Límites excedidos: memory_limit_mb > 512',
-      );
+    it('recupera detalles del mensaje rechazado y acota el motivo a 1024 caracteres', async () => {
+      const longReason = 'Error muy largo: '.concat('x'.repeat(2000));
+      await rejectedRepo.recordRejected('stream-msg-202', longReason);
 
       const found = await rejectedRepo.findRejectedMessageById('stream-msg-202');
       expect(found).not.toBeNull();
       expect(found!.message_id).toBe('stream-msg-202');
-      expect(found!.reason).toBe('Límites excedidos: memory_limit_mb > 512');
+      expect(found!.reason.length).toBe(1024);
       expect(typeof found!.rejected_at).toBe('string');
     });
 

@@ -148,13 +148,15 @@ describe('PostgreSQL Database Migrations (002_judge_lease_fencing)', () => {
     expect(existsSync(join(MIGRATIONS_DIR, '002_judge_lease_fencing.down.sql'))).toBe(true);
   });
 
-  it('el script UP añade columnas de lease y fencing a submissions', () => {
+  it('el script UP añade columnas de lease, fencing y restricción CHECK de coherencia', () => {
     const sql = getMigrationSql('002_judge_lease_fencing', 'up');
 
     expect(sql).toMatch(/ALTER TABLE submissions/i);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS attempt_token VARCHAR\(64\)/i);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS worker_id VARCHAR\(128\)/i);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ/i);
+    expect(sql).toMatch(/chk_submissions_lease_coherence/i);
+    expect(sql).toMatch(/status = 'judging' AND attempt_token IS NOT NULL/i);
   });
 
   it('el script UP crea índice parcial para reclamo atómico de envíos', () => {
@@ -165,21 +167,23 @@ describe('PostgreSQL Database Migrations (002_judge_lease_fencing)', () => {
     expect(sql).toMatch(/WHERE status IN \('queued',\s*'judging'\)/i);
   });
 
-  it('el script UP crea la tabla judge_rejected_messages con clave primaria e índice', () => {
+  it('el script UP crea la tabla judge_rejected_messages con motivo acotado e índice', () => {
     const sql = getMigrationSql('002_judge_lease_fencing', 'up');
 
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS judge_rejected_messages/i);
     expect(sql).toMatch(/message_id VARCHAR\(128\) PRIMARY KEY/i);
-    expect(sql).toMatch(/reason TEXT NOT NULL/i);
+    expect(sql).toMatch(/reason VARCHAR\(1024\) NOT NULL/i);
     expect(sql).toMatch(/rejected_at TIMESTAMPTZ NOT NULL/i);
     expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS idx_judge_rejected_messages_date/i);
   });
 
-  it('el script DOWN revierte limpiamente tabla, índice y columnas añadidas', () => {
+  it('el script DOWN revierte limpiamente tabla, índice, restricción CHECK y columnas', () => {
     const sql = getMigrationSql('002_judge_lease_fencing', 'down');
 
-    expect(sql).toMatch(/DROP TABLE IF EXISTS judge_rejected_messages CASCADE/i);
+    expect(sql).toMatch(/DROP TABLE IF EXISTS judge_rejected_messages;/i);
+    expect(sql).not.toMatch(/judge_rejected_messages CASCADE/i);
     expect(sql).toMatch(/DROP INDEX IF EXISTS idx_submissions_claim/i);
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS chk_submissions_lease_coherence/i);
     expect(sql).toMatch(/DROP COLUMN IF EXISTS lease_until/i);
     expect(sql).toMatch(/DROP COLUMN IF EXISTS worker_id/i);
     expect(sql).toMatch(/DROP COLUMN IF EXISTS attempt_token/i);

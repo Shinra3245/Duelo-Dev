@@ -53,6 +53,11 @@ export interface SubmissionProvider {
   findJudgedSubmissionsByMatch(matchId: string): Promise<JudgedSubmissionRecord[]>;
 
   /**
+   * Recupera un envío juzgado individual por su ID desde la persistencia durable.
+   */
+  findJudgedSubmissionById?(submissionId: string): Promise<JudgedSubmissionRecord | null>;
+
+  /**
    * Obtiene la salida de compilación para un envío específico, si existe.
    */
   getCompileOutput?(submissionId: string): Promise<string | undefined>;
@@ -69,7 +74,19 @@ export interface ProcessedSubmissionStore {
   hasBeenProcessed(matchId: string, submissionId: string): Promise<boolean>;
 
   /**
-   * Marca un envío como procesado para la partida dada.
+   * Reserva de forma atómica el procesamiento de un envío para prevenir que avisos
+   * o reconciliaciones concurrentes procesen el mismo envío dos veces.
+   * Retorna true si adquirió la reserva; false si ya fue procesado o está en proceso.
+   */
+  claimProcessing?(matchId: string, submissionId: string): Promise<boolean>;
+
+  /**
+   * Libera una reserva de procesamiento previa en caso de error o descarte temprano.
+   */
+  releaseProcessing?(matchId: string, submissionId: string): Promise<void>;
+
+  /**
+   * Marca un envío como procesado definitivamente para la partida dada.
    */
   markProcessed(matchId: string, submissionId: string): Promise<void>;
 

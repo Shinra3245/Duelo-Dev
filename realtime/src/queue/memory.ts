@@ -56,6 +56,7 @@ export class InMemoryResultChannel implements ResultSubscriber, ResultPublisher 
  */
 export class InMemoryProcessedSubmissionStore implements ProcessedSubmissionStore {
   private readonly processedKeys = new Set<string>();
+  private readonly processingKeys = new Set<string>();
 
   private makeKey(matchId: string, submissionId: string): string {
     return `${matchId}:${submissionId}`;
@@ -65,8 +66,24 @@ export class InMemoryProcessedSubmissionStore implements ProcessedSubmissionStor
     return this.processedKeys.has(this.makeKey(matchId, submissionId));
   }
 
+  async claimProcessing(matchId: string, submissionId: string): Promise<boolean> {
+    const key = this.makeKey(matchId, submissionId);
+    if (this.processedKeys.has(key) || this.processingKeys.has(key)) {
+      return false;
+    }
+    this.processingKeys.add(key);
+    return true;
+  }
+
+  async releaseProcessing(matchId: string, submissionId: string): Promise<void> {
+    const key = this.makeKey(matchId, submissionId);
+    this.processingKeys.delete(key);
+  }
+
   async markProcessed(matchId: string, submissionId: string): Promise<void> {
-    this.processedKeys.add(this.makeKey(matchId, submissionId));
+    const key = this.makeKey(matchId, submissionId);
+    this.processingKeys.delete(key);
+    this.processedKeys.add(key);
   }
 
   async countProcessed(matchId?: string): Promise<number> {
@@ -86,6 +103,7 @@ export class InMemoryProcessedSubmissionStore implements ProcessedSubmissionStor
 
   clear(): void {
     this.processedKeys.clear();
+    this.processingKeys.clear();
   }
 }
 
@@ -107,6 +125,11 @@ export class InMemorySubmissionProvider implements SubmissionProvider {
       }
     }
     return results;
+  }
+
+  async findJudgedSubmissionById(submissionId: string): Promise<JudgedSubmissionRecord | null> {
+    const record = this.records.get(submissionId);
+    return record ? { ...record } : null;
   }
 
   async getCompileOutput(submissionId: string): Promise<string | undefined> {

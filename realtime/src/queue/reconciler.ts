@@ -118,12 +118,20 @@ export class MatchStateReconciler {
     let reconciledCount = 0;
 
     for (const record of sorted) {
-      const alreadyProcessed = await this.options.processedStore.hasBeenProcessed(
-        matchId,
-        record.id,
-      );
-      if (alreadyProcessed) {
-        continue;
+      let claimed = false;
+      if (this.options.processedStore.claimProcessing) {
+        claimed = await this.options.processedStore.claimProcessing(matchId, record.id);
+        if (!claimed) {
+          continue;
+        }
+      } else {
+        const alreadyProcessed = await this.options.processedStore.hasBeenProcessed(
+          matchId,
+          record.id,
+        );
+        if (alreadyProcessed) {
+          continue;
+        }
       }
 
       // Re-verificar que la partida continúe activa tras envíos precedentes
@@ -132,6 +140,9 @@ export class MatchStateReconciler {
         !currentSession ||
         (currentSession.status !== 'running' && currentSession.status !== 'settling')
       ) {
+        if (claimed && this.options.processedStore.releaseProcessing) {
+          await this.options.processedStore.releaseProcessing(matchId, record.id);
+        }
         this.options.logger?.info(
           'Partida finalizada durante reconciliación; interrumpiendo envíos restantes',
           { match_id: matchId, status: currentSession?.status },
@@ -176,18 +187,25 @@ export class MatchStateReconciler {
         }
       }
 
-      await this.options.matchHub.processSubmissionVerdict(matchId, submissionCtx, compileOutput);
+      try {
+        await this.options.matchHub.processSubmissionVerdict(matchId, submissionCtx, compileOutput);
 
-      await this.options.processedStore.markProcessed(matchId, record.id);
-      reconciledCount++;
-      this.totalReconciled++;
+        await this.options.processedStore.markProcessed(matchId, record.id);
+        reconciledCount++;
+        this.totalReconciled++;
 
-      this.options.logger?.info('Envío reconciliado exitosamente', {
-        match_id: matchId,
-        submission_id: record.id,
-        admission_seq: record.admission_seq,
-        verdict: record.verdict,
-      });
+        this.options.logger?.info('Envío reconciliado exitosamente', {
+          match_id: matchId,
+          submission_id: record.id,
+          admission_seq: record.admission_seq,
+          verdict: record.verdict,
+        });
+      } catch (err) {
+        if (claimed && this.options.processedStore.releaseProcessing) {
+          await this.options.processedStore.releaseProcessing(matchId, record.id);
+        }
+        throw err;
+      }
     }
 
     return reconciledCount;

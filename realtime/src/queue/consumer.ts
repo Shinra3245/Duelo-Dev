@@ -6,7 +6,12 @@ import {
 } from '@duelodev/shared';
 import type { MatchHub } from '../socket/hub.js';
 import type { MatchStore } from '../store/types.js';
-import type { ProcessedSubmissionStore, ResultSubscriber, SubmissionProvider } from './types.js';
+import type {
+  JudgedSubmissionRecord,
+  ProcessedSubmissionStore,
+  ResultSubscriber,
+  SubmissionProvider,
+} from './types.js';
 
 export interface JudgeResultsConsumerOptions {
   subscriber: ResultSubscriber;
@@ -22,7 +27,9 @@ export interface JudgeResultsConsumerOptions {
  *
  * Recibe avisos desde el canal de resultados `judge:results`, valida el formato
  * según el esquema de notificaciones, garantiza idempotencia durable evitando
- * aplicar doble puntuación o dobles transiciones, y delega a MatchHub.
+ * aplicar doble puntuación o dobles transiciones, coteja con la persistencia
+ * durable de PostgreSQL para obtener admission_seq y received_at fidedignos,
+ * y delega a MatchHub.
  */
 export class JudgeResultsConsumer {
   private readonly options: JudgeResultsConsumerOptions;
@@ -47,11 +54,16 @@ export class JudgeResultsConsumer {
       try {
         await this.handleNotification(notif);
       } catch (err) {
-        this.options.logger?.error('Error no controlado al procesar aviso de veredicto', {
+        const errorMeta: Record<string, unknown> = {
           error: err instanceof Error ? err.message : String(err),
-          submission_id: notif?.submission_id,
-          match_id: notif?.match_id,
-        });
+        };
+        if (typeof notif === 'object' && notif !== null && 'submission_id' in notif) {
+          errorMeta.submission_id = String((notif as { submission_id: unknown }).submission_id);
+        }
+        if (typeof notif === 'object' && notif !== null && 'match_id' in notif) {
+          errorMeta.match_id = String((notif as { match_id: unknown }).match_id);
+        }
+        this.options.logger?.error('Error no controlado al procesar aviso de veredicto', errorMeta);
       }
     });
 
@@ -94,28 +106,47 @@ export class JudgeResultsConsumer {
    * Retorna true si fue procesada y aplicada a la partida; false si fue descartada.
    */
   async handleNotification(notif: JudgeResultNotification): Promise<boolean> {
-    // 1. Valida el esquema con la guardia estricta (doc 04 §135)
+    // 1. Valida el esquema con la guardia estricta (doc 04 §135).
+    // Nunca incluir objetos no validados en logs para prevenir fugas de tokens o código.
     if (!isJudgeResultNotification(notif)) {
       this.options.logger?.warn('Aviso de resultado de juez inválido o mal formado ignorado', {
-        notification: notif,
+        reason: 'malformed_judge_result_notification',
       });
       return false;
     }
 
-    // 2. Idempotencia durable (doc 04 §132)
-    const alreadyProcessed = await this.options.processedStore.hasBeenProcessed(
-      notif.match_id,
-      notif.submission_id,
-    );
-    if (alreadyProcessed) {
-      this.options.logger?.info(
-        'Aviso de resultado ya procesado previamente; ignorando duplicado',
-        {
-          match_id: notif.match_id,
-          submission_id: notif.submission_id,
-        },
+    // 2. Reserva atómica de procesamiento / Idempotencia durable (doc 04 §132)
+    let claimed = false;
+    if (this.options.processedStore.claimProcessing) {
+      claimed = await this.options.processedStore.claimProcessing(
+        notif.match_id,
+        notif.submission_id,
       );
-      return false;
+      if (!claimed) {
+        this.options.logger?.info(
+          'Aviso de resultado ya en procesamiento o procesado previamente; ignorando duplicado',
+          {
+            match_id: notif.match_id,
+            submission_id: notif.submission_id,
+          },
+        );
+        return false;
+      }
+    } else {
+      const alreadyProcessed = await this.options.processedStore.hasBeenProcessed(
+        notif.match_id,
+        notif.submission_id,
+      );
+      if (alreadyProcessed) {
+        this.options.logger?.info(
+          'Aviso de resultado ya procesado previamente; ignorando duplicado',
+          {
+            match_id: notif.match_id,
+            submission_id: notif.submission_id,
+          },
+        );
+        return false;
+      }
     }
 
     // 3. Recupera la sesión de la partida
@@ -128,12 +159,82 @@ export class JudgeResultsConsumer {
           status: session?.status,
         },
       );
+      if (claimed && this.options.processedStore.releaseProcessing) {
+        await this.options.processedStore.releaseProcessing(notif.match_id, notif.submission_id);
+      }
       return false;
     }
 
-    // 4. Obtiene compile_output si el proveedor está configurado
-    let compileOutput: string | undefined;
-    if (this.options.submissionProvider?.getCompileOutput) {
+    // 4. Consulta el registro durable en PostgreSQL si submissionProvider está disponible (doc 04 §131)
+    let durableRecord: JudgedSubmissionRecord | null = null;
+    if (this.options.submissionProvider?.findJudgedSubmissionById) {
+      try {
+        durableRecord = await this.options.submissionProvider.findJudgedSubmissionById(
+          notif.submission_id,
+        );
+      } catch (err) {
+        this.options.logger?.warn('Error al consultar registro durable de envío por ID', {
+          match_id: notif.match_id,
+          submission_id: notif.submission_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else if (this.options.submissionProvider?.findJudgedSubmissionsByMatch) {
+      try {
+        const list = await this.options.submissionProvider.findJudgedSubmissionsByMatch(
+          notif.match_id,
+        );
+        durableRecord = list.find((r) => r.id === notif.submission_id) ?? null;
+      } catch (err) {
+        this.options.logger?.warn('Error al consultar envíos durables de la partida', {
+          match_id: notif.match_id,
+          submission_id: notif.submission_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Si hay submissionProvider, la fila en PostgreSQL es la única fuente de verdad
+    if (this.options.submissionProvider && !durableRecord) {
+      this.options.logger?.warn(
+        'Envío no encontrado en almacenamiento durable; descartando aviso espurio',
+        {
+          match_id: notif.match_id,
+          submission_id: notif.submission_id,
+        },
+      );
+      if (claimed && this.options.processedStore.releaseProcessing) {
+        await this.options.processedStore.releaseProcessing(notif.match_id, notif.submission_id);
+      }
+      return false;
+    }
+
+    // Validar coherencia entre el aviso y la fila durable para evitar avisos manipulados
+    if (durableRecord) {
+      const mismatch =
+        durableRecord.match_id !== notif.match_id ||
+        durableRecord.user_id !== notif.user_id ||
+        durableRecord.round_id !== notif.round_id ||
+        durableRecord.verdict !== notif.verdict;
+
+      if (mismatch) {
+        this.options.logger?.warn(
+          'Discrepancia detectada entre aviso Pub/Sub y registro durable en PostgreSQL',
+          {
+            match_id: notif.match_id,
+            submission_id: notif.submission_id,
+          },
+        );
+        if (claimed && this.options.processedStore.releaseProcessing) {
+          await this.options.processedStore.releaseProcessing(notif.match_id, notif.submission_id);
+        }
+        return false;
+      }
+    }
+
+    // 5. Obtiene compile_output si el proveedor está configurado
+    let compileOutput = durableRecord?.compile_output;
+    if (compileOutput === undefined && this.options.submissionProvider?.getCompileOutput) {
       try {
         compileOutput = await this.options.submissionProvider.getCompileOutput(notif.submission_id);
       } catch (err) {
@@ -144,38 +245,55 @@ export class JudgeResultsConsumer {
       }
     }
 
-    // 5. Construye el contexto del veredicto para el orquestador
+    // 6. Construye el contexto del veredicto con valores durables fidedignos
+    const admissionSeq = durableRecord ? durableRecord.admission_seq : 1;
+    const receivedAtMs =
+      durableRecord && Number.isFinite(Date.parse(durableRecord.received_at))
+        ? Date.parse(durableRecord.received_at)
+        : Date.now();
+    const verdict = durableRecord ? durableRecord.verdict : notif.verdict;
+    const passedCases = durableRecord ? durableRecord.passed_cases : notif.passed;
+    const totalCases = durableRecord ? durableRecord.total_cases : notif.total;
+    const execTimeMs = durableRecord ? durableRecord.exec_time_ms : notif.exec_time_ms;
+
     const roundIdx =
       (session as { player_rounds?: Record<string, { current_round_idx: number }> })
         .player_rounds?.[notif.user_id]?.current_round_idx ?? session.current_round_idx;
 
-    const problemId =
+    const fallbackProblemId =
       session.problem_ids?.[roundIdx] ?? session.problem_ids?.[session.current_round_idx] ?? '';
+
+    const problemId = durableRecord?.problem_id || fallbackProblemId;
 
     const submissionCtx: SubmissionVerdictContext = {
       submission_id: notif.submission_id,
       user_id: notif.user_id,
       round_id: notif.round_id,
       problem_id: problemId,
-      admission_seq: 1,
-      received_at: Date.now(),
-      verdict: notif.verdict,
-      passed_cases: notif.passed,
-      total_cases: notif.total,
-      exec_time_ms: notif.exec_time_ms,
+      admission_seq: admissionSeq,
+      received_at: receivedAtMs,
+      verdict,
+      passed_cases: passedCases,
+      total_cases: totalCases,
+      exec_time_ms: execTimeMs,
     };
 
-    // 6. Despacha a MatchHub (actualización de score, transición de ronda/fin de partida, etc.)
-    await this.options.matchHub.processSubmissionVerdict(
-      notif.match_id,
-      submissionCtx,
-      compileOutput,
-    );
+    // 7. Despacha a MatchHub y registra en processedStore
+    try {
+      await this.options.matchHub.processSubmissionVerdict(
+        notif.match_id,
+        submissionCtx,
+        compileOutput,
+      );
 
-    // 7. Registra como procesado en el almacén de idempotencia
-    await this.options.processedStore.markProcessed(notif.match_id, notif.submission_id);
-    this.processedCount++;
-
-    return true;
+      await this.options.processedStore.markProcessed(notif.match_id, notif.submission_id);
+      this.processedCount++;
+      return true;
+    } catch (err) {
+      if (claimed && this.options.processedStore.releaseProcessing) {
+        await this.options.processedStore.releaseProcessing(notif.match_id, notif.submission_id);
+      }
+      throw err;
+    }
   }
 }

@@ -263,6 +263,11 @@ export interface RejectedMessageEntity {
 }
 
 export interface RejectedMessageRepository {
+  /**
+   * Registra un mensaje rechazado de forma durable e idempotente.
+   * Retorna true si el mensaje quedó persistido (sea nuevo o preexistente),
+   * permitiendo al consumidor del juez realizar XACK de forma segura en Redis.
+   */
   recordRejected(messageId: string, reason: string): Promise<boolean>;
   findRejectedMessageById(messageId: string): Promise<RejectedMessageEntity | null>;
   countRejectedMessages(): Promise<number>;
