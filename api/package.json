@@ -18,12 +18,16 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run tests/integration.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@duelodev/shared": "*"
+    "@duelodev/shared": "*",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.9"
   }

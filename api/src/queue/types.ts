@@ -1,5 +1,5 @@
 import type { JudgeJobStreamMessage, Logger } from '@duelodev/shared';
-import type { SubmissionRepository } from '../repositories/types.js';
+import type { ProblemRepository, SubmissionRepository } from '../repositories/types.js';
 
 /** Resultado de encolar un trabajo en el stream del juez. */
 export interface EnqueueJobResult {
@@ -24,6 +24,7 @@ export interface ReconciliationStats {
 export interface SubmissionReconcilerOptions {
   submissionRepo: SubmissionRepository;
   queue: JudgeQueue;
+  problemRepo?: ProblemRepository | undefined;
   logger?: Logger;
   /** Intervalo en milisegundos entre pasadas de reconciliación (por defecto: 5000 ms). */
   intervalMs?: number;

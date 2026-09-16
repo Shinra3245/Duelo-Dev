@@ -450,6 +450,14 @@ export class InMemoryRoomRepository implements RoomRepository {
     return count;
   }
 
+  async allocateNextAdmissionSeq(matchId: string): Promise<number> {
+    const match = this.matches.get(matchId);
+    if (!match) return 1;
+    const nextSeq = (match.admission_seq ?? 0) + 1;
+    match.admission_seq = nextSeq;
+    return nextSeq;
+  }
+
   clear(): void {
     this.matches.clear();
     this.roomCodeToId.clear();

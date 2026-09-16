@@ -11,6 +11,11 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@duelodev/shared": "*"
+    "@duelodev/shared": "*",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }

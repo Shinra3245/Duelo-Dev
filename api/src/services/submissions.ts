@@ -5,6 +5,7 @@ import {
   IDEMPOTENCY_WINDOW_S,
   JUDGE_STREAM_SCHEMA_VERSION,
   createLogger,
+  resolveTimeLimitMs,
   type CreateSubmissionRequest,
   type JudgeJobStreamMessage,
   type Logger,
@@ -147,19 +148,27 @@ export class SubmissionService {
       }
 
       // 5. Asignar secuencia de admisión atómica para la partida
-      const nextAdmissionSeq = (match.admission_seq ?? 0) + 1;
-      await this.roomRepo.updateMatch(match.id, { admission_seq: nextAdmissionSeq });
+      let nextAdmissionSeq: number;
+      if (this.roomRepo.allocateNextAdmissionSeq) {
+        nextAdmissionSeq = await this.roomRepo.allocateNextAdmissionSeq(match.id);
+      } else {
+        nextAdmissionSeq = (match.admission_seq ?? 0) + 1;
+        await this.roomRepo.updateMatch(match.id, { admission_seq: nextAdmissionSeq });
+      }
 
-      // 6. Obtener límites de tiempo/memoria del problema si existe
-      let timeLimitMs = 2000;
+      // 6. Obtener límites de tiempo/memoria y versión del problema si existe
+      let baseTimeLimitMs = 2000;
       let memoryLimitMb = 256;
+      let problemVersion = 1;
       if (this.problemRepo) {
         const prob = await this.problemRepo.findProblemById(req.problem_id);
         if (prob) {
-          timeLimitMs = prob.time_limit_ms;
+          baseTimeLimitMs = prob.time_limit_ms;
           memoryLimitMb = prob.memory_limit_mb;
+          problemVersion = prob.version ?? 1;
         }
       }
+      const effectiveTimeLimitMs = resolveTimeLimitMs(baseTimeLimitMs, req.language);
 
       // 7. Persistir el envío de forma durable
       const submission = await this.submissionRepo.createSubmission({
@@ -169,7 +178,7 @@ export class SubmissionService {
         problem_id: req.problem_id,
         language: req.language,
         source_code: req.source_code,
-        time_limit_ms: timeLimitMs,
+        time_limit_ms: effectiveTimeLimitMs,
         memory_limit_mb: memoryLimitMb,
         admission_seq: nextAdmissionSeq,
         status: 'queued',
@@ -212,10 +221,10 @@ export class SubmissionService {
           schema_version: JUDGE_STREAM_SCHEMA_VERSION,
           submission_id: submission.id,
           problem_id: req.problem_id,
-          problem_version: 1,
+          problem_version: problemVersion,
           language: req.language,
           source_code: req.source_code,
-          time_limit_ms: timeLimitMs,
+          time_limit_ms: effectiveTimeLimitMs,
           memory_limit_mb: memoryLimitMb,
           cases_ref: casesRef,
           enqueued_at_ms: now,

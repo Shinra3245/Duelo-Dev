@@ -4,7 +4,7 @@ import {
   type JudgeJobStreamMessage,
   type Logger,
 } from '@duelodev/shared';
-import type { SubmissionRepository } from '../repositories/types.js';
+import type { ProblemRepository, SubmissionRepository } from '../repositories/types.js';
 import type { JudgeQueue, ReconciliationStats, SubmissionReconcilerOptions } from './types.js';
 
 /**
@@ -15,6 +15,7 @@ import type { JudgeQueue, ReconciliationStats, SubmissionReconcilerOptions } fro
 export class SubmissionReconciler {
   private readonly submissionRepo: SubmissionRepository;
   private readonly queue: JudgeQueue;
+  private readonly problemRepo: ProblemRepository | undefined;
   private readonly logger: Logger;
   private readonly intervalMs: number;
   private readonly batchSize: number;
@@ -27,6 +28,7 @@ export class SubmissionReconciler {
   constructor(options: SubmissionReconcilerOptions) {
     this.submissionRepo = options.submissionRepo;
     this.queue = options.queue;
+    this.problemRepo = options.problemRepo;
     this.logger = options.logger ?? createLogger('submission-reconciler');
     this.intervalMs = options.intervalMs ?? 5000;
     this.batchSize = options.batchSize ?? 50;
@@ -67,11 +69,23 @@ export class SubmissionReconciler {
         }
 
         const casesRef = `cases/${submission.problem_id}`;
+        let problemVersion = 1;
+        if (this.problemRepo) {
+          try {
+            const prob = await this.problemRepo.findProblemById(submission.problem_id);
+            if (prob) {
+              problemVersion = prob.version ?? 1;
+            }
+          } catch {
+            // Mantener fallback seguro a 1
+          }
+        }
+
         const jobMessage: JudgeJobStreamMessage = {
           schema_version: JUDGE_STREAM_SCHEMA_VERSION,
           submission_id: submission.id,
           problem_id: submission.problem_id,
-          problem_version: 1,
+          problem_version: problemVersion,
           language: submission.language,
           source_code: submission.source_code,
           time_limit_ms: submission.time_limit_ms,

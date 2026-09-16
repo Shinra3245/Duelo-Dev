@@ -141,6 +141,7 @@ export interface RoomRepository {
   findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]>;
   deleteSnapshotsByUser?(userId: string, onlyUnrevealed?: boolean): Promise<number>;
   countActiveRooms?(): Promise<number>;
+  allocateNextAdmissionSeq?(matchId: string): Promise<number>;
 }
 
 export interface CreateMatchCodeSnapshotInput {

@@ -84,6 +84,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     new SubmissionReconciler({
       submissionRepo,
       queue: judgeQueue,
+      problemRepo,
       logger,
     });
 
