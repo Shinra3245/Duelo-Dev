@@ -9,6 +9,7 @@ import type {
   TestCaseEntity,
   UserEntity,
   UserRole,
+  Verdict,
 } from '@duelodev/shared';
 
 export interface CreateUserInput {
@@ -176,6 +177,32 @@ export interface CreateSubmissionInput {
   judged_at?: string | null;
 }
 
+export interface SubmissionWithLeaseEntity extends SubmissionEntity {
+  attempt_token?: string | null;
+  worker_id?: string | null;
+  lease_until?: string | null;
+}
+
+export type ClaimStatus = 'acquired' | 'completed' | 'busy';
+
+export interface ClaimResult {
+  status: ClaimStatus;
+  attempt_token?: string | null;
+}
+
+export type PersistStatus = 'stored' | 'completed' | 'fenced';
+
+export interface PersistSubmissionResultInput {
+  submission_id: string;
+  verdict: Verdict;
+  passed_cases: number;
+  total_cases: number;
+  exec_time_ms: number;
+  compile_output?: string | null;
+  judge_error?: string | null;
+  judged_at?: string | null;
+}
+
 export interface SubmissionRepository {
   createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity>;
   findSubmissionById(id: string): Promise<SubmissionEntity | null>;
@@ -183,6 +210,16 @@ export interface SubmissionRepository {
   findSubmissionsByUser(matchId: string, userId: string): Promise<SubmissionEntity[]>;
   findPendingSubmissions(limit?: number): Promise<SubmissionEntity[]>;
   updateSubmission(id: string, input: Partial<SubmissionEntity>): Promise<SubmissionEntity | null>;
+  claimSubmission?(
+    submissionId: string,
+    workerId: string,
+    leaseDurationMs?: number,
+    nowIso?: string,
+  ): Promise<ClaimResult>;
+  persistIfCurrent?(
+    result: PersistSubmissionResultInput,
+    attemptToken: string,
+  ): Promise<PersistStatus>;
 }
 
 export interface ProblemRepository {
@@ -217,4 +254,16 @@ export interface EventRepository {
   findEventsByAggregate(aggregateType: string, aggregateId: string): Promise<EventEntity[]>;
   findEventsByName(eventName: string, limit?: number): Promise<EventEntity[]>;
   countEvents(eventName?: string): Promise<number>;
+}
+
+export interface RejectedMessageEntity {
+  message_id: string;
+  reason: string;
+  rejected_at: string;
+}
+
+export interface RejectedMessageRepository {
+  recordRejected(messageId: string, reason: string): Promise<boolean>;
+  findRejectedMessageById(messageId: string): Promise<RejectedMessageEntity | null>;
+  countRejectedMessages(): Promise<number>;
 }

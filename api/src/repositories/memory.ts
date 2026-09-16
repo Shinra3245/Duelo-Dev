@@ -10,6 +10,7 @@ import type {
   UserEntity,
 } from '@duelodev/shared';
 import type {
+  ClaimResult,
   CreateEventInput,
   CreateMatchCodeSnapshotInput,
   CreateMatchInput,
@@ -19,10 +20,15 @@ import type {
   CreateUserInput,
   EventEntity,
   EventRepository,
+  PersistStatus,
+  PersistSubmissionResultInput,
   ProblemRepository,
   RefreshTokenRepository,
+  RejectedMessageEntity,
+  RejectedMessageRepository,
   RoomRepository,
   SubmissionRepository,
+  SubmissionWithLeaseEntity,
   UpdateUserInput,
   UserRepository,
 } from './types.js';
@@ -456,11 +462,11 @@ export class InMemoryRoomRepository implements RoomRepository {
  * Repositorio de envíos durable en memoria (doc 04 §1).
  */
 export class InMemorySubmissionRepository implements SubmissionRepository {
-  private readonly submissions = new Map<string, SubmissionEntity>();
+  private readonly submissions = new Map<string, SubmissionWithLeaseEntity>();
 
   async createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity> {
     const now = new Date().toISOString();
-    const submission: SubmissionEntity = {
+    const submission: SubmissionWithLeaseEntity = {
       id: input.id ?? randomUUID(),
       match_id: input.match_id,
       round_id: input.round_id,
@@ -480,6 +486,9 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
       compile_output: input.compile_output ?? null,
       judge_error: input.judge_error ?? null,
       judged_at: input.judged_at ?? null,
+      attempt_token: null,
+      worker_id: null,
+      lease_until: null,
     };
 
     this.submissions.set(submission.id, submission);
@@ -525,13 +534,82 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     const existing = this.submissions.get(id);
     if (!existing) return null;
 
-    const updated: SubmissionEntity = {
+    const updated: SubmissionWithLeaseEntity = {
       ...existing,
       ...input,
     };
 
     this.submissions.set(id, updated);
     return { ...updated };
+  }
+
+  async claimSubmission(
+    submissionId: string,
+    workerId: string,
+    leaseDurationMs = 30000,
+    nowIso?: string,
+  ): Promise<ClaimResult> {
+    const sub = this.submissions.get(submissionId);
+    if (!sub) {
+      throw new Error(`Envío no encontrado: ${submissionId}`);
+    }
+
+    if (sub.status === 'completed') {
+      return { status: 'completed' };
+    }
+
+    const now = nowIso ? new Date(nowIso).getTime() : Date.now();
+
+    if (sub.status === 'judging') {
+      const leaseExpiry = sub.lease_until ? new Date(sub.lease_until).getTime() : 0;
+      if (leaseExpiry > now) {
+        return { status: 'busy' };
+      }
+    }
+
+    // Adquirir o renovar lease con attempt_token nuevo
+    const attemptToken = randomUUID();
+    const leaseUntil = new Date(now + leaseDurationMs).toISOString();
+
+    sub.status = 'judging';
+    sub.attempt_token = attemptToken;
+    sub.worker_id = workerId;
+    sub.lease_until = leaseUntil;
+
+    return {
+      status: 'acquired',
+      attempt_token: attemptToken,
+    };
+  }
+
+  async persistIfCurrent(
+    result: PersistSubmissionResultInput,
+    attemptToken: string,
+  ): Promise<PersistStatus> {
+    const sub = this.submissions.get(result.submission_id);
+    if (!sub) {
+      throw new Error(`Envío no encontrado: ${result.submission_id}`);
+    }
+
+    if (sub.status === 'completed') {
+      return 'completed';
+    }
+
+    if (sub.attempt_token !== attemptToken) {
+      return 'fenced';
+    }
+
+    const now = result.judged_at ?? new Date().toISOString();
+    sub.status = 'completed';
+    sub.verdict = result.verdict;
+    sub.passed_cases = result.passed_cases;
+    sub.total_cases = result.total_cases;
+    sub.exec_time_ms = result.exec_time_ms;
+    sub.compile_output = result.compile_output ?? null;
+    sub.judge_error = result.judge_error ?? null;
+    sub.judged_at = now;
+
+    return 'stored';
   }
 
   clear(): void {
@@ -650,5 +728,39 @@ export class InMemoryEventRepository implements EventRepository {
 
   clear(): void {
     this.events.length = 0;
+  }
+}
+
+/**
+ * Repositorio en memoria para mensajes rechazados del juez (S19, doc 04 §135).
+ * Registra exclusivamente message_id y motivo saneado; nunca código fuente ni casos.
+ */
+export class InMemoryRejectedMessageRepository implements RejectedMessageRepository {
+  private readonly messages = new Map<string, RejectedMessageEntity>();
+
+  async recordRejected(messageId: string, reason: string): Promise<boolean> {
+    if (this.messages.has(messageId)) {
+      return false;
+    }
+    const entry: RejectedMessageEntity = {
+      message_id: messageId,
+      reason,
+      rejected_at: new Date().toISOString(),
+    };
+    this.messages.set(messageId, entry);
+    return true;
+  }
+
+  async findRejectedMessageById(messageId: string): Promise<RejectedMessageEntity | null> {
+    const entry = this.messages.get(messageId);
+    return entry ? { ...entry } : null;
+  }
+
+  async countRejectedMessages(): Promise<number> {
+    return this.messages.size;
+  }
+
+  clear(): void {
+    this.messages.clear();
   }
 }
