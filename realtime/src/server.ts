@@ -7,12 +7,17 @@ import { InMemoryMatchStore } from './store/memory.js';
 import { handleHealthz, handleReadyz } from './routes/health.js';
 import { MatchHub } from './socket/hub.js';
 import { YjsHub } from './yjs/hub.js';
+import {
+  setupRealtimeUpgradeHandler,
+  type RealtimeUpgradeController,
+} from './transport/adapter.js';
 
 export interface RealtimeServer {
   server: Server;
   ctx: RealtimeContext;
   matchHub: MatchHub;
   yjsHub: YjsHub;
+  upgradeController: RealtimeUpgradeController;
   requestListener: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   start: (port?: number, host?: string) => Promise<{ port: number; host: string }>;
   close: () => Promise<void>;
@@ -28,6 +33,8 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   const logger = options.logger ?? createLogger(serviceName);
   const startTime = Date.now();
   const readinessProbes = options.readinessProbes ? [...options.readinessProbes] : [];
+  const authSecret =
+    options.authSecret ?? process.env['AUTH_SECRET'] ?? 'dev-secret-key-change-in-production';
 
   const matchHub = new MatchHub({
     matchStore,
@@ -49,6 +56,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     logger,
     startTime,
     readinessProbes,
+    authSecret,
   };
 
   const requestListener = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -136,6 +144,15 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
 
   const server = createServer(requestListener);
 
+  const upgradeController = setupRealtimeUpgradeHandler({
+    server,
+    matchHub,
+    yjsHub,
+    authSecret,
+    matchStore,
+    logger,
+  });
+
   const start = async (port = 4000, host = '0.0.0.0'): Promise<{ port: number; host: string }> => {
     return new Promise((resolve, reject) => {
       server.once('error', reject);
@@ -155,11 +172,16 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   };
 
   const close = (): Promise<void> => {
+    upgradeController.close();
     matchHub.clearAllTimers();
     yjsHub.close();
     return new Promise((resolve, reject) => {
+      if (!server.listening) {
+        resolve();
+        return;
+      }
       server.close((err) => {
-        if (err) {
+        if (err && (err as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
           reject(err);
         } else {
           resolve();
@@ -173,6 +195,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     ctx,
     matchHub,
     yjsHub,
+    upgradeController,
     requestListener,
     start,
     close,

@@ -60,6 +60,7 @@ export interface RealtimeAppOptions {
   reconnectGraceMs?: number | undefined;
   yjsSnapshotIntervalMs?: number | undefined;
   onYjsSnapshotPersist?: ((snapshot: CodeSnapshot) => Promise<void>) | undefined;
+  authSecret?: string | undefined;
 }
 
 export interface RealtimeContext {
@@ -69,4 +70,5 @@ export interface RealtimeContext {
   logger: StructuredLogger;
   startTime: number;
   readinessProbes: ReadinessProbe[];
+  authSecret?: string | undefined;
 }

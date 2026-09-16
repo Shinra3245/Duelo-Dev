@@ -182,6 +182,13 @@ export class YjsHub {
   }
 
   /**
+   * Alias de `handleDisconnect` para compatibilidad de contratos.
+   */
+  removeClient(client: YjsClientConnection): void {
+    this.handleDisconnect(client);
+  }
+
+  /**
    * Avanza la generación del documento al cambiar de problema/ronda (doc 04 §80-82).
    *
    * 1. Captura snapshot del código anterior.
