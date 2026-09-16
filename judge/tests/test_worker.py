@@ -48,6 +48,17 @@ class FakeProcessor:
 
 
 @dataclass
+class SequenceProcessor:
+    results: list[DurableJudgeResult]
+    calls: int = 0
+
+    def process(self, received: JudgeJob) -> DurableJudgeResult:
+        result = self.results[self.calls]
+        self.calls += 1
+        return result
+
+
+@dataclass
 class FakeResults:
     claim_result: ClaimResult = ClaimResult(ClaimStatus.ACQUIRED, "attempt-1")
     persist_status: PersistStatus = PersistStatus.STORED
@@ -107,6 +118,41 @@ def test_stored_result_enables_ack_and_uses_attempt_token() -> None:
     assert outcome.result == RESULT
     assert results.persisted_tokens == ["attempt-1"]
     assert processor.calls == 1
+
+
+def test_system_error_is_retried_once_inside_the_same_lease() -> None:
+    first = DurableJudgeResult(
+        "submission-1", Verdict.SE, 0, 1, 0, 1_700_000_000_100, judge_error="first"
+    )
+    processor = SequenceProcessor([first, RESULT])
+    results = FakeResults()
+    subject = StreamEntryCoordinator("worker-1", processor, results, FakeRejected())
+
+    outcome = subject.handle("1-0", encode_stream_fields(job()))
+
+    assert processor.calls == 2
+    assert outcome.disposition == EntryDisposition.ACK_RESULT
+    assert outcome.result == RESULT
+    assert results.persisted_tokens == ["attempt-1"]
+
+
+def test_second_system_error_is_persisted_as_definitive() -> None:
+    first = DurableJudgeResult(
+        "submission-1", Verdict.SE, 0, 1, 0, 1_700_000_000_100, judge_error="first"
+    )
+    second = DurableJudgeResult(
+        "submission-1", Verdict.SE, 0, 1, 0, 1_700_000_000_200, judge_error="second"
+    )
+    processor = SequenceProcessor([first, second])
+    results = FakeResults()
+    subject = StreamEntryCoordinator("worker-1", processor, results, FakeRejected())
+
+    outcome = subject.handle("1-0", encode_stream_fields(job()))
+
+    assert processor.calls == 2
+    assert outcome.result == second
+    assert outcome.result.judge_error == "second"
+    assert results.persisted_tokens == ["attempt-1"]
 
 
 def test_completed_duplicate_acks_without_running_again() -> None:

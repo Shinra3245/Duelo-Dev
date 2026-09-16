@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from judge.pipeline import DurableJudgeResult, JudgeJob
 from judge.stream_codec import MalformedJobError, decode_stream_fields
+from judge.verdicts import Verdict
 
 
 class ClaimStatus(StrEnum):
@@ -128,6 +129,8 @@ class StreamEntryCoordinator:
         assert claim.attempt_token is not None
         try:
             result = self._processor.process(job)
+            if result.verdict == Verdict.SE:
+                result = self._processor.process(job)
             persisted = self._results.persist_if_current(result, claim.attempt_token)
         except Exception:
             return EntryOutcome(
