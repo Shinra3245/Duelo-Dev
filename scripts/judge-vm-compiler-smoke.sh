@@ -10,7 +10,7 @@ readonly REMOTE_DIR="/home/judge/duelodev-compiler-smoke"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
   "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
-scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/compiler.py \
+scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/case_store.py judge/compiler.py \
   judge/docker_compiler.py judge/evaluation.py judge/languages.py judge/limits.py \
   judge/pipeline.py judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
@@ -24,12 +24,15 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" 
   "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
 import subprocess
 import time
+import json
+from pathlib import Path
+import tempfile
 
+from judge.case_store import DirectoryCasesProvider
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES
 from judge.docker_compiler import DockerCompilationBackend
 from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
-from judge.supervisor import JudgeCase
 from judge.verdicts import Verdict
 
 
@@ -48,18 +51,18 @@ base_images = {
 invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES)
 backend = DockerCompilationBackend(invoker, base_images)
 runner = DockerCaseRunner(invoker)
-
-
-class StaticCasesProvider:
-    def load_cases(self, cases_ref, problem_id, problem_version):
-        assert cases_ref == 'pilot/sum-one/v1'
-        assert problem_id == 'sum-one'
-        assert problem_version == 1
-        return [JudgeCase(1, b'41\n', b'42\n')]
-
-
+case_store = tempfile.TemporaryDirectory(prefix='duelodev-cases-')
+case_root = Path(case_store.name)
+case_directory = case_root / 'cases' / 'sum-one' / 'v1'
+case_directory.mkdir(parents=True)
+(case_directory / 'manifest.json').write_text(json.dumps({
+    'schema_version': 1,
+    'problem_id': 'sum-one',
+    'problem_version': 1,
+    'cases': [{'ordinal': 1, 'input': '41\n', 'expected': '42\n'}],
+}), encoding='utf-8')
 pipeline = JudgePipeline(
-    StaticCasesProvider(),
+    DirectoryCasesProvider(case_root),
     backend,
     runner,
     backend,
@@ -81,7 +84,7 @@ for language, source in solutions.items():
         source_code=source,
         time_limit_ms=2000,
         memory_limit_mb=256,
-        cases_ref='pilot/sum-one/v1',
+        cases_ref='cases/sum-one',
         enqueued_at_ms=int(time.time() * 1000),
     ))
     assert judged.verdict == Verdict.AC, (language, judged)
@@ -96,11 +99,12 @@ invalid = pipeline.process(JudgeJob(
     source_code='int main( {',
     time_limit_ms=2000,
     memory_limit_mb=256,
-    cases_ref='pilot/sum-one/v1',
+    cases_ref='cases/sum-one',
     enqueued_at_ms=int(time.time() * 1000),
 ))
 assert invalid.verdict == Verdict.CE
 assert invalid.compile_output
+case_store.cleanup()
 
 leftovers = subprocess.check_output(
     ['docker', 'image', 'ls', '--filter', 'reference=duelodev-artifact-*', '-q'], text=True
