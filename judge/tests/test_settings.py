@@ -15,6 +15,7 @@ def environment(tmp_path: Path) -> dict[str, str]:
         "DATABASE_URL": "postgresql://worker:secret@127.0.0.1:5432/duelodev",
         "REDIS_URL": "redis://127.0.0.1:6379/0",
         "JUDGE_CASES_ROOT": str(tmp_path),
+        "JUDGE_RUNTIME_DIR": str(tmp_path),
         "JUDGE_WORKER_ID": "worker-1",
         "JUDGE_LEASE_MS": "120000",
         "JUDGE_RECOVERY_IDLE_MS": "125000",

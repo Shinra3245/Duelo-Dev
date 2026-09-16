@@ -22,12 +22,18 @@ DOCKER_INFRASTRUCTURE_EXIT_CODES = frozenset((125, 126, 127))
 _PINNED_IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 _LOCAL_IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ARTIFACT_TAG = re.compile(r"^duelodev-artifact-[0-9a-f]{32}$")
+_RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 class DockerCompilationBackend(CompilationBackend):
     """Compila y empaqueta una fuente sin ejecutar comandos mediante shell."""
 
-    def __init__(self, invoker: DockerInvoker, base_images: Mapping[Language, str]) -> None:
+    def __init__(
+        self,
+        invoker: DockerInvoker,
+        base_images: Mapping[Language, str],
+        resource_owner: str | None = None,
+    ) -> None:
         missing = {
             language for language in ("python", "cpp", "java") if language not in base_images
         }
@@ -36,8 +42,11 @@ class DockerCompilationBackend(CompilationBackend):
         invalid = [image for image in base_images.values() if not _PINNED_IMAGE.fullmatch(image)]
         if invalid:
             raise ValueError("Todas las imágenes base deben estar fijadas por digest de registro")
+        if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+            raise ValueError("resource_owner tiene un formato inválido")
         self._invoker = invoker
         self._base_images = dict(base_images)
+        self._resource_owner = resource_owner
 
     def prepare(self, request: CompilationRequest) -> CompilationObservation:
         base_image = self._base_images[request.language]
@@ -75,7 +84,9 @@ class DockerCompilationBackend(CompilationBackend):
             dockerfile.write_text(artifact_dockerfile(base_image), encoding="utf-8")
             dockerfile.chmod(0o600)
             build = self._invoker.invoke(
-                docker_build_argv(context, artifact_tag), b"", ARTIFACT_BUILD_TIMEOUT_MS
+                docker_build_argv(context, artifact_tag, self._resource_owner),
+                b"",
+                ARTIFACT_BUILD_TIMEOUT_MS,
             )
             artifact_reference = build.stdout.decode("ascii", errors="ignore").strip()
             if (
@@ -164,9 +175,13 @@ def compile_container_argv(
     )
 
 
-def docker_build_argv(context: Path, artifact_tag: str) -> tuple[str, ...]:
+def docker_build_argv(
+    context: Path, artifact_tag: str, resource_owner: str | None = None
+) -> tuple[str, ...]:
     if not _ARTIFACT_TAG.fullmatch(artifact_tag):
         raise ValueError("Etiqueta temporal inválida")
+    if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+        raise ValueError("resource_owner tiene un formato inválido")
     return (
         "docker",
         "build",
@@ -177,6 +192,7 @@ def docker_build_argv(context: Path, artifact_tag: str) -> tuple[str, ...]:
         "--quiet",
         "--tag",
         artifact_tag,
+        *(("--label", f"duelodev.judge.worker={resource_owner}") if resource_owner else ()),
         str(context.resolve()),
     )
 

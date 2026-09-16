@@ -7,6 +7,7 @@ que la construcción de la invocación pueda probarse sin iniciar contenedores.
 from dataclasses import dataclass
 from math import ceil
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -19,6 +20,9 @@ from judge.evaluation import CaseExecution
 from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, OUTPUT_LIMIT_BYTES, WALL_CLOCK_MARGIN
 from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec
 from judge.supervisor import CompiledArtifact
+
+
+_RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 @dataclass(frozen=True)
@@ -44,10 +48,17 @@ class DockerInvoker(Protocol):
 class SubprocessDockerInvoker:
     """Ejecuta argv sin shell y drena stdout/stderr con un límite estricto."""
 
-    def __init__(self, output_limit_bytes: int = OUTPUT_LIMIT_BYTES) -> None:
+    def __init__(
+        self,
+        output_limit_bytes: int = OUTPUT_LIMIT_BYTES,
+        resource_owner: str | None = None,
+    ) -> None:
         if type(output_limit_bytes) is not int or output_limit_bytes < 1:
             raise ValueError("output_limit_bytes debe ser positivo")
+        if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+            raise ValueError("resource_owner tiene un formato inválido")
         self._output_limit_bytes = output_limit_bytes
+        self._resource_owner = resource_owner
 
     def invoke(self, argv: tuple[str, ...], stdin: bytes, timeout_ms: int) -> RuntimeObservation:
         if not argv or type(timeout_ms) is not int or timeout_ms < 1:
@@ -64,11 +75,7 @@ class SubprocessDockerInvoker:
             os.close(fd)
             os.unlink(cidfile)
             run_token = uuid4().hex
-            runtime_argv = (
-                argv[:2]
-                + ("--cidfile", cidfile, "--label", f"duelodev.judge.run={run_token}")
-                + argv[2:]
-            )
+            runtime_argv = tracked_run_argv(argv, cidfile, run_token, self._resource_owner)
         try:
             process = subprocess.Popen(
                 runtime_argv,
@@ -274,3 +281,27 @@ class DockerCaseRunner:
             output_exceeded=observation.output_exceeded,
             system_error=observation.system_error,
         )
+
+
+def tracked_run_argv(
+    argv: tuple[str, ...],
+    cidfile: str,
+    run_token: str,
+    resource_owner: str | None,
+) -> tuple[str, ...]:
+    if len(argv) < 2 or argv[:2] != ("docker", "run"):
+        raise ValueError("Sólo se puede etiquetar una invocación docker run")
+    if not cidfile or not re.fullmatch(r"[0-9a-f]{32}", run_token):
+        raise ValueError("El tracking de la ejecución es inválido")
+    if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+        raise ValueError("resource_owner tiene un formato inválido")
+    return (
+        argv[:2]
+        + ("--cidfile", cidfile, "--label", f"duelodev.judge.run={run_token}")
+        + (
+            ("--label", f"duelodev.judge.worker={resource_owner}")
+            if resource_owner is not None
+            else ()
+        )
+        + argv[2:]
+    )

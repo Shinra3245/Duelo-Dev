@@ -10,6 +10,7 @@ from judge.docker_compiler import (
     DockerCompilationBackend,
     artifact_dockerfile,
     compile_container_argv,
+    docker_build_argv,
 )
 from judge.limits import Language
 from judge.runtime import RuntimeObservation
@@ -77,6 +78,14 @@ def test_python_only_packages_source() -> None:
     assert result.artifact_reference == ARTIFACT_ID
     assert len(invoker.calls) == 1
     assert invoker.calls[0][0][:2] == ("docker", "build")
+
+
+def test_artifact_image_is_labeled_with_worker_owner(tmp_path: Path) -> None:
+    argv = docker_build_argv(tmp_path, "duelodev-artifact-" + "a" * 32, "worker-1")
+
+    assert "--label" in argv
+    assert "duelodev.judge.worker=worker-1" in argv
+    assert argv[-1] == str(tmp_path.resolve())
 
 
 def test_compile_failure_does_not_build_artifact() -> None:

@@ -15,6 +15,7 @@ CONTROL_TIMEOUT_MS = 10_000
 RESET_TIMEOUT_MS = 3_000
 _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
+_RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _KEEPALIVE = "while :; do sleep 3600; done"
 _OOM_COUNT = (
     "while read key value; do "
@@ -63,9 +64,13 @@ class DockerSessionBackend:
         self,
         invoker: DockerInvoker,
         token_factory: Callable[[], str] = lambda: uuid4().hex,
+        resource_owner: str | None = None,
     ) -> None:
+        if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+            raise ValueError("resource_owner tiene un formato inválido")
         self._invoker = invoker
         self._token_factory = token_factory
+        self._resource_owner = resource_owner
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.Lock()
 
@@ -73,7 +78,11 @@ class DockerSessionBackend:
         token = self._token_factory()
         if not _TOKEN.fullmatch(token):
             raise ValueError("El token de sesión es inválido")
-        created = self._invoker.invoke(session_create_argv(sandbox, token), b"", CONTROL_TIMEOUT_MS)
+        created = self._invoker.invoke(
+            session_create_argv(sandbox, token, self._resource_owner),
+            b"",
+            CONTROL_TIMEOUT_MS,
+        )
         session_id = created.stdout.decode("ascii", errors="ignore").strip()
         if not _successful(created) or not _CONTAINER_ID.fullmatch(session_id):
             self._remove_by_label(token)
@@ -213,10 +222,14 @@ class DockerSessionBackend:
         return _successful(removed)
 
 
-def session_create_argv(sandbox: SandboxSpec, token: str) -> tuple[str, ...]:
+def session_create_argv(
+    sandbox: SandboxSpec, token: str, resource_owner: str | None = None
+) -> tuple[str, ...]:
     """Construye una sesión rootless con un controlador raíz mínimo."""
     if not _TOKEN.fullmatch(token):
         raise ValueError("El token de sesión es inválido")
+    if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+        raise ValueError("resource_owner tiene un formato inválido")
     return (
         "docker",
         "create",
@@ -225,6 +238,7 @@ def session_create_argv(sandbox: SandboxSpec, token: str) -> tuple[str, ...]:
         "never",
         "--label",
         f"duelodev.judge.session={token}",
+        *(("--label", f"duelodev.judge.worker={resource_owner}") if resource_owner else ()),
         "--network",
         "none",
         "--read-only",

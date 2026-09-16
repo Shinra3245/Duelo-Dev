@@ -13,6 +13,7 @@ from judge.runtime import (
     RuntimeObservation,
     SubprocessDockerInvoker,
     docker_run_argv,
+    tracked_run_argv,
 )
 from judge.sandbox import SandboxSpec
 from judge.supervisor import CompiledArtifact
@@ -31,6 +32,17 @@ def test_docker_argv_has_no_shell_network_or_host_mounts() -> None:
     assert "--volume" not in argv and "-v" not in argv and "--mount" not in argv
     assert "--privileged" not in argv
     assert argv[-3:] == ("runner@sha256:abc", "/app/run", "--safe")
+
+
+def test_tracked_run_adds_unique_and_owner_labels_without_changing_command() -> None:
+    original = docker_run_argv(spec())
+    tracked = tracked_run_argv(original, "/tmp/run.cid", "a" * 32, "worker-1")
+
+    assert tracked[:2] == ("docker", "run")
+    assert ("--cidfile", "/tmp/run.cid") == tracked[2:4]
+    assert "duelodev.judge.run=" + "a" * 32 in tracked
+    assert "duelodev.judge.worker=worker-1" in tracked
+    assert tracked[-3:] == original[-3:]
 
 
 @dataclass

@@ -57,6 +57,13 @@ def test_create_argv_has_no_network_mount_or_player_command() -> None:
     assert spec().command[0] not in argv
 
 
+def test_session_is_labeled_with_worker_owner() -> None:
+    argv = session_create_argv(spec(), TOKEN, "worker-1")
+
+    assert "duelodev.judge.session=" + TOKEN in argv
+    assert "duelodev.judge.worker=worker-1" in argv
+
+
 def test_execute_uses_unprivileged_uid_and_forwards_only_stdin() -> None:
     backend, invoker = started_backend(observation(b"answer\n"))
 

@@ -18,6 +18,7 @@ class WorkerSettings:
     database_url: str = field(repr=False)
     redis_url: str = field(repr=False)
     cases_root: Path
+    runtime_dir: Path
     worker_id: str
     lease_duration_ms: int
     recovery_idle_ms: int
@@ -30,8 +31,8 @@ class WorkerSettings:
     def __post_init__(self) -> None:
         _validate_url(self.database_url, {"postgres", "postgresql"}, "DATABASE_URL")
         _validate_url(self.redis_url, {"redis", "rediss"}, "REDIS_URL")
-        if not isinstance(self.cases_root, Path):
-            raise ValueError("JUDGE_CASES_ROOT debe ser una ruta")
+        if not isinstance(self.cases_root, Path) or not isinstance(self.runtime_dir, Path):
+            raise ValueError("Las raíces del worker deben ser rutas")
         if not _WORKER_ID.fullmatch(self.worker_id):
             raise ValueError("JUDGE_WORKER_ID tiene un formato inválido")
         for name, value in (
@@ -56,6 +57,7 @@ class WorkerSettings:
             "DATABASE_URL",
             "REDIS_URL",
             "JUDGE_CASES_ROOT",
+            "JUDGE_RUNTIME_DIR",
             "JUDGE_WORKER_ID",
             "JUDGE_LEASE_MS",
             "JUDGE_RECOVERY_IDLE_MS",
@@ -70,6 +72,7 @@ class WorkerSettings:
             database_url=environ["DATABASE_URL"],
             redis_url=environ["REDIS_URL"],
             cases_root=Path(environ["JUDGE_CASES_ROOT"]),
+            runtime_dir=Path(environ["JUDGE_RUNTIME_DIR"]),
             worker_id=environ["JUDGE_WORKER_ID"],
             lease_duration_ms=_positive_int(environ["JUDGE_LEASE_MS"], "JUDGE_LEASE_MS"),
             recovery_idle_ms=_positive_int(

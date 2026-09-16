@@ -21,7 +21,8 @@ trap cleanup EXIT
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
   "${VM_USER}@${VM_HOST}" \
-  "mkdir -p '${REMOTE_DIR}/judge' '${REMOTE_DIR}/migrations' '${REMOTE_DIR}/cases'"
+  "mkdir -p '${REMOTE_DIR}/judge' '${REMOTE_DIR}/migrations' '${REMOTE_DIR}/cases' \
+    '${REMOTE_DIR}/run'; chmod 700 '${REMOTE_DIR}/run'"
 scp -P "$VM_PORT" judge/*.py "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 scp -P "$VM_PORT" judge/requirements.txt "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/"
 scp -P "$VM_PORT" api/migrations/001_initial_schema.up.sql \
@@ -134,25 +135,29 @@ PY
 python_image=\$(docker image inspect python:3.12-slim-bookworm --format '{{index .RepoDigests 0}}'); \
 cpp_image=\$(docker image inspect gcc:14-bookworm --format '{{index .RepoDigests 0}}'); \
 java_image=\$(docker image inspect eclipse-temurin:21-jdk-jammy --format '{{index .RepoDigests 0}}'); \
-PYTHONPATH='${REMOTE_DIR}' \
-DATABASE_URL='postgresql://duelodev:test@127.0.0.1:5432/duelodev_test' \
-REDIS_URL='redis://127.0.0.1:6379/0' \
-JUDGE_CASES_ROOT='${REMOTE_DIR}/cases' \
-JUDGE_WORKER_ID='worker-e2e-1' \
-JUDGE_LEASE_MS='3000' \
-JUDGE_RECOVERY_IDLE_MS='4000' \
-JUDGE_BLOCK_MS='100' \
-JUDGE_IMAGE_PYTHON=\"\$python_image\" \
-JUDGE_IMAGE_CPP=\"\$cpp_image\" \
-JUDGE_IMAGE_JAVA=\"\$java_image\" \
-'${REMOTE_DIR}/.venv/bin/python' -m judge.app >'${REMOTE_DIR}/worker.log' 2>&1 & \
-worker_pid=\$!; \
-printf '%s\n' \"\$worker_pid\" >'${REMOTE_DIR}/worker.pid'; \
-sleep 1; \
-if ! kill -0 \"\$worker_pid\" 2>/dev/null; then \
-  cat '${REMOTE_DIR}/worker.log'; \
-  exit 1; \
-fi; \
+start_worker() { \
+  PYTHONPATH='${REMOTE_DIR}' \
+  DATABASE_URL='postgresql://duelodev:test@127.0.0.1:5432/duelodev_test' \
+  REDIS_URL='redis://127.0.0.1:6379/0' \
+  JUDGE_CASES_ROOT='${REMOTE_DIR}/cases' \
+  JUDGE_RUNTIME_DIR='${REMOTE_DIR}/run' \
+  JUDGE_WORKER_ID='worker-e2e-1' \
+  JUDGE_LEASE_MS='3000' \
+  JUDGE_RECOVERY_IDLE_MS='4000' \
+  JUDGE_BLOCK_MS='100' \
+  JUDGE_IMAGE_PYTHON=\"\$python_image\" \
+  JUDGE_IMAGE_CPP=\"\$cpp_image\" \
+  JUDGE_IMAGE_JAVA=\"\$java_image\" \
+  '${REMOTE_DIR}/.venv/bin/python' -m judge.app >'${REMOTE_DIR}/worker.log' 2>&1 & \
+  worker_pid=\$!; \
+  printf '%s\n' \"\$worker_pid\" >'${REMOTE_DIR}/worker.pid'; \
+  sleep 1; \
+  if ! kill -0 \"\$worker_pid\" 2>/dev/null; then \
+    cat '${REMOTE_DIR}/worker.log'; \
+    exit 1; \
+  fi; \
+}; \
+start_worker; \
 PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
 import json
 from datetime import datetime, timezone
@@ -231,6 +236,111 @@ print('Redis -> worker -> PostgreSQL -> judge:results verificado con AC 2/2.')
 PY
 kill -TERM \"\$worker_pid\"; \
 wait \"\$worker_pid\"; \
-rm -f '${REMOTE_DIR}/worker.pid'; \
 test -z \"\$(docker ps --all --quiet --filter label=duelodev.judge.session)\"; \
-test -z \"\$(docker image ls --quiet --filter reference=duelodev-artifact-*)\""
+test -z \"\$(docker image ls --quiet --filter reference=duelodev-artifact-*)\"; \
+start_worker; \
+PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
+import subprocess
+from time import monotonic, sleep, time
+
+import psycopg
+from redis import Redis
+
+
+submission_id = '00000000-0000-0000-0000-000000000006'
+source = 'import time; time.sleep(5); print(int(input()) + 1)'
+with psycopg.connect('postgresql://duelodev:test@127.0.0.1:5432/duelodev_test') as connection:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            '''
+            INSERT INTO submissions (
+              id, match_id, round_id, user_id, problem_id, language, source_code,
+              time_limit_ms, memory_limit_mb, admission_seq, status
+            ) VALUES (
+              %s,
+              '00000000-0000-0000-0000-000000000003',
+              '00000000-0000-0000-0000-000000000004',
+              '00000000-0000-0000-0000-000000000001',
+              '00000000-0000-0000-0000-000000000002',
+              'python', %s, 6000, 256, 2, 'queued'
+            )
+            ''',
+            (submission_id, source),
+        )
+
+client = Redis(host='127.0.0.1', port=6379, decode_responses=True)
+client.xadd('judge:stream', {
+    'schema_version': '1',
+    'submission_id': submission_id,
+    'problem_id': '00000000-0000-0000-0000-000000000002',
+    'problem_version': '1',
+    'language': 'python',
+    'source_code': source,
+    'time_limit_ms': '6000',
+    'memory_limit_mb': '256',
+    'cases_ref': 'cases/00000000-0000-0000-0000-000000000002',
+    'enqueued_at_ms': str(int(time() * 1000)),
+})
+
+deadline = monotonic() + 30
+while monotonic() < deadline:
+    with psycopg.connect('postgresql://duelodev:test@127.0.0.1:5432/duelodev_test') as connection:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT status FROM submissions WHERE id = %s', (submission_id,))
+            status = cursor.fetchone()[0]
+    containers = subprocess.check_output(
+        [
+            'docker', 'ps', '--all', '--quiet', '--filter',
+            'label=duelodev.judge.worker=worker-e2e-1',
+        ],
+        text=True,
+    ).split()
+    if status == 'judging' and containers:
+        break
+    sleep(0.1)
+else:
+    raise AssertionError('el worker no alcanzó una sesión etiquetada antes del plazo')
+client.close()
+PY
+kill -KILL \"\$worker_pid\"; \
+wait \"\$worker_pid\" 2>/dev/null || true; \
+test -n \"\$(docker ps --all --quiet --filter label=duelodev.judge.worker=worker-e2e-1)\"; \
+sleep 5; \
+start_worker; \
+PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
+from time import monotonic, sleep
+
+import psycopg
+from redis import Redis
+
+
+submission_id = '00000000-0000-0000-0000-000000000006'
+deadline = monotonic() + 60
+row = None
+while monotonic() < deadline:
+    with psycopg.connect('postgresql://duelodev:test@127.0.0.1:5432/duelodev_test') as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                '''
+                SELECT status, verdict, passed_cases, total_cases,
+                       attempt_token, worker_id, lease_until
+                FROM submissions WHERE id = %s
+                ''',
+                (submission_id,),
+            )
+            row = cursor.fetchone()
+    if row and row[0] == 'completed':
+        break
+    sleep(0.1)
+
+assert row == ('completed', 'AC', 2, 2, None, None, None), row
+client = Redis(host='127.0.0.1', port=6379, decode_responses=True)
+assert client.xpending('judge:stream', 'judges')['pending'] == 0
+client.close()
+print('Caída SIGKILL, limpieza selectiva, XAUTOCLAIM y reejecución AC verificados.')
+PY
+kill -TERM \"\$worker_pid\"; \
+wait \"\$worker_pid\"; \
+rm -f '${REMOTE_DIR}/worker.pid'; \
+test -z \"\$(docker ps --all --quiet --filter label=duelodev.judge.worker=worker-e2e-1)\"; \
+test -z \"\$(docker image ls --quiet --filter label=duelodev.judge.worker=worker-e2e-1)\""

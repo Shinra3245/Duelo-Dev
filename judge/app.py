@@ -18,6 +18,7 @@ from judge.pipeline import JudgePipeline
 from judge.postgres_repository import PostgresRejectedEntryRepository, PostgresResultRepository
 from judge.preflight import DOCKER_INFO_FORMAT, assess
 from judge.result_notification import PostgresRedisResultNotifier
+from judge.resources import WorkerInstanceLock, WorkerResourceError, cleanup_worker_resources
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
 from judge.session_runtime import DockerSubmissionRunner
 from judge.settings import WorkerSettings
@@ -39,15 +40,17 @@ def build_consumer(
     connect: Callable[[], Any],
 ) -> StreamConsumer:
     """Conecta adaptadores ya validados sin iniciar el ciclo infinito."""
-    invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES)
-    compiler = DockerCompilationBackend(invoker, settings.base_images)
+    invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES, settings.worker_id)
+    compiler = DockerCompilationBackend(invoker, settings.base_images, settings.worker_id)
     pipeline = JudgePipeline(
         DirectoryCasesProvider(settings.cases_root),
         compiler,
         DockerCaseRunner(invoker),
         compiler,
         lambda: int(time() * 1000),
-        submission_runner=DockerSubmissionRunner(DockerSessionBackend(invoker)),
+        submission_runner=DockerSubmissionRunner(
+            DockerSessionBackend(invoker, resource_owner=settings.worker_id)
+        ),
     )
     results = PostgresResultRepository(
         connect,
@@ -116,10 +119,14 @@ def docker_prerequisites_ok() -> bool:
 
 def main() -> int:
     redis_client: Any | None = None
+    instance_lock: WorkerInstanceLock | None = None
     try:
         settings = WorkerSettings.from_environ(os.environ)
         if not docker_prerequisites_ok():
             raise WorkerStartupError("Docker rootless no cumple los prerrequisitos")
+        instance_lock = WorkerInstanceLock(settings.runtime_dir, settings.worker_id)
+        instance_lock.acquire()
+        cleanup_worker_resources(settings.worker_id)
         redis_module = importlib.import_module("redis")
         psycopg_module = importlib.import_module("psycopg")
         redis_client = redis_module.Redis.from_url(settings.redis_url)
@@ -128,7 +135,9 @@ def main() -> int:
             redis_client,
             lambda: psycopg_module.connect(settings.database_url),
         )
-    except (ValueError, WorkerStartupError, ImportError):
+    except (ValueError, WorkerStartupError, WorkerResourceError, ImportError):
+        if instance_lock is not None:
+            instance_lock.release()
         print(json.dumps({"level": "error", "message": "El worker no pudo iniciar"}))
         return 2
 
@@ -172,6 +181,8 @@ def main() -> int:
                 redis_client.close()
             except Exception:
                 pass
+        if instance_lock is not None:
+            instance_lock.release()
     return 0
 
 
