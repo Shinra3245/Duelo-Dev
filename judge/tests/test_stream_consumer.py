@@ -71,7 +71,9 @@ def test_batch_acks_only_safe_outcomes_and_continues_after_error() -> None:
         error_at=1,
     )
 
-    stats = StreamConsumer("worker-1", transport, coordinator, count=3, block_ms=10).poll_once()
+    stats = StreamConsumer(
+        "worker-1", transport, coordinator, count=3, block_ms=10, recovery_idle_ms=10
+    ).poll_once()
 
     assert stats == ConsumerBatchStats(read=3, acknowledged=2, retried=1)
     assert transport.acked_ids == ["1-0", "3-0"]
@@ -88,7 +90,7 @@ def test_ack_failure_is_reported_and_message_is_not_counted_as_acknowledged(
     )
     coordinator = FakeCoordinator([EntryOutcome(EntryDisposition.ACK_RESULT)])
 
-    stats = StreamConsumer("worker-1", transport, coordinator).poll_once()
+    stats = StreamConsumer("worker-1", transport, coordinator, recovery_idle_ms=10).poll_once()
 
     assert stats == ConsumerBatchStats(read=1, ack_failures=1)
 
@@ -96,7 +98,9 @@ def test_ack_failure_is_reported_and_message_is_not_counted_as_acknowledged(
 def test_read_failure_is_sanitized_as_stats() -> None:
     transport = FakeTransport([], read_error=RuntimeError("redis password"))
 
-    stats = StreamConsumer("worker-1", transport, FakeCoordinator([])).poll_once()
+    stats = StreamConsumer(
+        "worker-1", transport, FakeCoordinator([]), recovery_idle_ms=10
+    ).poll_once()
 
     assert stats == ConsumerBatchStats(read_failed=True)
 
@@ -118,7 +122,9 @@ def test_stale_entries_are_prioritized_and_counted_as_recovered() -> None:
 def test_recovery_failure_does_not_read_or_ack_new_messages() -> None:
     transport = FakeTransport([entry("new-0")], recovery_error=RuntimeError("redis password"))
 
-    stats = StreamConsumer("worker-2", transport, FakeCoordinator([])).poll_once()
+    stats = StreamConsumer(
+        "worker-2", transport, FakeCoordinator([]), recovery_idle_ms=10
+    ).poll_once()
 
     assert stats == ConsumerBatchStats(recovery_failed=True)
     assert transport.acked_ids == []

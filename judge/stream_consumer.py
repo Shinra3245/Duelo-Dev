@@ -61,7 +61,7 @@ class StreamConsumer:
         *,
         count: int = 1,
         block_ms: int = 1000,
-        recovery_idle_ms: int = 120_000,
+        recovery_idle_ms: int,
     ) -> None:
         if not isinstance(consumer_name, str) or not consumer_name:
             raise ValueError("consumer_name es obligatorio")

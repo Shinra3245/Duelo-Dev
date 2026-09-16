@@ -78,7 +78,14 @@ assert not transport.ensure_group()
 first = client.xadd('judge:stream', {'submission_id': 'one'})
 second = client.xadd('judge:stream', {'submission_id': 'two'})
 
-stats = StreamConsumer('worker-smoke', transport, Decisions(), count=2, block_ms=100).poll_once()
+stats = StreamConsumer(
+    'worker-smoke',
+    transport,
+    Decisions(),
+    count=2,
+    block_ms=100,
+    recovery_idle_ms=60_000,
+).poll_once()
 assert stats.read == 2
 assert stats.acknowledged == 1
 assert stats.retried == 1
