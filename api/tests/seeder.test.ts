@@ -27,9 +27,17 @@ function loadCaseBundle(problemId: string, version: number): CaseBundleManifest 
 describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
   describe('Catálogo de problemas piloto (PILOT_PROBLEMS)', () => {
     it('contiene exactamente los problemas piloto aprobados', () => {
-      expect(PILOT_PROBLEMS).toHaveLength(4);
+      expect(PILOT_PROBLEMS).toHaveLength(7);
       const slugs = PILOT_PROBLEMS.map((p) => p.slug);
-      expect(slugs).toEqual(['suma-parcial', 'parentesis', 'consultas-suma', 'fibonacci']);
+      expect(slugs).toEqual([
+        'suma-parcial',
+        'parentesis',
+        'consultas-suma',
+        'fibonacci',
+        'maximo-arreglo',
+        'palindromo',
+        'producto-punto',
+      ]);
     });
 
     it('cumple los invariantes de estructura, límites y origen en cada problema piloto', () => {

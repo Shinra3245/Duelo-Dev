@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "problem_id": "1f6f704a-d12f-51bb-81f3-b839d45e6c56",
+  "problem_version": 1,
+  "cases": [
+    { "ordinal": 1, "input": "radar\n", "expected": "SI\n" },
+    { "ordinal": 2, "input": "programa\n", "expected": "NO\n" },
+    { "ordinal": 3, "input": "a\n", "expected": "SI\n" },
+    { "ordinal": 4, "input": "aa\n", "expected": "SI\n" },
+    { "ordinal": 5, "input": "ab\n", "expected": "NO\n" },
+    { "ordinal": 6, "input": "reconocer\n", "expected": "SI\n" },
+    { "ordinal": 7, "input": "anitalavalatina\n", "expected": "SI\n" },
+    { "ordinal": 8, "input": "duelodev\n", "expected": "NO\n" },
+    { "ordinal": 9, "input": "abcddcba\n", "expected": "SI\n" },
+    { "ordinal": 10, "input": "abcdedcaa\n", "expected": "NO\n" },
+    { "ordinal": 11, "input": "zzzzzz\n", "expected": "SI\n" },
+    { "ordinal": 12, "input": "zzzzzzy\n", "expected": "NO\n" }
+  ]
+}

@@ -1,11 +1,14 @@
 /**
  * Catálogo de problemas piloto para calibración y semillas (doc 07 § Catálogo conceptual).
  *
- * Cuatro problemas piloto aprobados:
+ * Siete problemas piloto aprobados:
  * 1. suma-parcial (Muy fácil): Suma de una secuencia de enteros
  * 2. parentesis (Fácil): Balance de paréntesis, corchetes y llaves
  * 3. consultas-suma (Fácil-medio): Consultas de suma en rangos [L, R]
  * 4. fibonacci (Muy fácil): Cálculo del n-ésimo número de Fibonacci
+ * 5. maximo-arreglo (Muy fácil): Máximo de una secuencia de enteros
+ * 6. palindromo (Fácil): Verificación de palabras palíndromas
+ * 7. producto-punto (Fácil-medio): Producto punto de dos vectores
  *
  * Invariantes (doc 07 § Aceptación):
  * - Enunciado claro en español con entrada, salida y restricciones.
@@ -272,6 +275,201 @@ El n-ésimo número de la secuencia de Fibonacci.`,
       { ordinal: 9, input: '30\n', expected_output: '832040\n', is_example: false },
       { ordinal: 10, input: '39\n', expected_output: '63245986\n', is_example: false },
       { ordinal: 11, input: '40\n', expected_output: '102334155\n', is_example: false },
+    ],
+  },
+  {
+    slug: 'maximo-arreglo',
+    title: 'Máximo en el arreglo',
+    category: 'muy_facil',
+    description: `Dado un arreglo de N números enteros, encuentra el valor más grande.
+
+### Entrada
+La primera línea contiene un número entero N (1 <= N <= 1000).
+La segunda línea contiene N números enteros separados por espacio (-10^6 <= A[i] <= 10^6).
+
+### Salida
+Un único número entero: el valor máximo del arreglo.`,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+    version: 1,
+    origin: {
+      kind: 'original',
+      url: null,
+      license: 'MIT',
+      attribution: 'DueloDev Team',
+      verification_status: 'verified',
+    },
+    test_cases: [
+      { ordinal: 0, input: '5\n1 8 3 2 5\n', expected_output: '8\n', is_example: true },
+      { ordinal: 1, input: '4\n-10 -3 -25 -7\n', expected_output: '-3\n', is_example: true },
+      { ordinal: 2, input: '1\n42\n', expected_output: '42\n', is_example: false },
+      { ordinal: 3, input: '3\n0 0 0\n', expected_output: '0\n', is_example: false },
+      { ordinal: 4, input: '5\n-1 0 -2 0 -3\n', expected_output: '0\n', is_example: false },
+      {
+        ordinal: 5,
+        input: '4\n1000000 999999 -1000000 500\n',
+        expected_output: '1000000\n',
+        is_example: false,
+      },
+      {
+        ordinal: 6,
+        input: '6\n-100 -50 -1 -2 -3 -4\n',
+        expected_output: '-1\n',
+        is_example: false,
+      },
+      { ordinal: 7, input: '7\n5 5 5 5 5 5 5\n', expected_output: '5\n', is_example: false },
+      {
+        ordinal: 8,
+        input: '8\n3 1 4 1 5 9 2 6\n',
+        expected_output: '9\n',
+        is_example: false,
+      },
+      {
+        ordinal: 9,
+        input: '5\n-1000000 -999999 -999998 -999997 -999996\n',
+        expected_output: '-999996\n',
+        is_example: false,
+      },
+      {
+        ordinal: 10,
+        input: '10\n10 20 30 40 50 60 70 80 90 100\n',
+        expected_output: '100\n',
+        is_example: false,
+      },
+      {
+        ordinal: 11,
+        input: '10\n100 90 80 70 60 50 40 30 20 10\n',
+        expected_output: '100\n',
+        is_example: false,
+      },
+    ],
+  },
+  {
+    slug: 'palindromo',
+    title: 'Palabra palíndroma',
+    category: 'facil',
+    description: `Una palabra es palíndroma si se lee igual de izquierda a derecha que de derecha a izquierda.
+
+Dada una palabra formada por letras minúsculas sin espacios, determina si es palíndroma.
+
+### Entrada
+Una única línea con una palabra S (1 <= |S| <= 1000).
+
+### Salida
+Imprime "SI" si la palabra es palíndroma, o "NO" en caso contrario.`,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+    version: 1,
+    origin: {
+      kind: 'original',
+      url: null,
+      license: 'MIT',
+      attribution: 'DueloDev Team',
+      verification_status: 'verified',
+    },
+    test_cases: [
+      { ordinal: 0, input: 'radar\n', expected_output: 'SI\n', is_example: true },
+      { ordinal: 1, input: 'programa\n', expected_output: 'NO\n', is_example: true },
+      { ordinal: 2, input: 'a\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 3, input: 'aa\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 4, input: 'ab\n', expected_output: 'NO\n', is_example: false },
+      { ordinal: 5, input: 'reconocer\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 6, input: 'anitalavalatina\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 7, input: 'duelodev\n', expected_output: 'NO\n', is_example: false },
+      { ordinal: 8, input: 'abcddcba\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 9, input: 'abcdedcaa\n', expected_output: 'NO\n', is_example: false },
+      { ordinal: 10, input: 'zzzzzz\n', expected_output: 'SI\n', is_example: false },
+      { ordinal: 11, input: 'zzzzzzy\n', expected_output: 'NO\n', is_example: false },
+    ],
+  },
+  {
+    slug: 'producto-punto',
+    title: 'Producto punto',
+    category: 'facil_medio',
+    description: `Dados dos vectores A y B de N enteros, calcula su producto punto.
+
+El producto punto se define como A[1] * B[1] + A[2] * B[2] + ... + A[N] * B[N].
+
+### Entrada
+La primera línea contiene un número entero N (1 <= N <= 100000).
+La segunda línea contiene N enteros A[i] (-10^5 <= A[i] <= 10^5).
+La tercera línea contiene N enteros B[i] (-10^5 <= B[i] <= 10^5).
+
+### Salida
+Un único entero con el producto punto de ambos vectores.`,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+    version: 1,
+    origin: {
+      kind: 'original',
+      url: null,
+      license: 'MIT',
+      attribution: 'DueloDev Team',
+      verification_status: 'verified',
+    },
+    test_cases: [
+      {
+        ordinal: 0,
+        input: '3\n1 2 3\n4 5 6\n',
+        expected_output: '32\n',
+        is_example: true,
+      },
+      {
+        ordinal: 1,
+        input: '4\n-1 2 -3 4\n5 -6 7 -8\n',
+        expected_output: '-70\n',
+        is_example: true,
+      },
+      { ordinal: 2, input: '1\n7\n8\n', expected_output: '56\n', is_example: false },
+      { ordinal: 3, input: '2\n0 5\n100 3\n', expected_output: '15\n', is_example: false },
+      {
+        ordinal: 4,
+        input: '3\n1 1 1\n1 1 1\n',
+        expected_output: '3\n',
+        is_example: false,
+      },
+      {
+        ordinal: 5,
+        input: '3\n-1 -2 -3\n-4 -5 -6\n',
+        expected_output: '32\n',
+        is_example: false,
+      },
+      {
+        ordinal: 6,
+        input: '4\n10 -10 20 -20\n1 1 -1 -1\n',
+        expected_output: '0\n',
+        is_example: false,
+      },
+      {
+        ordinal: 7,
+        input: '5\n2 4 6 8 10\n1 0 1 0 1\n',
+        expected_output: '18\n',
+        is_example: false,
+      },
+      {
+        ordinal: 8,
+        input: '3\n100000 100000 100000\n100000 100000 100000\n',
+        expected_output: '30000000000\n',
+        is_example: false,
+      },
+      {
+        ordinal: 9,
+        input: '6\n1 2 3 4 5 6\n6 5 4 3 2 1\n',
+        expected_output: '56\n',
+        is_example: false,
+      },
+      {
+        ordinal: 10,
+        input: '4\n-5 0 5 10\n2 3 4 5\n',
+        expected_output: '60\n',
+        is_example: false,
+      },
+      {
+        ordinal: 11,
+        input: '2\n-100000 100000\n100000 -100000\n',
+        expected_output: '-20000000000\n',
+        is_example: false,
+      },
     ],
   },
 ];
