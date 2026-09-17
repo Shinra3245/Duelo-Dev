@@ -1,10 +1,11 @@
 /**
  * Catálogo de problemas piloto para calibración y semillas (doc 07 § Catálogo conceptual).
  *
- * Tres problemas piloto aprobados:
+ * Cuatro problemas piloto aprobados:
  * 1. suma-parcial (Muy fácil): Suma de una secuencia de enteros
  * 2. parentesis (Fácil): Balance de paréntesis, corchetes y llaves
  * 3. consultas-suma (Fácil-medio): Consultas de suma en rangos [L, R]
+ * 4. fibonacci (Muy fácil): Cálculo del n-ésimo número de Fibonacci
  *
  * Invariantes (doc 07 § Aceptación):
  * - Enunciado claro en español con entrada, salida y restricciones.
@@ -230,6 +231,47 @@ Para cada consulta, imprime la suma resultante en una línea separada.`,
         expected_output: '50\n50\n',
         is_example: false,
       },
+    ],
+  },
+  {
+    slug: 'fibonacci',
+    title: 'Número de Fibonacci',
+    category: 'muy_facil',
+    description: `La secuencia de Fibonacci se define de la siguiente manera:
+F(0) = 0
+F(1) = 1
+F(N) = F(N-1) + F(N-2) para N >= 2
+
+Dado un entero N, calcula F(N).
+
+### Entrada
+Una única línea que contiene un número entero N (0 <= N <= 40).
+
+### Salida
+El n-ésimo número de la secuencia de Fibonacci.`,
+    time_limit_ms: 2000,
+    memory_limit_mb: 256,
+    version: 1,
+    origin: {
+      kind: 'original',
+      url: null,
+      license: 'MIT',
+      attribution: 'DueloDev Team',
+      verification_status: 'verified',
+    },
+    test_cases: [
+      { ordinal: 0, input: '0\n', expected_output: '0\n', is_example: true },
+      { ordinal: 1, input: '5\n', expected_output: '5\n', is_example: true },
+      { ordinal: 2, input: '1\n', expected_output: '1\n', is_example: false },
+      { ordinal: 3, input: '2\n', expected_output: '1\n', is_example: false },
+      { ordinal: 4, input: '3\n', expected_output: '2\n', is_example: false },
+      { ordinal: 5, input: '4\n', expected_output: '3\n', is_example: false },
+      { ordinal: 6, input: '6\n', expected_output: '8\n', is_example: false },
+      { ordinal: 7, input: '10\n', expected_output: '55\n', is_example: false },
+      { ordinal: 8, input: '20\n', expected_output: '6765\n', is_example: false },
+      { ordinal: 9, input: '30\n', expected_output: '832040\n', is_example: false },
+      { ordinal: 10, input: '39\n', expected_output: '63245986\n', is_example: false },
+      { ordinal: 11, input: '40\n', expected_output: '102334155\n', is_example: false },
     ],
   },
 ];

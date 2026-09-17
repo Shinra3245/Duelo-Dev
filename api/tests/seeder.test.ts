@@ -26,10 +26,10 @@ function loadCaseBundle(problemId: string, version: number): CaseBundleManifest 
 
 describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
   describe('Catálogo de problemas piloto (PILOT_PROBLEMS)', () => {
-    it('contiene exactamente los tres problemas piloto aprobados', () => {
-      expect(PILOT_PROBLEMS).toHaveLength(3);
+    it('contiene exactamente los problemas piloto aprobados', () => {
+      expect(PILOT_PROBLEMS).toHaveLength(4);
       const slugs = PILOT_PROBLEMS.map((p) => p.slug);
-      expect(slugs).toEqual(['suma-parcial', 'parentesis', 'consultas-suma']);
+      expect(slugs).toEqual(['suma-parcial', 'parentesis', 'consultas-suma', 'fibonacci']);
     });
 
     it('cumple los invariantes de estructura, límites y origen en cada problema piloto', () => {
@@ -163,14 +163,14 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
       const repo = new InMemoryProblemRepository();
       const result = await seedProblems(repo);
 
-      expect(result.seeded).toBe(3);
+      expect(result.seeded).toBe(PILOT_PROBLEMS.length);
       expect(result.skipped).toBe(0);
-      expect(result.problems).toHaveLength(3);
-      expect(result.test_cases).toHaveLength(36); // 3 * 12
+      expect(result.problems).toHaveLength(PILOT_PROBLEMS.length);
+      expect(result.test_cases).toHaveLength(PILOT_PROBLEMS.length * 12);
 
       // Verificar que los problemas existen en el repositorio
       const allProblems = await repo.findAllProblems();
-      expect(allProblems).toHaveLength(3);
+      expect(allProblems).toHaveLength(PILOT_PROBLEMS.length);
 
       for (const p of allProblems) {
         const cases = await repo.findTestCasesByProblemId(p.id);
@@ -187,15 +187,15 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
       const repo = new InMemoryProblemRepository();
 
       const result1 = await seedProblems(repo);
-      expect(result1.seeded).toBe(3);
+      expect(result1.seeded).toBe(PILOT_PROBLEMS.length);
       expect(result1.skipped).toBe(0);
 
       const result2 = await seedProblems(repo);
       expect(result2.seeded).toBe(0);
-      expect(result2.skipped).toBe(3);
+      expect(result2.skipped).toBe(PILOT_PROBLEMS.length);
 
       const allProblems = await repo.findAllProblems();
-      expect(allProblems).toHaveLength(3);
+      expect(allProblems).toHaveLength(PILOT_PROBLEMS.length);
 
       for (const p of allProblems) {
         const cases = await repo.findTestCasesByProblemId(p.id);
@@ -209,11 +209,11 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
       await seedProblems(repo);
       const resultForce = await seedProblems(repo, { force: true });
 
-      expect(resultForce.seeded).toBe(3);
+      expect(resultForce.seeded).toBe(PILOT_PROBLEMS.length);
       expect(resultForce.skipped).toBe(0);
 
       const allProblems = await repo.findAllProblems();
-      expect(allProblems).toHaveLength(3);
+      expect(allProblems).toHaveLength(PILOT_PROBLEMS.length);
 
       for (const p of allProblems) {
         const cases = await repo.findTestCasesByProblemId(p.id);
@@ -244,7 +244,7 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
 
       try {
         const allProblems = await app.ctx.problemRepo.findAllProblems!();
-        expect(allProblems).toHaveLength(3);
+        expect(allProblems).toHaveLength(PILOT_PROBLEMS.length);
 
         const sumaProb = allProblems.find((p) => p.title === 'Suma parcial');
         expect(sumaProb).toBeDefined();
