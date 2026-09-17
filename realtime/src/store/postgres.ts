@@ -39,7 +39,7 @@ export class PostgresMatchStore implements MatchStore {
 
   async getMatch(matchId: string): Promise<RealtimeMatchSession | null> {
     const cached = this.cachedSessions.get(matchId);
-    if (cached) {
+    if (cached && cached.status !== 'lobby') {
       return cloneSession(cached);
     }
 
@@ -95,12 +95,19 @@ export class PostgresMatchStore implements MatchStore {
         ? (JSON.parse(matchRow.config) as MatchConfig)
         : (matchRow.config as MatchConfig);
 
+    const status = matchRow.status as MatchStatus;
+    const startedAt = matchRow.started_at
+      ? new Date(matchRow.started_at as string | Date).toISOString()
+      : undefined;
+    const startedAtMs = startedAt ? new Date(startedAt).getTime() : undefined;
+    const problemIds = status === 'lobby' ? [] : await this.findProblemIdsForConfig(config);
+
     const session: RealtimeMatchSession = {
       match_id: String(matchRow.id),
       room_code: String(matchRow.room_code),
       mode: matchRow.mode as GameModeName,
       config,
-      status: matchRow.status as MatchStatus,
+      status,
       round_status: 'open' as RoundStatus,
       current_round_id: String(matchRow.id),
       current_round_idx: 0,
@@ -108,19 +115,57 @@ export class PostgresMatchStore implements MatchStore {
       players,
       scores,
       created_at: new Date(matchRow.created_at as string | Date).toISOString(),
-      ...(matchRow.started_at
-        ? { started_at: new Date(matchRow.started_at as string | Date).toISOString() }
-        : {}),
+      ...(startedAt ? { started_at: startedAt } : {}),
       ...(matchRow.finished_at
         ? { finished_at: new Date(matchRow.finished_at as string | Date).toISOString() }
         : {}),
       ...(Array.isArray(matchRow.winner_ids)
         ? { winner_ids: matchRow.winner_ids as string[] }
         : {}),
+      ...(problemIds.length > 0 ? { problem_ids: problemIds } : {}),
+      ...(startedAtMs !== undefined && status !== 'lobby' ? { round_opened_at: startedAtMs } : {}),
+      ...(startedAtMs !== undefined && status !== 'lobby' && config.mode === 'puntos'
+        ? { round_ends_at: startedAtMs + config.time_per_problem_s * 1000 }
+        : {}),
+      ...(startedAtMs !== undefined && status !== 'lobby' && config.mode === 'rondas'
+        ? { match_ends_at: startedAtMs + config.match_duration_s * 1000 }
+        : {}),
     };
 
     this.cachedSessions.set(matchId, cloneSession(session));
     return cloneSession(session);
+  }
+
+  private async findProblemIdsForConfig(config: MatchConfig): Promise<string[]> {
+    const limit = Math.max(1, config.num_problems);
+    const categories = config.categories.filter((category) => typeof category === 'string');
+    const ids: string[] = [];
+
+    if (categories.length > 0) {
+      const categorized = await this.pool.query(
+        `SELECT id
+         FROM problems
+         WHERE category = ANY($1::text[])
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2`,
+        [categories, limit],
+      );
+      ids.push(...categorized.rows.map((row) => String(row.id)));
+    }
+
+    if (ids.length < limit) {
+      const fallback = await this.pool.query(
+        `SELECT id
+         FROM problems
+         WHERE NOT (id = ANY($1::uuid[]))
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2`,
+        [ids, limit - ids.length],
+      );
+      ids.push(...fallback.rows.map((row) => String(row.id)));
+    }
+
+    return ids.slice(0, limit);
   }
 
   async saveMatch(session: RealtimeMatchSession): Promise<void> {

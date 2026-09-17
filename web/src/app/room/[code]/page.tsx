@@ -12,6 +12,7 @@ import type {
   ProblemPublicResponse,
   VerdictPayload,
   ScoreUpdatePayload,
+  ProblemBeginPayload,
 } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -70,6 +71,26 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.MATCH_STARTED, () => {
           setRoom((prev) => (prev ? { ...prev, status: 'running' } : prev));
+        });
+
+        client.on(S2C.PROBLEM_BEGIN, (payload: unknown) => {
+          const typedPayload = payload as ProblemBeginPayload;
+          setProblem(null);
+          setVerdict(null);
+          setRoom((prev) => (prev ? { ...prev, status: 'running' } : prev));
+          setMatchState((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  state_version: typedPayload.state_version,
+                  status: 'running',
+                  round_id: typedPayload.round_id,
+                  problem_id: typedPayload.problem_id,
+                  problem_index: typedPayload.index,
+                  ends_at: typedPayload.ends_at,
+                }
+              : prev,
+          );
         });
 
         client.on(S2C.SCORE_UPDATE, (payload: unknown) => {
@@ -131,7 +152,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const handleStartMatch = async () => {
     if (!room) return;
     try {
-      await api.rooms.start(room.room_code);
+      const started = await api.rooms.start(room.room_code);
+      setRoom((prev) => (prev ? { ...prev, status: started.status } : prev));
+      wsClient?.send(C2S.JOIN_MATCH, { match_id: room.match_id });
     } catch (err) {
       console.error(err);
     }

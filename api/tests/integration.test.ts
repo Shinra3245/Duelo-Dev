@@ -248,6 +248,10 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     });
     expect(resJoin.status).toBe(200);
 
+    const lobbySession = await realtimeServer!.ctx.matchStore.getMatch(matchId);
+    expect(lobbySession?.status).toBe('lobby');
+    expect(lobbySession?.problem_ids).toBeUndefined();
+
     // E. Usuario A inicia la sala
     const resStart = await fetch(`${apiBaseUrl}/api/v1/rooms/${roomCode}/start`, {
       method: 'POST',
@@ -257,10 +261,17 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     });
     expect(resStart.status).toBe(200);
 
-    // F. Obtener problema público para enviar
+    const runningSession = await realtimeServer!.ctx.matchStore.getMatch(matchId);
+    expect(runningSession?.status).toBe('running');
+    expect(runningSession?.current_round_id).toBe(matchId);
+    expect(runningSession?.problem_ids).toHaveLength(roomConfig.num_problems);
+    expect(runningSession?.round_ends_at).toBeGreaterThan(Date.now());
+
+    // F. Obtener el problema activo según Realtime para enviar
     const probRepo = new PostgresProblemRepository(pool);
     const problems = await probRepo.findAllProblems();
-    const problem = problems[0]!;
+    const problem = problems.find((candidate) => candidate.id === runningSession?.problem_ids?.[0]);
+    expect(problem).toBeDefined();
 
     // G. Usuario A envía una solución (POST /api/v1/submissions)
     const roundId = matchId;
@@ -273,7 +284,7 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       body: JSON.stringify({
         match_id: matchId,
         round_id: roundId,
-        problem_id: problem.id,
+        problem_id: problem!.id,
         language: 'python',
         source_code: 'import sys\nprint(42)',
       }),
@@ -299,12 +310,12 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
 
     expect(fieldsMap.get('schema_version')).toBe('1');
     expect(fieldsMap.get('submission_id')).toBe(subAccepted.submission_id);
-    expect(fieldsMap.get('problem_id')).toBe(problem.id);
-    expect(fieldsMap.get('problem_version')).toBe(String(problem.version));
+    expect(fieldsMap.get('problem_id')).toBe(problem!.id);
+    expect(fieldsMap.get('problem_version')).toBe(String(problem!.version));
     expect(fieldsMap.get('language')).toBe('python');
-    expect(fieldsMap.get('cases_ref')).toBe(`cases/${problem.id}`);
+    expect(fieldsMap.get('cases_ref')).toBe(`cases/${problem!.id}`);
     expect(fieldsMap.get('time_limit_ms')).toBe(
-      String(resolveTimeLimitMs(problem.time_limit_ms, 'python')),
+      String(resolveTimeLimitMs(problem!.time_limit_ms, 'python')),
     );
   });
 
