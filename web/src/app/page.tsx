@@ -22,6 +22,11 @@ export default function Home() {
   // Room state
   const [roomCode, setRoomCode] = useState('');
 
+  // Loading states
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+
   useEffect(() => {
     api.auth
       .me()
@@ -33,11 +38,14 @@ export default function Home() {
   const handleGuestLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoggingIn(true);
     try {
       const res = await api.auth.guest(gamertag);
       setUser(res.user);
     } catch (err: unknown) {
       setError((err as Error).message || 'Error al iniciar sesión');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -52,6 +60,7 @@ export default function Home() {
 
   const handleCreateRoom = async (mode: 'puntos' | 'rondas') => {
     setError('');
+    setIsCreatingRoom(true);
     try {
       let config: MatchConfig;
       if (mode === 'puntos') {
@@ -77,6 +86,7 @@ export default function Home() {
       router.push(`/room/${res.room_code}`);
     } catch (err: unknown) {
       setError((err as Error).message || 'Error al crear la sala');
+      setIsCreatingRoom(false); // Only reset if error, if success we are redirecting
     }
   };
 
@@ -84,11 +94,13 @@ export default function Home() {
     e.preventDefault();
     if (!roomCode || !user) return;
     setError('');
+    setIsJoiningRoom(true);
     try {
       const res = await api.rooms.join(roomCode.toUpperCase(), { gamertag: user.gamertag });
       router.push(`/room/${res.room_code}`);
     } catch (err: unknown) {
       setError((err as Error).message || 'Error al unirse a la sala');
+      setIsJoiningRoom(false);
     }
   };
 
@@ -120,9 +132,10 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+              disabled={isLoggingIn}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors"
             >
-              Jugar como Invitado
+              {isLoggingIn ? 'Iniciando...' : 'Jugar como Invitado'}
             </button>
           </form>
         ) : (
@@ -142,15 +155,17 @@ export default function Home() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => handleCreateRoom('puntos')}
-                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition-colors"
+                  disabled={isCreatingRoom}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
                 >
-                  Puntos
+                  {isCreatingRoom ? 'Creando...' : 'Puntos'}
                 </button>
                 <button
                   onClick={() => handleCreateRoom('rondas')}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded transition-colors"
+                  disabled={isCreatingRoom}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
                 >
-                  Rondas
+                  {isCreatingRoom ? 'Creando...' : 'Rondas'}
                 </button>
               </div>
             </div>
@@ -169,9 +184,10 @@ export default function Home() {
                 />
                 <button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition-colors"
+                  disabled={isJoiningRoom}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
                 >
-                  Unirse
+                  {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
                 </button>
               </form>
             </div>
