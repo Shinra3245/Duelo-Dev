@@ -7,23 +7,28 @@ type WebSocketOpenHandler = () => void;
 type WebSocketErrorHandler = (error: Event) => void;
 
 class MockWebSocket {
+  static readonly CONNECTING = 0;
   static readonly OPEN = 1;
+  static readonly CLOSED = 3;
   static instances: MockWebSocket[] = [];
 
   onopen: WebSocketOpenHandler | null = null;
   onmessage: WebSocketMessageHandler | null = null;
   onclose: WebSocketCloseHandler | null = null;
   onerror: WebSocketErrorHandler | null = null;
-  readyState = MockWebSocket.OPEN;
+  readyState = MockWebSocket.CONNECTING;
   readonly send = vi.fn();
   readonly close = vi.fn(() => {
-    this.readyState = WebSocket.CLOSED;
+    this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
   });
 
   constructor(readonly url: string) {
     MockWebSocket.instances.push(this);
-    setTimeout(() => this.onopen?.(), 0);
+    setTimeout(() => {
+      this.readyState = MockWebSocket.OPEN;
+      this.onopen?.();
+    }, 0);
   }
 }
 
@@ -104,6 +109,35 @@ describe('Realtime Client', () => {
     client.connect();
     client.connect();
 
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('reconecta automáticamente después de un cierre inesperado', async () => {
+    const client = new RealtimeClient('ws://test', { reconnectDelayMs: 5 });
+    const disconnectSpy = vi.fn();
+
+    client.on('disconnected', disconnectSpy);
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    MockWebSocket.instances[0]!.onclose?.();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(disconnectSpy).toHaveBeenCalledTimes(1);
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  it('no reconecta después de una desconexión manual', async () => {
+    const client = new RealtimeClient('ws://test', { reconnectDelayMs: 5 });
+
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const ws = MockWebSocket.instances[0]!;
+    client.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(ws.close).toHaveBeenCalledTimes(1);
     expect(MockWebSocket.instances).toHaveLength(1);
   });
 });

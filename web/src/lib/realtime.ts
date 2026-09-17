@@ -1,31 +1,44 @@
 type EventHandler = (payload: unknown) => void;
 
+interface RealtimeClientOptions {
+  reconnectDelayMs?: number;
+}
+
 export class RealtimeClient {
   private ws: WebSocket | null = null;
   private url: string;
   private handlers: Map<string, Set<EventHandler>> = new Map();
   private isConnecting = false;
+  private shouldReconnect = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelayMs: number;
 
-  constructor(url: string) {
+  constructor(url: string, options: RealtimeClientOptions = {}) {
     this.url = url;
+    this.reconnectDelayMs = options.reconnectDelayMs ?? 1000;
   }
 
   connect() {
     if (this.ws || this.isConnecting) return;
+    this.shouldReconnect = true;
+    this.clearReconnectTimer();
     this.isConnecting = true;
 
     // Suponemos que las cookies (auth token) se envían automáticamente al mismo dominio
     // En desarrollo, si es diferente puerto, puede que no se envíen por WebSockets cross-origin
     // a menos que estén en el mismo dominio o se pasen explícitamente, pero el navegador
     // lo maneja si withCredentials no es soportado en ws, ws envía cookies del dominio.
-    this.ws = new WebSocket(this.url);
+    const socket = new WebSocket(this.url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.isConnecting = false;
       this.emitLocal('connected', null);
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         const msg = JSON.parse(event.data);
         if (msg.event) {
@@ -36,22 +49,29 @@ export class RealtimeClient {
       }
     };
 
-    this.ws.onclose = () => {
-      this.ws = null;
+    socket.onclose = () => {
+      if (this.ws === socket) {
+        this.ws = null;
+      }
       this.isConnecting = false;
       this.emitLocal('disconnected', null);
+      this.scheduleReconnect();
     };
 
-    this.ws.onerror = (err) => {
+    socket.onerror = (err) => {
+      if (this.ws !== socket) return;
       console.error('WebSocket error:', err);
     };
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    this.shouldReconnect = false;
+    this.clearReconnectTimer();
+
+    const socket = this.ws;
+    this.ws = null;
+    this.isConnecting = false;
+    socket?.close();
   }
 
   send(event: string, payload?: unknown) {
@@ -76,6 +96,22 @@ export class RealtimeClient {
     if (eventHandlers) {
       eventHandlers.forEach((h) => h(payload));
     }
+  }
+
+  private scheduleReconnect() {
+    if (!this.shouldReconnect || this.reconnectTimer) return;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, this.reconnectDelayMs);
+  }
+
+  private clearReconnectTimer() {
+    if (!this.reconnectTimer) return;
+
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 }
 
