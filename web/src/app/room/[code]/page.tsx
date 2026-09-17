@@ -4,7 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
-import { S2C, C2S } from '@duelodev/shared';
+import { S2C, C2S, MATCH_FINISH_REASON_LABELS } from '@duelodev/shared';
 import type {
   RoomDetailsResponse,
   UserProfile,
@@ -14,6 +14,7 @@ import type {
   ScoreUpdatePayload,
   ProblemBeginPayload,
   EventErrorPayload,
+  MatchFinishedPayload,
 } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -33,6 +34,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [actionError, setActionError] = useState('');
   const [verdict, setVerdict] = useState<VerdictPayload | null>(null);
   const [problem, setProblem] = useState<ProblemPublicResponse | null>(null);
+  const [finishedMatch, setFinishedMatch] = useState<MatchFinishedPayload | null>(null);
 
   // App load
   useEffect(() => {
@@ -54,6 +56,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     setMatchState(null);
     setProblem(null);
     setVerdict(null);
+    setFinishedMatch(null);
     setActionError('');
 
     api.rooms
@@ -113,9 +116,23 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           setMatchState((prev) => (prev ? { ...prev, scores: typedPayload.scores } : prev));
         });
 
-        client.on(S2C.MATCH_FINISHED, () => {
+        client.on(S2C.MATCH_FINISHED, (payload: unknown) => {
+          const typedPayload = payload as MatchFinishedPayload;
+          setFinishedMatch(typedPayload);
           setRoom((prev) => (prev ? { ...prev, status: 'finished' } : prev));
-          // Opcional: mostrar ganadores o redirigir a resumen final
+          setMatchState((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  state_version: typedPayload.state_version,
+                  status: 'finished',
+                  scores: typedPayload.final_scores,
+                  winner_ids: typedPayload.winner_ids,
+                  winner_id: typedPayload.winner_id,
+                  finish_reason: typedPayload.finish_reason,
+                }
+              : prev,
+          );
         });
 
         client.on(S2C.ERROR, (payload: unknown) => {
@@ -202,6 +219,16 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const isPlaying =
     room.status === 'running' || room.status === 'settling' || room.status === 'finished';
   const canUseRealtime = isConnected && wsClient !== null;
+  const canSubmit =
+    room.status === 'running' &&
+    Boolean(matchState?.problem_id && matchState.round_id) &&
+    Boolean(sourceCode.trim()) &&
+    !isSubmitting;
+  const winnerNames =
+    finishedMatch?.winner_ids.map(
+      (winnerId) =>
+        room.players.find((player) => player.user_id === winnerId)?.gamertag ?? winnerId,
+    ) ?? [];
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -272,7 +299,22 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
           {isPlaying && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-green-700">¡Partida en curso!</h2>
+              <h2 className="text-2xl font-bold text-green-700">
+                {room.status === 'finished' ? 'Partida finalizada' : '¡Partida en curso!'}
+              </h2>
+
+              {finishedMatch && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-900 p-4 rounded shadow-sm">
+                  <h3 className="font-bold mb-1">Resultado final</h3>
+                  <p>{MATCH_FINISH_REASON_LABELS[finishedMatch.finish_reason]}</p>
+                  <p className="mt-1">
+                    {winnerNames.length > 0
+                      ? `Ganador${winnerNames.length > 1 ? 'es' : ''}: ${winnerNames.join(', ')}`
+                      : 'Partida sin ganador.'}
+                  </p>
+                </div>
+              )}
+
               {matchState ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Panel Izquierdo: Problema y Estado */}
@@ -358,15 +400,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       value={sourceCode}
                       onChange={(e) => setSourceCode(e.target.value)}
                       placeholder="Escribe tu código en Python 3 aquí..."
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || room.status !== 'running'}
                     />
 
                     <button
                       onClick={handleSubmitCode}
-                      disabled={isSubmitting || !sourceCode.trim()}
+                      disabled={!canSubmit}
                       className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded transition-colors"
                     >
-                      {isSubmitting ? 'Enviando...' : 'Enviar Solución'}
+                      {room.status === 'finished'
+                        ? 'Partida finalizada'
+                        : isSubmitting
+                          ? 'Enviando...'
+                          : 'Enviar Solución'}
                     </button>
                   </div>
                 </div>
