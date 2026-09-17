@@ -13,6 +13,7 @@ import type {
   VerdictPayload,
   ScoreUpdatePayload,
   ProblemBeginPayload,
+  EventErrorPayload,
 } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -28,6 +29,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
   const [sourceCode, setSourceCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStartingMatch, setIsStartingMatch] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [verdict, setVerdict] = useState<VerdictPayload | null>(null);
   const [problem, setProblem] = useState<ProblemPublicResponse | null>(null);
 
@@ -43,18 +46,30 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   useEffect(() => {
     if (!user || !roomCode) return;
 
+    let cancelled = false;
+    let client: RealtimeClient | null = null;
+
+    setWsClient(null);
+    setIsConnected(false);
+    setMatchState(null);
+    setProblem(null);
+    setVerdict(null);
+    setActionError('');
+
     api.rooms
       .get(roomCode)
       .then((res) => {
+        if (cancelled) return;
+
         setRoom(res);
 
         // Conectar WS
-        const client = new RealtimeClient(realtimeUrl);
+        client = new RealtimeClient(realtimeUrl);
 
         client.on('connected', () => {
           setIsConnected(true);
           // Unirse a la sala en el socket
-          client.send(C2S.JOIN_MATCH, { match_id: res.match_id });
+          client?.send(C2S.JOIN_MATCH, { match_id: res.match_id });
         });
 
         client.on('disconnected', () => setIsConnected(false));
@@ -103,6 +118,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           // Opcional: mostrar ganadores o redirigir a resumen final
         });
 
+        client.on(S2C.ERROR, (payload: unknown) => {
+          const typedPayload = payload as EventErrorPayload;
+          setActionError(typedPayload.message || 'Ocurrió un error en tiempo real');
+        });
+
         client.on(S2C.VERDICT, (payload: unknown) => {
           const typedPayload = payload as VerdictPayload;
           if (typedPayload.user_id === user.id) {
@@ -114,14 +134,16 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         setWsClient(client);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error(err);
         router.push('/');
       });
 
     return () => {
-      wsClient?.disconnect();
+      cancelled = true;
+      client?.disconnect();
     };
-  }, [user, roomCode]);
+  }, [user, roomCode, router]);
 
   useEffect(() => {
     if (matchState?.problem_id) {
@@ -150,18 +172,25 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   };
 
   const handleStartMatch = async () => {
-    if (!room) return;
+    if (!room || !isConnected || isStartingMatch) return;
+    setActionError('');
+    setIsStartingMatch(true);
     try {
       const started = await api.rooms.start(room.room_code);
       setRoom((prev) => (prev ? { ...prev, status: started.status } : prev));
       wsClient?.send(C2S.JOIN_MATCH, { match_id: room.match_id });
     } catch (err) {
       console.error(err);
+      setActionError((err as Error).message || 'Error al empezar la partida');
+    } finally {
+      setIsStartingMatch(false);
     }
   };
 
   const handleReady = () => {
-    wsClient?.send(C2S.READY);
+    if (!isConnected) return;
+    setActionError('');
+    wsClient?.send(C2S.READY, {});
   };
 
   if (!room || !user) {
@@ -172,6 +201,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const isLobby = room.status === 'lobby';
   const isPlaying =
     room.status === 'running' || room.status === 'settling' || room.status === 'finished';
+  const canUseRealtime = isConnected && wsClient !== null;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -188,6 +218,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         </header>
 
         <div className="p-6">
+          {actionError && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">{actionError}</div>
+          )}
+
           {isLobby && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">Lobby</h2>
@@ -217,17 +251,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               <div className="flex gap-4">
                 <button
                   onClick={handleReady}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                  disabled={!canUseRealtime}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded"
                 >
-                  Marcar como Listo
+                  {canUseRealtime ? 'Marcar como Listo' : 'Conectando...'}
                 </button>
 
                 {isHost && (
                   <button
                     onClick={handleStartMatch}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold"
+                    disabled={!canUseRealtime || isStartingMatch}
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded font-bold"
                   >
-                    Empezar Partida
+                    {isStartingMatch ? 'Empezando...' : 'Empezar Partida'}
                   </button>
                 )}
               </div>
