@@ -1,5 +1,5 @@
 import { ERROR_CODES } from '@duelodev/shared';
-import type { ApiError, RegisterRequest, AuthUserResponse, LoginRequest, ConvertGuestRequest, LogoutResponse, CreateRoomRequest, RoomCreatedResponse, JoinRoomRequest, JoinRoomResponse, RoomDetailsResponse, StartRoomResponse, CreateSubmissionRequest, SubmissionAcceptedResponse, SubmissionDetailsResponse, ProblemPublicResponse, MatchSummaryResponse } from '@duelodev/shared';
+import type { ApiError, RegisterRequest, AuthUserResponse, LoginRequest, LogoutResponse, CreateRoomRequest, RoomCreatedResponse, JoinRoomRequest, JoinRoomResponse, RoomDetailsResponse, StartRoomResponse, CreateSubmissionRequest, SubmissionAcceptedResponse, SubmissionDetailsResponse, ProblemPublicResponse, MatchSummaryResponse } from '@duelodev/shared';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 

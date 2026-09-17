@@ -1,4 +1,4 @@
-type EventHandler = (payload: any) => void;
+type EventHandler = (payload: unknown) => void;
 
 export class RealtimeClient {
   private ws: WebSocket | null = null;
@@ -54,7 +54,7 @@ export class RealtimeClient {
     }
   }
 
-  send(event: string, payload?: any) {
+  send(event: string, payload?: unknown) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ event, payload }));
     }
@@ -71,7 +71,7 @@ export class RealtimeClient {
     this.handlers.get(event)?.delete(handler);
   }
 
-  private emitLocal(event: string, payload: any) {
+  private emitLocal(event: string, payload: unknown) {
     const eventHandlers = this.handlers.get(event);
     if (eventHandlers) {
       eventHandlers.forEach(h => h(payload));

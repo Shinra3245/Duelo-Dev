@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S } from '@duelodev/shared';
-import type { RoomDetailsResponse, UserProfile, MatchSyncPayload, ProblemPublicResponse } from '@duelodev/shared';
+import type { RoomDetailsResponse, UserProfile, MatchSyncPayload, ProblemPublicResponse, VerdictPayload, ScoreUpdatePayload } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
   const resolvedParams = use(params);
@@ -20,7 +20,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   
   const [sourceCode, setSourceCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [verdict, setVerdict] = useState<any>(null);
+  const [verdict, setVerdict] = useState<VerdictPayload | null>(null);
   const [problem, setProblem] = useState<ProblemPublicResponse | null>(null);
 
   // App load
@@ -49,12 +49,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         
         client.on('disconnected', () => setIsConnected(false));
         
-        client.on(S2C.MATCH_SYNC, (payload: MatchSyncPayload) => {
-          setMatchState(payload);
-          setRoom(prev => prev ? { ...prev, status: payload.status } : prev);
+        client.on(S2C.MATCH_SYNC, (payload: unknown) => {
+          const typedPayload = payload as MatchSyncPayload;
+          setMatchState(typedPayload);
+          setRoom(prev => prev ? { ...prev, status: typedPayload.status } : prev);
         });
         
-        client.on(S2C.PLAYER_STATUS, (payload) => {
+        client.on(S2C.PLAYER_STATUS, () => {
           // Actualizar estado de jugador
         });
 
@@ -62,18 +63,20 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           setRoom(prev => prev ? { ...prev, status: 'running' } : prev);
         });
 
-        client.on(S2C.SCORE_UPDATE, (payload: any) => {
-          setMatchState(prev => prev ? { ...prev, scores: payload.scores } : prev);
+        client.on(S2C.SCORE_UPDATE, (payload: unknown) => {
+          const typedPayload = payload as ScoreUpdatePayload;
+          setMatchState(prev => prev ? { ...prev, scores: typedPayload.scores } : prev);
         });
 
-        client.on(S2C.MATCH_FINISHED, (payload: any) => {
+        client.on(S2C.MATCH_FINISHED, () => {
           setRoom(prev => prev ? { ...prev, status: 'finished' } : prev);
           // Opcional: mostrar ganadores o redirigir a resumen final
         });
 
-        client.on(S2C.VERDICT, (payload: any) => {
-          if (payload.user_id === user.id) {
-            setVerdict(payload);
+        client.on(S2C.VERDICT, (payload: unknown) => {
+          const typedPayload = payload as VerdictPayload;
+          if (typedPayload.user_id === user.id) {
+            setVerdict(typedPayload);
           }
         });
 
@@ -88,7 +91,6 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     return () => {
       wsClient?.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, roomCode]);
 
   useEffect(() => {

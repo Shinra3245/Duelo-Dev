@@ -30,8 +30,8 @@ export default function Home() {
     try {
       const res = await api.auth.guest(gamertag);
       setUser(res.user);
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Error al iniciar sesión');
     }
   };
 
@@ -69,8 +69,8 @@ export default function Home() {
 
       const res = await api.rooms.create({ config });
       router.push(`/room/${res.room_code}`);
-    } catch (err: any) {
-      setError(err.message || 'Error al crear la sala');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Error al crear la sala');
     }
   };
 
@@ -81,8 +81,8 @@ export default function Home() {
     try {
       const res = await api.rooms.join(roomCode.toUpperCase(), { gamertag: user.gamertag });
       router.push(`/room/${res.room_code}`);
-    } catch (err: any) {
-      setError(err.message || 'Error al unirse a la sala');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Error al unirse a la sala');
     }
   };
 
