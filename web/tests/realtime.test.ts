@@ -1,119 +1,109 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RealtimeClient } from '../src/lib/realtime.js';
 
-// Mock simple de WebSocket
+type WebSocketMessageHandler = (event: { data: string }) => void;
+type WebSocketCloseHandler = () => void;
+type WebSocketOpenHandler = () => void;
+type WebSocketErrorHandler = (error: Event) => void;
+
 class MockWebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
+  static readonly OPEN = 1;
+  static instances: MockWebSocket[] = [];
 
-  onopen: (() => void) | null = null;
-  onmessage: ((event: any) => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: ((error: any) => void) | null = null;
-  readyState = 1; // OPEN
-  url: string;
-
-  constructor(url: string) {
-    this.url = url;
-    setTimeout(() => {
-      if (this.onopen) this.onopen();
-    }, 0);
-  }
-
-  send = vi.fn();
-  close = vi.fn(() => {
-    this.readyState = 3; // CLOSED
-    if (this.onclose) this.onclose();
+  onopen: WebSocketOpenHandler | null = null;
+  onmessage: WebSocketMessageHandler | null = null;
+  onclose: WebSocketCloseHandler | null = null;
+  onerror: WebSocketErrorHandler | null = null;
+  readyState = MockWebSocket.OPEN;
+  readonly send = vi.fn();
+  readonly close = vi.fn(() => {
+    this.readyState = WebSocket.CLOSED;
+    this.onclose?.();
   });
+
+  constructor(readonly url: string) {
+    MockWebSocket.instances.push(this);
+    setTimeout(() => this.onopen?.(), 0);
+  }
 }
 
 const originalWebSocket = global.WebSocket;
 
 describe('Realtime Client', () => {
   beforeEach(() => {
-    (global as any).WebSocket = MockWebSocket;
+    MockWebSocket.instances = [];
+    global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
   });
 
   afterEach(() => {
     global.WebSocket = originalWebSocket;
+    vi.restoreAllMocks();
   });
 
-  it('debería emitir "connected" al abrir la conexión', async () => {
+  it('emite "connected" al abrir la conexión', async () => {
     const client = new RealtimeClient('ws://test');
-
     const connectSpy = vi.fn();
-    client.on('connected', connectSpy);
 
+    client.on('connected', connectSpy);
     client.connect();
 
-    // Dar un micro tick para que salte el setTimeout del mock
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     expect(connectSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('debería procesar mensajes entrantes correctamente (JSON válido)', async () => {
+  it('procesa mensajes entrantes con JSON válido', async () => {
     const client = new RealtimeClient('ws://test');
-
     const eventSpy = vi.fn();
-    client.on('TEST_EVENT', eventSpy);
 
+    client.on('TEST_EVENT', eventSpy);
     client.connect();
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    // Extraer la instancia mock creada (un poco de hack para test)
-    // El onmessage fue configurado.
-    const wsInstance = (client as any).ws;
-    wsInstance.onmessage({
+    MockWebSocket.instances[0]!.onmessage?.({
       data: JSON.stringify({ event: 'TEST_EVENT', payload: { foo: 'bar' } }),
     });
 
     expect(eventSpy).toHaveBeenCalledWith({ foo: 'bar' });
   });
 
-  it('debería ignorar mensajes con JSON inválido o sin event', async () => {
+  it('ignora mensajes con JSON inválido o sin event', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const client = new RealtimeClient('ws://test');
-
     const eventSpy = vi.fn();
-    client.on('TEST_EVENT', eventSpy);
 
+    client.on('TEST_EVENT', eventSpy);
     client.connect();
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    const wsInstance = (client as any).ws;
-
-    // Invalid JSON
-    wsInstance.onmessage({ data: 'not_a_json' });
-
-    // No event
-    wsInstance.onmessage({ data: JSON.stringify({ payload: { foo: 'bar' } }) });
+    const ws = MockWebSocket.instances[0]!;
+    ws.onmessage?.({ data: 'not_a_json' });
+    ws.onmessage?.({ data: JSON.stringify({ payload: { foo: 'bar' } }) });
 
     expect(eventSpy).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('debería enviar mensajes si está conectado', async () => {
+  it('envía mensajes si está conectado', async () => {
     const client = new RealtimeClient('ws://test');
 
     client.connect();
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    const wsInstance = (client as any).ws;
-
+    const ws = MockWebSocket.instances[0]!;
     client.send('MY_EVENT', { data: 123 });
 
-    expect(wsInstance.send).toHaveBeenCalledWith(
+    expect(ws.send).toHaveBeenCalledWith(
       JSON.stringify({ event: 'MY_EVENT', payload: { data: 123 } }),
     );
   });
 
-  it('no debería conectar doble si ya está conectando', () => {
+  it('no abre una segunda conexión si ya se está conectando', () => {
     const client = new RealtimeClient('ws://test');
+
     client.connect();
     client.connect();
 
-    // No hay manera directa de validar que llamó new WebSocket una vez sin hacer spy en el constructor global,
-    // pero si lo testeamos asumiendo que "isConnecting" funciona, no crashea
+    expect(MockWebSocket.instances).toHaveLength(1);
   });
 });

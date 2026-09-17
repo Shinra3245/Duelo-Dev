@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, ApiClientError } from '../src/lib/api.js';
 import { ERROR_CODES } from '@duelodev/shared';
+import { api } from '../src/lib/api.js';
 
-// Mock de fetch global
-const mockFetch = vi.fn();
+const mockFetch = vi.fn<typeof fetch>();
 global.fetch = mockFetch;
 
 describe('REST API Client', () => {
@@ -13,60 +12,57 @@ describe('REST API Client', () => {
       ok: true,
       status: 200,
       json: async () => ({ success: true }),
-    });
+    } as Response);
   });
 
-  it('debería configurar correctamente las peticiones (credentials, headers)', async () => {
+  it('configura credentials y headers JSON por defecto', async () => {
     await api.auth.me();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [, config] = mockFetch.mock.calls[0];
+    const [, config] = mockFetch.mock.calls[0]!;
 
-    expect(config.credentials).toBe('include');
-    expect(config.headers).toHaveProperty('Content-Type', 'application/json');
+    expect(config?.credentials).toBe('include');
+    expect(config?.headers).toHaveProperty('Content-Type', 'application/json');
   });
 
-  it('debería lanzar ApiClientError en caso de respuesta !ok (error 400)', async () => {
+  it('lanza ApiClientError cuando el servidor responde con error JSON', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({
         error: { code: 'VALIDATION_FAILED', message: 'Nombre inválido', request_id: '123' },
       }),
+    } as Response);
+
+    await expect(api.auth.guest('@@@')).rejects.toMatchObject({
+      name: 'ApiClientError',
+      status: 400,
+      message: 'Nombre inválido',
+      data: {
+        error: { code: 'VALIDATION_FAILED' },
+      },
     });
-
-    await expect(api.auth.guest('@@@')).rejects.toThrow(ApiClientError);
-
-    try {
-      await api.auth.guest('@@@');
-    } catch (err: unknown) {
-      const error = err as ApiClientError;
-      expect(error.status).toBe(400);
-      expect(error.data.error?.code).toBe('VALIDATION_FAILED');
-      expect(error.message).toBe('Nombre inválido');
-    }
   });
 
-  it('debería manejar errores de servidor donde no hay json disponible (fallback)', async () => {
+  it('usa un error fallback si el servidor no devuelve JSON válido', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 502,
       json: async () => {
         throw new Error('Invalid JSON');
       },
-    });
+    } as unknown as Response);
 
-    try {
-      await api.auth.me();
-    } catch (err: unknown) {
-      const error = err as ApiClientError;
-      expect(error.status).toBe(502);
-      expect(error.data.error?.code).toBe(ERROR_CODES.INTERNAL);
-      expect(error.message).toBe('Error desconocido del servidor');
-    }
+    await expect(api.auth.me()).rejects.toMatchObject({
+      status: 502,
+      message: 'Error desconocido del servidor',
+      data: {
+        error: { code: ERROR_CODES.INTERNAL },
+      },
+    });
   });
 
-  it('debería enviar la cabecera de idempotencia al crear una sala', async () => {
+  it('envía la cabecera de idempotencia al crear una sala', async () => {
     await api.rooms.create(
       {
         config: {
@@ -80,20 +76,20 @@ describe('REST API Client', () => {
       'my-idempotency-key',
     );
 
-    const [, config] = mockFetch.mock.calls[0];
-    expect(config.headers).toHaveProperty('Idempotency-Key', 'my-idempotency-key');
+    const [, config] = mockFetch.mock.calls[0]!;
+    expect(config?.headers).toHaveProperty('Idempotency-Key', 'my-idempotency-key');
   });
 
-  it('debería parsear un 204 No Content correctamente', async () => {
+  it('parsea 204 No Content sin llamar response.json', async () => {
+    const json = vi.fn();
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 204,
-      json: async () => {
-        throw new Error('Should not be called');
-      },
-    });
+      json,
+    } as unknown as Response);
 
     const result = await api.auth.logout();
     expect(result).toEqual({});
+    expect(json).not.toHaveBeenCalled();
   });
 });
