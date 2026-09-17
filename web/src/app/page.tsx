@@ -6,9 +6,12 @@ import { api } from '@/lib/api';
 import type {
   UserProfile,
   MatchConfig,
+  ProblemCategory,
   PuntosMatchConfig,
   RondasMatchConfig,
 } from '@duelodev/shared';
+
+const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'];
 
 export default function Home() {
   const router = useRouter();
@@ -68,7 +71,7 @@ export default function Home() {
           mode: 'puntos',
           max_players: 2,
           num_problems: 1,
-          categories: ['facil'],
+          categories: PILOT_CATEGORIES,
           time_per_problem_s: 300,
         } as PuntosMatchConfig;
       } else {
@@ -76,7 +79,7 @@ export default function Home() {
           mode: 'rondas',
           max_players: 2,
           num_problems: 3,
-          categories: ['facil'],
+          categories: PILOT_CATEGORIES,
           target: 3,
           match_duration_s: 600,
         } as RondasMatchConfig;
