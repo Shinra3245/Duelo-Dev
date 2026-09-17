@@ -18,6 +18,7 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
     "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "dev": "./scripts/dev.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
