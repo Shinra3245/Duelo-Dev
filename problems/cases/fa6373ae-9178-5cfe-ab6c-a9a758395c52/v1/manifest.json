@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "problem_id": "fa6373ae-9178-5cfe-ab6c-a9a758395c52",
+  "problem_version": 1,
+  "cases": [
+    { "ordinal": 1, "input": "()[{}]\n", "expected": "VALIDO\n" },
+    { "ordinal": 2, "input": "(]\n", "expected": "INVALIDO\n" },
+    { "ordinal": 3, "input": "(\n", "expected": "INVALIDO\n" },
+    { "ordinal": 4, "input": ")\n", "expected": "INVALIDO\n" },
+    { "ordinal": 5, "input": "{[()]}\n", "expected": "VALIDO\n" },
+    { "ordinal": 6, "input": "([)]\n", "expected": "INVALIDO\n" },
+    { "ordinal": 7, "input": ")(()\n", "expected": "INVALIDO\n" },
+    { "ordinal": 8, "input": "(()\n", "expected": "INVALIDO\n" },
+    { "ordinal": 9, "input": "{()}[{}](){[]}\n", "expected": "VALIDO\n" },
+    { "ordinal": 10, "input": "{()}[{}](){[\n", "expected": "INVALIDO\n" },
+    { "ordinal": 11, "input": "(((([[{{{}}}]]))))\n", "expected": "VALIDO\n" },
+    { "ordinal": 12, "input": "(((([[{{{}}]]))))\n", "expected": "INVALIDO\n" }
+  ]
+}

@@ -1,7 +1,28 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PROBLEM_CATEGORIES } from '@duelodev/shared';
 import { InMemoryProblemRepository } from '../src/repositories/memory.js';
-import { PILOT_PROBLEMS, calculateProblemContentHash, seedProblems } from '../src/seeds/index.js';
+import {
+  PILOT_PROBLEMS,
+  calculateProblemContentHash,
+  deterministicProblemId,
+  seedProblems,
+} from '../src/seeds/index.js';
+
+interface CaseBundleManifest {
+  schema_version: number;
+  problem_id: string;
+  problem_version: number;
+  cases: Array<{ ordinal: number; input: string; expected: string }>;
+}
+
+function loadCaseBundle(problemId: string, version: number): CaseBundleManifest {
+  const url = new URL(
+    `../../problems/cases/${problemId}/v${version}/manifest.json`,
+    import.meta.url,
+  );
+  return JSON.parse(readFileSync(url, 'utf8')) as CaseBundleManifest;
+}
 
 describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
   describe('Catálogo de problemas piloto (PILOT_PROBLEMS)', () => {
@@ -90,6 +111,50 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
         ),
       };
       expect(calculateProblemContentHash(modifiedCase)).not.toBe(hashOriginal);
+    });
+  });
+
+  describe('Identidad estable para paquetes de casos del juez', () => {
+    it('genera UUIDs deterministas y distintos por slug/version', () => {
+      const sumaV1 = deterministicProblemId('suma-parcial', 1);
+      expect(sumaV1).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(deterministicProblemId('suma-parcial', 1)).toBe(sumaV1);
+      expect(deterministicProblemId('suma-parcial', 2)).not.toBe(sumaV1);
+      expect(deterministicProblemId('parentesis', 1)).not.toBe(sumaV1);
+    });
+
+    it('siembra problemas nuevos con IDs compatibles con cases/{problem_id}/v{version}', async () => {
+      const repo = new InMemoryProblemRepository();
+      await seedProblems(repo);
+
+      const problems = await repo.findAllProblems();
+      const byTitle = new Map(problems.map((problem) => [problem.title, problem]));
+
+      for (const seed of PILOT_PROBLEMS) {
+        const problem = byTitle.get(seed.title);
+        expect(problem?.id).toBe(deterministicProblemId(seed.slug, seed.version));
+      }
+    });
+
+    it('mantiene sincronizados los bundles del juez con los casos sembrados en API', () => {
+      for (const seed of PILOT_PROBLEMS) {
+        const problemId = deterministicProblemId(seed.slug, seed.version);
+        const manifest = loadCaseBundle(problemId, seed.version);
+
+        expect(manifest.schema_version).toBe(1);
+        expect(manifest.problem_id).toBe(problemId);
+        expect(manifest.problem_version).toBe(seed.version);
+        expect(manifest.cases).toHaveLength(seed.test_cases.length);
+        expect(manifest.cases).toEqual(
+          seed.test_cases.map((testCase) => ({
+            ordinal: testCase.ordinal + 1,
+            input: testCase.input,
+            expected: testCase.expected_output,
+          })),
+        );
+      }
     });
   });
 

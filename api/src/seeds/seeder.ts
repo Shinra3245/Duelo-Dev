@@ -8,6 +8,30 @@ import { PILOT_PROBLEMS } from './pilot-problems.js';
 import type { SeedProblem, SeedResult, SeederOptions } from './types.js';
 
 /**
+ * Genera un UUID estable para problemas semilla. Esto permite que el juez encuentre
+ * paquetes de casos versionados en disco mediante `cases/{problem_id}/v{version}`.
+ */
+export function deterministicProblemId(slug: string, version: number): string {
+  if (!/^[a-z0-9-]+$/.test(slug) || !Number.isInteger(version) || version < 1) {
+    throw new Error('La identidad de problema semilla es inválida');
+  }
+
+  const bytes = createHash('sha256')
+    .update('duelodev.problem.seed\n')
+    .update(slug)
+    .update('\n')
+    .update(String(version))
+    .digest()
+    .subarray(0, 16);
+
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
  * Calcula un hash SHA-256 determinista de 64 caracteres del contenido del problema y sus casos.
  * Garantiza congelamiento de versión e integridad estricta (doc 04 §1, doc 07 §1).
  */
@@ -71,7 +95,7 @@ export async function seedProblems(
       continue;
     }
 
-    const problemId = existing?.id ?? randomUUID();
+    const problemId = existing?.id ?? deterministicProblemId(seedDef.slug, seedDef.version);
     const now = new Date().toISOString();
 
     const problemEntity: ProblemEntity = {

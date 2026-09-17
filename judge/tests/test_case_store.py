@@ -9,6 +9,15 @@ from judge.case_store import DirectoryCasesProvider, MAX_CASE_BYTES, MAX_CASES_P
 
 
 PROBLEM_ID = "550e8400-e29b-41d4-a716-446655440000"
+PILOT_BUNDLES = (
+    ("e514c282-31c5-5285-98f1-a75b8e35ffe4", b"5\n1 2 3 4 5\n", b"15\n"),
+    ("fa6373ae-9178-5cfe-ab6c-a9a758395c52", b"()[{}]\n", b"VALIDO\n"),
+    (
+        "cd7b80bf-8991-5743-8308-10bb1d3a475e",
+        b"5 3\n1 2 3 4 5\n1 3\n2 4\n1 5\n",
+        b"6\n9\n15\n",
+    ),
+)
 
 
 def manifest(**changes: object) -> dict[str, object]:
@@ -43,6 +52,18 @@ def test_loads_only_requested_version_and_keeps_private_data_out_of_repr(tmp_pat
     assert cases[0].expected == b"3\n"
     assert "1 2" not in repr(cases)
     assert "3" not in repr(cases)
+
+
+def test_loads_committed_pilot_bundles_used_by_api_seeds() -> None:
+    root = Path(__file__).resolve().parents[2] / "problems"
+    provider = DirectoryCasesProvider(root)
+
+    for problem_id, first_input, first_expected in PILOT_BUNDLES:
+        cases = provider.load_cases(f"cases/{problem_id}", problem_id, 1)
+
+        assert len(cases) == MAX_CASES_PER_PROBLEM
+        assert cases[0].stdin == first_input
+        assert cases[0].expected == first_expected
 
 
 @pytest.mark.parametrize(
