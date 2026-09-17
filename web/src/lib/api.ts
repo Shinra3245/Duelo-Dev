@@ -1,10 +1,30 @@
 import { ERROR_CODES } from '@duelodev/shared';
-import type { ApiError, RegisterRequest, AuthUserResponse, LoginRequest, LogoutResponse, CreateRoomRequest, RoomCreatedResponse, JoinRoomRequest, JoinRoomResponse, RoomDetailsResponse, StartRoomResponse, CreateSubmissionRequest, SubmissionAcceptedResponse, SubmissionDetailsResponse, ProblemPublicResponse, MatchSummaryResponse } from '@duelodev/shared';
+import type {
+  ApiError,
+  RegisterRequest,
+  AuthUserResponse,
+  LoginRequest,
+  LogoutResponse,
+  CreateRoomRequest,
+  RoomCreatedResponse,
+  JoinRoomRequest,
+  JoinRoomResponse,
+  RoomDetailsResponse,
+  StartRoomResponse,
+  CreateSubmissionRequest,
+  SubmissionAcceptedResponse,
+  SubmissionDetailsResponse,
+  ProblemPublicResponse,
+  MatchSummaryResponse,
+} from '@duelodev/shared';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 export class ApiClientError extends Error {
-  constructor(public status: number, public data: ApiError) {
+  constructor(
+    public status: number,
+    public data: ApiError,
+  ) {
     super(data.error?.message || 'API Error');
     this.name = 'ApiClientError';
   }
@@ -12,7 +32,7 @@ export class ApiClientError extends Error {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   // Incluimos credentials para enviar/recibir cookies (refresh_token, etc.)
   const config: RequestInit = {
     ...options,
@@ -30,47 +50,65 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     try {
       errorData = await response.json();
     } catch {
-      errorData = { error: { code: ERROR_CODES.INTERNAL, message: 'Error desconocido del servidor', request_id: '' } };
+      errorData = {
+        error: {
+          code: ERROR_CODES.INTERNAL,
+          message: 'Error desconocido del servidor',
+          request_id: '',
+        },
+      };
     }
     throw new ApiClientError(response.status, errorData);
   }
 
   // Si no hay contenido (ej. 204), retornamos objeto vacío
   if (response.status === 204) return {} as T;
-  
+
   return response.json();
 }
 
 export const api = {
   auth: {
-    register: (data: RegisterRequest) => request<AuthUserResponse>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
-    login: (data: LoginRequest) => request<AuthUserResponse>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
-    guest: (gamertag: string) => request<AuthUserResponse>('/auth/guest', { method: 'POST', body: JSON.stringify({ gamertag }) }),
+    register: (data: RegisterRequest) =>
+      request<AuthUserResponse>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+    login: (data: LoginRequest) =>
+      request<AuthUserResponse>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+    guest: (gamertag: string) =>
+      request<AuthUserResponse>('/auth/guest', {
+        method: 'POST',
+        body: JSON.stringify({ gamertag }),
+      }),
     me: () => request<AuthUserResponse>('/auth/me'),
     logout: () => request<LogoutResponse>('/auth/logout', { method: 'POST' }),
   },
   rooms: {
-    create: (data: CreateRoomRequest, idempotencyKey?: string) => request<RoomCreatedResponse>('/rooms', { 
-      method: 'POST', 
-      body: JSON.stringify(data),
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}
-    }),
-    join: (code: string, data: JoinRoomRequest) => request<JoinRoomResponse>(`/rooms/${code}/join`, { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateRoomRequest, idempotencyKey?: string) =>
+      request<RoomCreatedResponse>('/rooms', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      }),
+    join: (code: string, data: JoinRoomRequest) =>
+      request<JoinRoomResponse>(`/rooms/${code}/join`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     get: (code: string) => request<RoomDetailsResponse>(`/rooms/${code}`),
     start: (code: string) => request<StartRoomResponse>(`/rooms/${code}/start`, { method: 'POST' }),
   },
   problems: {
-    get: (id: string) => request<ProblemPublicResponse>(`/problems/${id}`),
+    get: (id: string) => request<ProblemPublicResponse>(`/problems/${id}/public`),
   },
   submissions: {
-    create: (data: CreateSubmissionRequest, idempotencyKey?: string) => request<SubmissionAcceptedResponse>('/submissions', { 
-      method: 'POST', 
-      body: JSON.stringify(data),
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}
-    }),
+    create: (data: CreateSubmissionRequest, idempotencyKey?: string) =>
+      request<SubmissionAcceptedResponse>('/submissions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+      }),
     get: (id: string) => request<SubmissionDetailsResponse>(`/submissions/${id}`),
   },
   matches: {
     summary: (id: string) => request<MatchSummaryResponse>(`/matches/${id}/summary`),
-  }
+  },
 };

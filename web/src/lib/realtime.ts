@@ -13,7 +13,7 @@ export class RealtimeClient {
   connect() {
     if (this.ws || this.isConnecting) return;
     this.isConnecting = true;
-    
+
     // Suponemos que las cookies (auth token) se envían automáticamente al mismo dominio
     // En desarrollo, si es diferente puerto, puede que no se envíen por WebSockets cross-origin
     // a menos que estén en el mismo dominio o se pasen explícitamente, pero el navegador
@@ -74,7 +74,7 @@ export class RealtimeClient {
   private emitLocal(event: string, payload: unknown) {
     const eventHandlers = this.handlers.get(event);
     if (eventHandlers) {
-      eventHandlers.forEach(h => h(payload));
+      eventHandlers.forEach((h) => h(payload));
     }
   }
 }

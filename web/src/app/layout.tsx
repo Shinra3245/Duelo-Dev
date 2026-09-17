@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "DueloDev",
-  description: "Duelos de programación en tiempo real",
+  title: 'DueloDev',
+  description: 'Duelos de programación en tiempo real',
 };
 
 export default function RootLayout({
