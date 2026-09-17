@@ -7,12 +7,22 @@ ALTER TABLE submissions
   ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
 
 -- 2. Restricción CHECK de coherencia de estado y lease
-ALTER TABLE submissions
-  ADD CONSTRAINT chk_submissions_lease_coherence
-  CHECK (
-    (status = 'judging' AND attempt_token IS NOT NULL AND worker_id IS NOT NULL AND lease_until IS NOT NULL) OR
-    (status <> 'judging' AND attempt_token IS NULL AND worker_id IS NULL AND lease_until IS NULL)
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'chk_submissions_lease_coherence'
+      AND conrelid = 'submissions'::regclass
+  ) THEN
+    ALTER TABLE submissions
+      ADD CONSTRAINT chk_submissions_lease_coherence
+      CHECK (
+        (status = 'judging' AND attempt_token IS NOT NULL AND worker_id IS NOT NULL AND lease_until IS NOT NULL) OR
+        (status <> 'judging' AND attempt_token IS NULL AND worker_id IS NULL AND lease_until IS NULL)
+      );
+  END IF;
+END $$;
 
 -- 3. Índice parcial para reclamo atómico de envíos pendientes o con lease vencido
 CREATE INDEX IF NOT EXISTS idx_submissions_claim

@@ -159,6 +159,14 @@ describe('PostgreSQL Database Migrations (002_judge_lease_fencing)', () => {
     expect(sql).toMatch(/status = 'judging' AND attempt_token IS NOT NULL/i);
   });
 
+  it('el script UP protege la restricción CHECK para poder reejecutar migraciones en arranque', () => {
+    const sql = getMigrationSql('002_judge_lease_fencing', 'up');
+
+    expect(sql).toMatch(/DO \$\$/i);
+    expect(sql).toMatch(/FROM pg_constraint/i);
+    expect(sql).toMatch(/conname = 'chk_submissions_lease_coherence'/i);
+  });
+
   it('el script UP crea índice parcial para reclamo atómico de envíos', () => {
     const sql = getMigrationSql('002_judge_lease_fencing', 'up');
 

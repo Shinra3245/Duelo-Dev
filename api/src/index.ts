@@ -13,6 +13,7 @@ import {
   PostgresUserRepository,
 } from './repositories/postgres.js';
 import { RedisJudgeQueue, RedisResultPublisher } from './queue/redis.js';
+import { runMigrations } from './services/migrations.js';
 
 export * from './types.js';
 export * from './schemas/index.js';
@@ -35,6 +36,7 @@ export interface ProductionApiAppConfig {
   redisUrl: string;
   authSecret: string;
   seedPilotProblems?: boolean;
+  runMigrations?: boolean;
 }
 
 /**
@@ -56,6 +58,9 @@ export async function createProductionApp(
 
   const pool = new Pool({ connectionString: config.databaseUrl });
   await pool.query('SELECT 1');
+  if (config.runMigrations ?? true) {
+    await runMigrations(pool);
+  }
 
   const redis = new Redis(config.redisUrl);
   await redis.ping();
