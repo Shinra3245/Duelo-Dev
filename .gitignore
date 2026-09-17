@@ -46,3 +46,5 @@ pgdata/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+/autogen_team.py

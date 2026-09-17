@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 const { Pool } = pg;
@@ -17,7 +18,9 @@ import { runMigrations, rollbackMigrations } from '../src/services/migrations.js
 import { seedProblems } from '../src/seeds/seeder.js';
 import {
   PostgresProblemRepository,
+  PostgresRoomRepository,
   PostgresSubmissionRepository,
+  PostgresUserRepository,
 } from '../src/repositories/postgres.js';
 
 const TEST_DATABASE_URL =
@@ -42,35 +45,90 @@ function extractCookieHeader(res: Response): string {
   return cookies.join('; ');
 }
 
+interface RunningMatchFixture {
+  matchId: string;
+  userId: string;
+}
+
+async function createRunningMatchFixture(
+  pool: pg.Pool,
+  label: string,
+): Promise<RunningMatchFixture> {
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 8);
+  const userRepo = new PostgresUserRepository(pool);
+  const roomRepo = new PostgresRoomRepository(pool);
+
+  const user = await userRepo.create({
+    email: `${label}.${suffix}@duelodev.test`,
+    password_hash: 'integration-fixture-not-a-real-password',
+    gamertag: `${label}-${suffix}`,
+    role: 'user',
+  });
+
+  const config: MatchConfig = {
+    mode: 'puntos',
+    num_problems: 3,
+    time_per_problem_s: 60,
+    categories: ['muy_facil'],
+    max_players: 2,
+  };
+
+  const match = await roomRepo.createMatch({
+    room_code: `${label[0] ?? 'I'}${suffix}`.toUpperCase(),
+    mode: 'puntos',
+    status: 'running',
+    config,
+    host_id: user.id,
+    started_at: new Date().toISOString(),
+  });
+
+  await roomRepo.addPlayer({
+    match_id: match.id,
+    user_id: user.id,
+    is_ready: true,
+    connection_status: 'connected',
+  });
+
+  return {
+    matchId: match.id,
+    userId: user.id,
+  };
+}
+
 describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL → Pub/Sub → Realtime', () => {
   let pool: pg.Pool;
   let redis: Redis;
-  let isInfrastructureAvailable = false;
 
   let apiApp: (ApiApp & { pool: pg.Pool; redis: Redis }) | null = null;
   let realtimeServer: (RealtimeServer & { pool: pg.Pool; redis: Redis }) | null = null;
   let apiBaseUrl: string;
 
   beforeAll(async () => {
-    // Verificar si la infraestructura de prueba está accesible
-    try {
-      pool = new Pool({ connectionString: TEST_DATABASE_URL, max: 5 });
-      await pool.query('SELECT 1');
+    // La integración es un gate estricto: infraestructura ausente debe fallar,
+    // nunca convertir cinco pruebas sin aserciones en un resultado verde.
+    const candidatePool = new Pool({ connectionString: TEST_DATABASE_URL, max: 5 });
+    let candidateRedis: Redis | undefined;
 
-      redis = new Redis(TEST_REDIS_URL, {
+    try {
+      await candidatePool.query('SELECT 1');
+
+      candidateRedis = new Redis(TEST_REDIS_URL, {
         maxRetriesPerRequest: 1,
         lazyConnect: true,
       });
-      await redis.connect();
-      await redis.ping();
+      await candidateRedis.connect();
+      await candidateRedis.ping();
 
-      isInfrastructureAvailable = true;
-    } catch {
-      console.warn(
-        'Infraestructura de prueba (PostgreSQL o Redis) no disponible. Saltando pruebas de integración.',
+      pool = candidatePool;
+      redis = candidateRedis;
+    } catch (error) {
+      candidateRedis?.disconnect();
+      await candidatePool.end().catch(() => {});
+
+      throw new Error(
+        `Infraestructura de integración no disponible. PostgreSQL: ${TEST_DATABASE_URL}; Redis: ${TEST_REDIS_URL}`,
+        { cause: error },
       );
-      isInfrastructureAvailable = false;
-      return;
     }
 
     // 1. Limpieza inicial y migraciones
@@ -100,8 +158,6 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   });
 
   afterAll(async () => {
-    if (!isInfrastructureAvailable) return;
-
     if (apiApp) {
       await apiApp.close();
     }
@@ -117,8 +173,6 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   });
 
   it('1. Migraciones DDL e idempotencia de reversión/reinicio', async () => {
-    if (!isInfrastructureAvailable) return;
-
     // Ejecutar rollback completo para probar idempotencia
     await rollbackMigrations(pool);
 
@@ -134,8 +188,6 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   });
 
   it('2. Flujo completo: registro, creación de sala, admisión y encolado en Redis Streams', async () => {
-    if (!isInfrastructureAvailable) return;
-
     // A. Registrar Usuario A (Host)
     const resRegA = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
       method: 'POST',
@@ -257,8 +309,6 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   });
 
   it('3. Persistencia durable S19, notificación Pub/Sub, consumo e idempotencia en Realtime', async () => {
-    if (!isInfrastructureAvailable) return;
-
     const subRepo = new PostgresSubmissionRepository(pool);
     const pending = await subRepo.findPendingSubmissions(1);
     expect(pending.length).toBe(1);
@@ -330,86 +380,100 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   });
 
   it('4. Concurrencia de admisión: asignación atómica y monotónica de admission_seq', async () => {
-    if (!isInfrastructureAvailable) return;
-
-    // Obtener un match existente
-    const matchRes = await pool.query("SELECT id FROM matches WHERE status = 'running' LIMIT 1");
-    if (matchRes.rows.length === 0) return;
-    const matchId = matchRes.rows[0].id;
-
+    const fixture = await createRunningMatchFixture(pool, 'conc');
     const probRepo = new PostgresProblemRepository(pool);
     const problems = await probRepo.findAllProblems();
+    expect(problems.length).toBeGreaterThan(0);
     const problem = problems[0]!;
 
     const subRepo = new PostgresSubmissionRepository(pool);
 
-    // Ejecutar 3 creaciones concurrentes directas al repositorio PostgreSQL
-    const promises = [1, 2, 3].map((i) =>
-      subRepo.createSubmission({
-        match_id: matchId,
-        round_id: matchId,
-        user_id: '00000000-0000-0000-0000-000000000001',
-        problem_id: problem.id,
-        language: 'python',
-        source_code: `print(${i})`,
-        time_limit_ms: 2000,
-        memory_limit_mb: 256,
-        status: 'queued',
-      }),
+    // Cada transacción solicita asignación automática con admission_seq = 0.
+    // El UPDATE atómico de matches debe serializar los tres incrementos.
+    const results = await Promise.all(
+      [1, 2, 3].map((i) =>
+        subRepo.createSubmission({
+          match_id: fixture.matchId,
+          round_id: fixture.matchId,
+          user_id: fixture.userId,
+          problem_id: problem.id,
+          language: 'python',
+          source_code: `print(${i})`,
+          time_limit_ms: 2000,
+          memory_limit_mb: 256,
+          admission_seq: 0,
+          status: 'queued',
+        }),
+      ),
     );
 
-    const results = await Promise.all(promises);
-    const seqs = results.map((r) => r.admission_seq);
+    const seqs = results.map((result) => result.admission_seq).sort((a, b) => a - b);
+    expect(seqs).toEqual([1, 2, 3]);
 
-    // Deben ser todos distintos y mayores que 1
-    expect(new Set(seqs).size).toBe(3);
-    for (const seq of seqs) {
-      expect(seq).toBeGreaterThan(1);
-    }
+    const matchSeq = await pool.query('SELECT admission_seq FROM matches WHERE id = $1', [
+      fixture.matchId,
+    ]);
+    expect(Number(matchSeq.rows[0]?.admission_seq)).toBe(3);
   });
 
   it('5. Reconciliación de estado: recuperación determinista ante avisos perdidos', async () => {
-    if (!isInfrastructureAvailable) return;
-
-    const matchRes = await pool.query("SELECT id FROM matches WHERE status = 'running' LIMIT 1");
-    if (matchRes.rows.length === 0) return;
-    const matchId = matchRes.rows[0].id;
-
+    const fixture = await createRunningMatchFixture(pool, 'recon');
     const probRepo = new PostgresProblemRepository(pool);
     const problems = await probRepo.findAllProblems();
+    expect(problems.length).toBeGreaterThan(0);
     const problem = problems[0]!;
 
     const subRepo = new PostgresSubmissionRepository(pool);
 
-    // Crear un envío completado en la BD que nunca recibió aviso Pub/Sub
+    // WA ejercita una transición observable de puntuación sin finalizar la
+    // partida, aislando esta prueba del flujo AC cubierto en el caso anterior.
     const orphanedSub = await subRepo.createSubmission({
-      match_id: matchId,
-      round_id: matchId,
-      user_id: '00000000-0000-0000-0000-000000000002',
+      match_id: fixture.matchId,
+      round_id: fixture.matchId,
+      user_id: fixture.userId,
       problem_id: problem.id,
       language: 'python',
       source_code: 'print("reconciled")',
       time_limit_ms: 2000,
       memory_limit_mb: 256,
+      admission_seq: 0,
       status: 'completed',
-      verdict: 'AC',
-      passed_cases: 10,
+      verdict: 'WA',
+      passed_cases: 3,
       total_cases: 10,
       exec_time_ms: 50,
       judged_at: new Date().toISOString(),
     });
 
-    // Ejecutar reconciliación de Realtime sobre la partida
-    if (realtimeServer?.stateReconciler) {
-      const count = await realtimeServer.stateReconciler.reconcileMatch(matchId);
-      expect(count).toBeGreaterThanOrEqual(1);
+    expect(realtimeServer?.stateReconciler).toBeDefined();
+    const count = await realtimeServer!.stateReconciler!.reconcileMatch(fixture.matchId);
+    expect(count).toBe(1);
 
-      // Verificar que quedó registrado en match_processed_submissions
-      const checkRes = await pool.query(
-        'SELECT 1 FROM match_processed_submissions WHERE submission_id = $1',
-        [orphanedSub.id],
-      );
-      expect(checkRes.rows.length).toBe(1);
-    }
+    const processed = await pool.query(
+      'SELECT 1 FROM match_processed_submissions WHERE submission_id = $1',
+      [orphanedSub.id],
+    );
+    expect(processed.rows.length).toBe(1);
+
+    const durableState = await pool.query(
+      `SELECT m.status, mp.cases_total
+       FROM matches m
+       JOIN match_players mp ON mp.match_id = m.id
+       WHERE m.id = $1 AND mp.user_id = $2`,
+      [fixture.matchId, fixture.userId],
+    );
+    expect(durableState.rows).toHaveLength(1);
+    expect(durableState.rows[0]?.status).toBe('running');
+    expect(Number(durableState.rows[0]?.cases_total)).toBe(3);
+
+    // Una segunda pasada no puede aplicar el mismo envío otra vez.
+    const duplicateCount = await realtimeServer!.stateReconciler!.reconcileMatch(fixture.matchId);
+    expect(duplicateCount).toBe(0);
+
+    const stateAfterDuplicate = await pool.query(
+      'SELECT cases_total FROM match_players WHERE match_id = $1 AND user_id = $2',
+      [fixture.matchId, fixture.userId],
+    );
+    expect(Number(stateAfterDuplicate.rows[0]?.cases_total)).toBe(3);
   });
 });
