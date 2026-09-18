@@ -9,3 +9,4 @@ export * from './queue.js';
 export * from './scoring.js';
 export * from './gamemodes.js';
 export * from './entities.js';
+export * from './yjs.js';

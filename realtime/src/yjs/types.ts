@@ -29,6 +29,8 @@ export interface YjsClientConnection {
   readonly isOwner: boolean;
   /** Envia mensaje binario al cliente. */
   send(data: Uint8Array): void;
+  /** Envia un mensaje textual del protocolo de sincronización de código. */
+  sendText?(data: string): void;
   /** Cierra la conexión. */
   close(code?: number, reason?: string): void;
 }

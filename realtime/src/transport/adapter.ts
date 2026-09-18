@@ -11,7 +11,14 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { C2S, ERROR_CODES, S2C, type Logger } from '@duelodev/shared';
+import {
+  C2S,
+  createYjsErrorMessage,
+  ERROR_CODES,
+  parseYjsClientMessage,
+  S2C,
+  type Logger,
+} from '@duelodev/shared';
 import { authenticateSocketHandshake } from '../socket/auth.js';
 import type { MatchHub } from '../socket/hub.js';
 import type { SocketClient } from '../socket/types.js';
@@ -211,6 +218,9 @@ export function setupRealtimeUpgradeHandler(
         send(data: Uint8Array): void {
           ws.send(data);
         },
+        sendText(data: string): void {
+          ws.send(data);
+        },
         close(code?: number, reason?: string): void {
           ws.close(code, reason);
         },
@@ -227,12 +237,61 @@ export function setupRealtimeUpgradeHandler(
         return;
       }
 
+      let textUpdateChain = Promise.resolve();
+      let binaryUpdateChain = Promise.resolve();
+
       ws.onMessage = (data, isBinary) => {
         if (isBinary) {
           const bytes = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
           const gen = result.document?.generation ?? 1;
-          yjsHub.handleIncomingUpdate(clientConn, bytes, gen);
+          binaryUpdateChain = binaryUpdateChain.then(async () => {
+            const updateResult = await yjsHub.handleIncomingBinaryUpdate(clientConn, bytes, gen);
+            if (!updateResult.applied) {
+              ws.send(
+                JSON.stringify(
+                  createYjsErrorMessage(updateResult.reason ?? 'Actualización rechazada.'),
+                ),
+              );
+            }
+          });
+          return;
         }
+
+        const raw = typeof data === 'string' ? data : Buffer.from(data).toString('utf8');
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw) as unknown;
+        } catch {
+          ws.send(JSON.stringify(createYjsErrorMessage('Mensaje Yjs no es JSON válido.')));
+          return;
+        }
+
+        const message = parseYjsClientMessage(parsed);
+        if (!message) {
+          ws.send(
+            JSON.stringify(
+              createYjsErrorMessage(
+                'Actualización inválida: se requiere generación y source_code dentro del límite permitido.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        textUpdateChain = textUpdateChain.then(async () => {
+          const updateResult = await yjsHub.handleIncomingTextUpdate(
+            clientConn,
+            message.source_code,
+            message.generation,
+          );
+          if (!updateResult.applied) {
+            ws.send(
+              JSON.stringify(
+                createYjsErrorMessage(updateResult.reason ?? 'Actualización rechazada.'),
+              ),
+            );
+          }
+        });
       };
 
       ws.onClose = () => {

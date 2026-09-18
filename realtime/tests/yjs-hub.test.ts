@@ -6,6 +6,7 @@ import type { RealtimeMatchSession } from '../src/types.js';
 
 interface MockYjsClient extends YjsClientConnection {
   sentData: Uint8Array[];
+  sentText: string[];
   closed: boolean;
   closeCode?: number;
   closeReason?: string;
@@ -18,6 +19,7 @@ function createMockYjsClient(
   targetUserId: string,
 ): MockYjsClient {
   const sentData: Uint8Array[] = [];
+  const sentText: string[] = [];
   let closed = false;
   let closeCode: number | undefined;
   let closeReason: string | undefined;
@@ -32,6 +34,9 @@ function createMockYjsClient(
     },
     send(data: Uint8Array) {
       sentData.push(data);
+    },
+    sendText(data: string) {
+      sentText.push(data);
     },
     close(code?: number, reason?: string) {
       closed = true;
@@ -48,6 +53,9 @@ function createMockYjsClient(
       return closeReason;
     },
   };
+
+  client.sentData = sentData;
+  client.sentText = sentText;
 
   return client;
 }
@@ -182,6 +190,48 @@ describe('YjsHub', () => {
       const res = await hub.handleConnection('/yjs/match-1/user-1', rivalClient, rivalAuth);
       expect(res.authorized).toBe(true);
       expect(res.document).toBeDefined();
+    });
+
+    it('envía snapshot inicial y difunde texto sólo mientras el código está revelado', async () => {
+      const session = createSampleSession('match-1');
+      session.players.get('user-1')!.is_revealed = true;
+      await store.saveMatch(session);
+
+      const ownerClient = createMockYjsClient('c1', 'user-1', 'match-1', 'user-1');
+      const rivalClient = createMockYjsClient('c2', 'user-2', 'match-1', 'user-1');
+      await hub.handleConnection('/yjs/match-1/user-1', ownerClient, {
+        userId: 'user-1',
+        gamertag: 'coder1',
+        role: 'user',
+      });
+      await hub.handleConnection('/yjs/match-1/user-1', rivalClient, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+
+      expect(JSON.parse(ownerClient.sentText[0] ?? '{}')).toMatchObject({
+        type: 'sync',
+        source_code: '',
+      });
+      expect(JSON.parse(rivalClient.sentText[0] ?? '{}')).toMatchObject({
+        type: 'sync',
+        target_user_id: 'user-1',
+      });
+
+      const firstUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(1)', 1);
+      expect(firstUpdate.applied).toBe(true);
+      expect(JSON.parse(rivalClient.sentText.at(-1) ?? '{}')).toMatchObject({
+        type: 'update',
+        source_code: 'print(1)',
+      });
+
+      session.players.get('user-1')!.is_revealed = false;
+      await store.saveMatch(session);
+      const receivedBeforeHiddenUpdate = rivalClient.sentText.length;
+      const hiddenUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(2)', 1);
+      expect(hiddenUpdate.applied).toBe(true);
+      expect(rivalClient.sentText).toHaveLength(receivedBeforeHiddenUpdate);
     });
   });
 

@@ -10,7 +10,7 @@
  * - Limpieza de timers al cerrar el servidor.
  */
 
-import type { Logger } from '@duelodev/shared';
+import { createYjsSyncMessage, type Logger } from '@duelodev/shared';
 import type { MatchStore } from '../store/types.js';
 import { authorizeYjsAccess, parseYjsPath } from './auth.js';
 import { YjsDocument } from './document.js';
@@ -133,6 +133,18 @@ export class YjsHub {
 
     doc.addObserver(client);
 
+    client.sendText?.(
+      JSON.stringify(
+        createYjsSyncMessage({
+          match_id: matchId,
+          target_user_id: targetUserId,
+          round_id: doc.roundId,
+          generation: doc.generation,
+          source_code: doc.getText(),
+        }),
+      ),
+    );
+
     this.logger?.info('Conexión Yjs autorizada', {
       match_id: matchId,
       user_id: auth.userId,
@@ -168,6 +180,76 @@ export class YjsHub {
     }
 
     return doc.applyUpdate(update, generation, updatedText, client.id);
+  }
+
+  /** Variante asíncrona del transporte binario con el mismo filtro de permisos. */
+  async handleIncomingBinaryUpdate(
+    client: YjsClientConnection,
+    update: Uint8Array,
+    generation: number,
+  ): Promise<{ applied: boolean; reason?: string }> {
+    if (!client.isOwner) {
+      return {
+        applied: false,
+        reason: 'Solo el dueño del documento puede enviar actualizaciones.',
+      };
+    }
+
+    const session = await this.matchStore.getMatch(client.matchId);
+    if (!session) return { applied: false, reason: 'Partida no encontrada.' };
+
+    const targetPlayer = session.players.get(client.targetUserId);
+    if (!targetPlayer) {
+      return { applied: false, reason: 'Jugador objetivo no pertenece a la partida.' };
+    }
+
+    const doc = this.activeDocuments.get(this.docKey(client.matchId, client.targetUserId));
+    if (!doc) return { applied: false, reason: 'Documento Yjs no encontrado.' };
+
+    const isFinished = session.status === 'finished' || session.status === 'abandoned';
+    return doc.applyUpdate(update, generation, undefined, client.id, (observer) => {
+      if (observer.userId === client.targetUserId) return true;
+      return session.players.has(observer.userId) && (targetPlayer.is_revealed || isFinished);
+    });
+  }
+
+  /**
+   * Aplica una actualización textual del editor web y filtra la difusión con
+   * el estado de revelación leído del store en el mismo ciclo del update.
+   */
+  async handleIncomingTextUpdate(
+    client: YjsClientConnection,
+    sourceCode: string,
+    generation: number,
+  ): Promise<{ applied: boolean; reason?: string }> {
+    if (!client.isOwner) {
+      return {
+        applied: false,
+        reason: 'Solo el dueño del documento puede enviar actualizaciones.',
+      };
+    }
+
+    const session = await this.matchStore.getMatch(client.matchId);
+    if (!session) {
+      return { applied: false, reason: 'Partida no encontrada.' };
+    }
+
+    const targetPlayer = session.players.get(client.targetUserId);
+    if (!targetPlayer) {
+      return { applied: false, reason: 'Jugador objetivo no pertenece a la partida.' };
+    }
+
+    const key = this.docKey(client.matchId, client.targetUserId);
+    const doc = this.activeDocuments.get(key);
+    if (!doc) {
+      return { applied: false, reason: 'Documento Yjs no encontrado.' };
+    }
+
+    const isFinished = session.status === 'finished' || session.status === 'abandoned';
+    return doc.applyTextUpdate(sourceCode, generation, client.id, (observer) => {
+      if (observer.userId === client.targetUserId) return true;
+      return session.players.has(observer.userId) && (targetPlayer.is_revealed || isFinished);
+    });
   }
 
   /**

@@ -8,7 +8,7 @@
  * - Rechazo de updates obsoletos pertenecientes a generaciones anteriores.
  */
 
-import { MAX_YDOC_BYTES } from '@duelodev/shared';
+import { createYjsCodeUpdateMessage, MAX_YDOC_BYTES } from '@duelodev/shared';
 import type { CodeSnapshot, YjsClientConnection, YjsDocumentMetadata } from './types.js';
 
 export interface YjsDocumentOptions {
@@ -19,6 +19,8 @@ export interface YjsDocumentOptions {
   initialCode?: string | undefined;
   maxBytes?: number | undefined;
 }
+
+export type YjsObserverFilter = (observer: YjsClientConnection) => boolean;
 
 export class YjsDocument {
   readonly matchId: string;
@@ -101,6 +103,7 @@ export class YjsDocument {
     generation: number,
     updatedText?: string | undefined,
     sourceClientId?: string | undefined,
+    observerFilter?: YjsObserverFilter,
   ): { applied: boolean; reason?: string } {
     if (this.isFrozenState) {
       return { applied: false, reason: 'El documento está congelado y no admite más cambios.' };
@@ -132,12 +135,64 @@ export class YjsDocument {
 
     // Difundir update binario a los observadores (excluyendo al autor)
     for (const [id, observer] of this.observers) {
-      if (id !== sourceClientId) {
+      if (id !== sourceClientId && (!observerFilter || observerFilter(observer))) {
         try {
           observer.send(update);
         } catch {
           // Si el observer falló al enviar, se limpiará en disconnect
         }
+      }
+    }
+
+    return { applied: true };
+  }
+
+  /**
+   * Reemplaza la proyección textual del documento para clientes web sin Yjs.
+   * El servidor mantiene el mismo control de generación y tamaño, pero difunde
+   * sólo a observadores que el hub haya autorizado para la ronda actual.
+   */
+  applyTextUpdate(
+    sourceCode: string,
+    generation: number,
+    sourceClientId?: string,
+    observerFilter?: YjsObserverFilter,
+  ): { applied: boolean; reason?: string } {
+    if (this.isFrozenState) {
+      return { applied: false, reason: 'El documento está congelado y no admite más cambios.' };
+    }
+
+    if (generation !== this.generation) {
+      return {
+        applied: false,
+        reason: `Generación desfasada. Actual: ${this.generation}, recibida: ${generation}.`,
+      };
+    }
+
+    const nextByteSize = Buffer.byteLength(sourceCode, 'utf8');
+    if (nextByteSize > this.maxBytes) {
+      return {
+        applied: false,
+        reason: `Límite de documento excedido (${nextByteSize} B > ${this.maxBytes} B).`,
+      };
+    }
+
+    this.content = sourceCode;
+    this.totalByteSize = nextByteSize;
+    this.lastUpdatedAt = Date.now();
+
+    const message = JSON.stringify(
+      createYjsCodeUpdateMessage({
+        generation: this.generation,
+        source_code: sourceCode,
+      }),
+    );
+    for (const [id, observer] of this.observers) {
+      if (id === sourceClientId || (observerFilter && !observerFilter(observer))) continue;
+      try {
+        observer.sendText?.(message);
+      } catch {
+        // Si el observer falló al enviar, se limpiará en disconnect.
       }
     }
 

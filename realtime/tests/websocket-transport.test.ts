@@ -195,6 +195,51 @@ describe('Native WebSocket Transport & Adapter (F3 Unidad 6)', () => {
     ws.close();
   });
 
+  it('sincroniza el código textual entre dueño y rival revelado', async () => {
+    const session = createSampleSession('match-ws-yjs-text');
+    session.players.get('user-1')!.is_revealed = true;
+    await server.ctx.matchStore.saveMatch(session);
+
+    const ownerToken = createTestToken({ userId: 'user-1', gamertag: 'coder1' });
+    const rivalToken = createTestToken({ userId: 'user-2', gamertag: 'coder2' });
+    const owner = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/yjs/match-ws-yjs-text/user-1?token=${ownerToken}`,
+    );
+    const rival = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/yjs/match-ws-yjs-text/user-1?token=${rivalToken}`,
+    );
+
+    const waitForMessage = (ws: WebSocket, type: string) =>
+      new Promise<Record<string, unknown>>((resolve) => {
+        ws.onmessage = (event) => {
+          const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+          if (message.type === type) resolve(message);
+        };
+      });
+    const ownerSync = waitForMessage(owner, 'sync');
+    const rivalSync = waitForMessage(rival, 'sync');
+
+    await Promise.all(
+      [owner, rival].map(
+        (ws) =>
+          new Promise<void>((resolve, reject) => {
+            ws.onopen = () => resolve();
+            ws.onerror = (error) => reject(error);
+          }),
+      ),
+    );
+    expect(await ownerSync).toMatchObject({ target_user_id: 'user-1', source_code: '' });
+    expect(await rivalSync).toMatchObject({ target_user_id: 'user-1', source_code: '' });
+
+    const rivalUpdate = waitForMessage(rival, 'update');
+    owner.send(JSON.stringify({ type: 'update', generation: 1, source_code: 'print(42)' }));
+    expect(await rivalUpdate).toMatchObject({ source_code: 'print(42)', generation: 1 });
+    expect(server.yjsHub.getDocument('match-ws-yjs-text', 'user-1')?.getText()).toBe('print(42)');
+
+    owner.close();
+    rival.close();
+  });
+
   it('rechaza conexión WebSocket a ruta desconocida con 404', async () => {
     const ws = new globalThis.WebSocket(`ws://127.0.0.1:${serverPort}/ruta-inexistente`);
 
