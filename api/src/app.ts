@@ -23,6 +23,7 @@ import { RetentionService } from './services/retention.js';
 import { AuditService } from './services/audit.js';
 import { createOperationalMetricsProvider } from './services/metrics.js';
 import { validateCsrfOrigin } from './plugins/csrf.js';
+import { applyCorsHeaders, handleCorsPreflight } from './plugins/cors.js';
 import { HttpError } from './plugins/body-parser.js';
 import { dispatchRoute } from './routes/router.js';
 
@@ -173,6 +174,11 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
 
     res.setHeader('x-request-id', requestId);
     res.setHeader('x-content-type-options', 'nosniff');
+
+    applyCorsHeaders(req, res, options.corsOptions);
+    if (handleCorsPreflight(req, res, options.corsOptions)) {
+      return;
+    }
 
     const reqStart = performance.now();
 

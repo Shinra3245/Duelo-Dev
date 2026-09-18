@@ -13,6 +13,7 @@ import {
   PostgresUserRepository,
 } from './repositories/postgres.js';
 import { RedisJudgeQueue, RedisResultPublisher } from './queue/redis.js';
+import { parseCorsOrigins } from './plugins/cors.js';
 import { runMigrations } from './services/migrations.js';
 
 export * from './types.js';
@@ -37,6 +38,7 @@ export interface ProductionApiAppConfig {
   authSecret: string;
   seedPilotProblems?: boolean;
   runMigrations?: boolean;
+  corsOrigins?: string[];
 }
 
 /**
@@ -95,6 +97,13 @@ export async function createProductionApp(
     databasePing,
     redisPing,
     seedPilotProblems: config.seedPilotProblems ?? false,
+    corsOptions: {
+      allowedOrigins: config.corsOrigins ?? [],
+      allowCredentials: true,
+    },
+    csrfOptions: {
+      allowedOrigins: config.corsOrigins ?? [],
+    },
   });
 
   const originalClose = app.close.bind(app);
@@ -145,6 +154,7 @@ if (isDirectExecution) {
       redisUrl,
       authSecret,
       seedPilotProblems: true,
+      corsOrigins: parseCorsOrigins(process.env['CORS_ORIGINS']),
     });
   } catch (initErr) {
     console.error(

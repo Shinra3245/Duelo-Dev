@@ -16,6 +16,7 @@ import type { RetentionService, RetentionServiceOptions } from './services/reten
 import type { AuditService } from './services/audit.js';
 import type { JudgeQueue, SubmissionReconciler, ResultPublisher } from './queue/index.js';
 import type { CsrfOptions } from './plugins/csrf.js';
+import type { CorsOptions } from './plugins/cors.js';
 import type { RateLimiter } from './plugins/rate-limit.js';
 import type { ReadinessProbe, ReadinessProbeResult } from './infrastructure/probes.js';
 
@@ -93,6 +94,8 @@ export interface ApiAppOptions {
   retentionOptions?: RetentionServiceOptions;
   /** Opciones de verificación de origen y CSRF. */
   csrfOptions?: CsrfOptions;
+  /** Opciones CORS para clientes web en otro origen permitido. */
+  corsOptions?: CorsOptions;
   /** Secreto para firma de tokens (usado al crear AuthService por defecto). */
   authSecret?: string;
   /** Si es true, siembra los problemas piloto en problemRepo al iniciar la app. */
