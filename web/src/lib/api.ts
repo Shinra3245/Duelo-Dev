@@ -16,6 +16,10 @@ import type {
   SubmissionDetailsResponse,
   ProblemPublicResponse,
   MatchSummaryResponse,
+  AdminManualResultResponse,
+  AdminPlayersResponse,
+  AdminRankingResponse,
+  AdminRoomsResponse,
 } from '@duelodev/shared';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
@@ -150,5 +154,26 @@ export const api = {
   },
   matches: {
     summary: (id: string) => request<MatchSummaryResponse>(`/matches/${id}/summary`),
+  },
+  admin: {
+    rooms: (status?: string) =>
+      request<AdminRoomsResponse>(
+        `/admin/rooms${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+      ),
+    createRoom: (data: CreateRoomRequest) =>
+      request<RoomCreatedResponse>('/admin/rooms/create', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    players: (query?: string) =>
+      request<AdminPlayersResponse>(
+        `/admin/players${query ? `?q=${encodeURIComponent(query)}` : ''}`,
+      ),
+    ranking: () => request<AdminRankingResponse>('/admin/ranking'),
+    setResult: (matchId: string, winnerIds: string[]) =>
+      request<AdminManualResultResponse>(`/admin/rooms/${matchId}/result`, {
+        method: 'POST',
+        body: JSON.stringify({ winner_ids: winnerIds }),
+      }),
   },
 };
