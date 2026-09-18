@@ -270,6 +270,18 @@ export interface AdminManualResultResponse {
   audited: boolean;
 }
 
+export interface AdminCloseRoomResponse {
+  room: AdminRoomSummary;
+  closed: boolean;
+  audited: boolean;
+}
+
+export interface AdminCloseRoomsResponse {
+  rooms: AdminRoomSummary[];
+  closed_count: number;
+  audited: boolean;
+}
+
 // ────────────────────── Guardias de invariantes REST ──────────────────────
 
 export function isCreateSubmissionRequest(value: unknown): value is CreateSubmissionRequest {

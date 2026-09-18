@@ -173,4 +173,61 @@ describe('Panel administrativo protegido', () => {
     const events = await app.ctx.eventRepo!.findEventsByName('admin_result_overridden');
     expect(events).toHaveLength(1);
   });
+
+  it('permite cerrar una sala, repetir la operación y cerrar todas las activas', async () => {
+    const createRoom = async () => {
+      const response = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+        method: 'POST',
+        headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          config: {
+            mode: 'puntos',
+            max_players: 2,
+            num_problems: 1,
+            categories: ['muy_facil'],
+            time_per_problem_s: 60,
+          },
+        }),
+      });
+      expect(response.status).toBe(201);
+      return (await response.json()) as { match_id: string };
+    };
+
+    const first = await createRoom();
+    const second = await createRoom();
+
+    const forbidden = await fetch(`${baseUrl}/api/v1/admin/rooms/${first.match_id}/close`, {
+      method: 'POST',
+      headers: { Cookie: userCookie },
+    });
+    expect(forbidden.status).toBe(403);
+
+    const closeOne = await fetch(`${baseUrl}/api/v1/admin/rooms/${first.match_id}/close`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(closeOne.status).toBe(200);
+    expect((await closeOne.json()).room.status).toBe('abandoned');
+
+    const closeAgain = await fetch(`${baseUrl}/api/v1/admin/rooms/${first.match_id}/close`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(closeAgain.status).toBe(200);
+    expect((await closeAgain.json()).closed).toBe(false);
+
+    const closeAll = await fetch(`${baseUrl}/api/v1/admin/rooms/close-all`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(closeAll.status).toBe(200);
+    const closeAllBody = (await closeAll.json()) as {
+      rooms: Array<{ match_id: string; status: string }>;
+      closed_count: number;
+    };
+    expect(closeAllBody.closed_count).toBeGreaterThanOrEqual(1);
+    expect(closeAllBody.rooms.find((room) => room.match_id === second.match_id)?.status).toBe(
+      'abandoned',
+    );
+  });
 });

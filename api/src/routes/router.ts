@@ -26,6 +26,8 @@ import {
 import { handleGetMatchSummary } from './matches.js';
 import {
   handleAdminCreateRoom,
+  handleAdminCloseAllRooms,
+  handleAdminCloseRoom,
   handleAdminPlayers,
   handleAdminRanking,
   handleAdminResult,
@@ -125,6 +127,11 @@ export async function dispatchRoute(
       return;
     }
 
+    if (pathname === '/api/v1/admin/rooms/close-all') {
+      await handleAdminCloseAllRooms(req, res, ctx);
+      return;
+    }
+
     if (pathname === '/api/v1/admin/players') {
       await handleAdminPlayers(req, res, ctx);
       return;
@@ -138,6 +145,12 @@ export async function dispatchRoute(
     const adminResultMatch = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)\/result$/);
     if (adminResultMatch) {
       await handleAdminResult(req, res, ctx, adminResultMatch[1]!);
+      return;
+    }
+
+    const adminCloseRoomMatch = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)\/close$/);
+    if (adminCloseRoomMatch) {
+      await handleAdminCloseRoom(req, res, ctx, adminCloseRoomMatch[1]!);
       return;
     }
 

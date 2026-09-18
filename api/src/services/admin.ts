@@ -17,6 +17,7 @@ import { hashPassword } from './password.js';
 /** Correo único autorizado para el panel administrativo. */
 export const ADMIN_ALLOWED_EMAIL = 'omarbolanos@gmail.com';
 const ADMIN_GAMERTAG = 'admin-duelodev';
+const ACTIVE_MATCH_STATUSES: MatchStatus[] = ['lobby', 'running', 'settling'];
 
 export interface AdminServiceOptions {
   roomRepo: RoomRepository;
@@ -211,6 +212,65 @@ export class AdminService {
     });
 
     return this.toRoomSummary(updated);
+  }
+
+  async closeRoom(
+    matchId: string,
+    adminUserId: string,
+  ): Promise<{ room: AdminRoomSummary; closed: boolean; audited: boolean }> {
+    const match = await this.roomRepo.findMatchById(matchId);
+    if (!match) {
+      throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
+    }
+
+    if (!ACTIVE_MATCH_STATUSES.includes(match.status)) {
+      return { room: await this.toRoomSummary(match), closed: false, audited: false };
+    }
+
+    const updated = await this.roomRepo.updateMatch(match.id, {
+      status: 'abandoned',
+      winner_ids: [],
+      winner_id: null,
+      finish_reason: 'admin_override',
+      finished_at: new Date().toISOString(),
+      state_version: match.state_version + 1,
+    });
+    if (!updated) {
+      throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+    }
+
+    await this.auditService?.record('match', match.id, 'admin_room_closed', {
+      admin_user_id: adminUserId,
+      previous_status: match.status,
+      room_code: match.room_code,
+    });
+
+    return { room: await this.toRoomSummary(updated), closed: true, audited: true };
+  }
+
+  async closeAllRooms(
+    adminUserId: string,
+  ): Promise<{ rooms: AdminRoomSummary[]; closed_count: number; audited: boolean }> {
+    const activeMatches: MatchEntity[] = [];
+    for (const status of ACTIVE_MATCH_STATUSES) {
+      let offset = 0;
+      for (;;) {
+        const page = await this.requireRoomListing({ limit: 100, offset, status });
+        activeMatches.push(...page);
+        if (page.length < 100) break;
+        offset += page.length;
+      }
+    }
+
+    const closed = await Promise.all(
+      activeMatches.map((match) => this.closeRoom(match.id, adminUserId)),
+    );
+
+    return {
+      rooms: closed.map((result) => result.room),
+      closed_count: closed.filter((result) => result.closed).length,
+      audited: closed.every((result) => result.audited),
+    };
   }
 
   private async requireRoomListing(options: {

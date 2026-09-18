@@ -178,3 +178,26 @@ export async function handleAdminResult(
   const room = await ctx.adminService.overrideResult(matchId, validated.data.winner_ids, admin.id);
   sendJson(req, res, 200, { room, audited: true });
 }
+
+export async function handleAdminCloseRoom(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+  matchId: string,
+): Promise<void> {
+  ensureMethod(req, res, 'POST');
+  const admin = await requireAdmin(req, ctx);
+  const result = await ctx.adminService.closeRoom(matchId, admin.id);
+  sendJson(req, res, 200, result);
+}
+
+export async function handleAdminCloseAllRooms(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+): Promise<void> {
+  ensureMethod(req, res, 'POST');
+  const admin = await requireAdmin(req, ctx);
+  const result = await ctx.adminService.closeAllRooms(admin.id);
+  sendJson(req, res, 200, result);
+}
