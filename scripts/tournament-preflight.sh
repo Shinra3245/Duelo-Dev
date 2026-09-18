@@ -6,15 +6,26 @@ cd "$repo_root"
 
 failures=0
 
-load_env_file() {
-  if [[ -f .env ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
-  fi
+load_env_defaults() {
+  [[ -f .env ]] || return
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#${line%%[![:space:]]*}}"
+    line="${line%${line##*[![:space:]]}}"
+    [[ -z "$line" || "${line:0:1}" == '#' ]] && continue
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < .env
 }
-
 check_command() {
   local name="$1"
   if command -v "$name" >/dev/null 2>&1; then
@@ -51,7 +62,7 @@ check_port() {
   fi
 }
 
-load_env_file
+load_env_defaults
 
 printf 'Preflight DueloDev torneo LAN\n'
 

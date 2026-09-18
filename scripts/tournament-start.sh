@@ -6,27 +6,58 @@ cd "$repo_root"
 
 pids=()
 judge_started=false
+cleaned_up=false
 
 cleanup() {
+  if [[ "$cleaned_up" == true ]]; then
+    return
+  fi
+  cleaned_up=true
   if [[ "$judge_started" == true ]]; then
     scripts/judge-vm-worker-stop.sh >/dev/null 2>&1 || true
   fi
   if ((${#pids[@]} > 0)); then
     printf '\nDeteniendo servicios Node...\n'
-    kill "${pids[@]}" >/dev/null 2>&1 || true
-  fi
-}
-trap cleanup EXIT INT TERM
-
-load_env_file() {
-  if [[ -f .env ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
+    for pid in "${pids[@]}"; do
+      pkill -TERM -P "$pid" >/dev/null 2>&1 || true
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+    done
+    sleep 1
+    for pid in "${pids[@]}"; do
+      pkill -KILL -P "$pid" >/dev/null 2>&1 || true
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+    done
   fi
 }
 
+handle_signal() {
+  cleanup
+  exit 130
+}
+
+trap cleanup EXIT
+trap handle_signal INT TERM
+
+load_env_defaults() {
+  [[ -f .env ]] || return
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#${line%%[![:space:]]*}}"
+    line="${line%${line##*[![:space:]]}}"
+    [[ -z "$line" || "${line:0:1}" == '#' ]] && continue
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < .env
+}
 detect_lan_host() {
   if [[ -n "${LAN_HOST:-}" ]]; then
     printf '%s\n' "$LAN_HOST"
@@ -57,7 +88,7 @@ wait_http_ready() {
   exit 1
 }
 
-load_env_file
+load_env_defaults
 
 lan_host="$(detect_lan_host)"
 if [[ -z "$lan_host" ]]; then
@@ -65,7 +96,7 @@ if [[ -z "$lan_host" ]]; then
   exit 1
 fi
 
-export NODE_ENV="${NODE_ENV:-production}"
+export NODE_ENV="production"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 export POSTGRES_USER="${POSTGRES_USER:-duelodev}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-cambiame_en_local}"
@@ -80,9 +111,9 @@ export WEB_PORT="${WEB_PORT:-3000}"
 export DATABASE_URL="${DATABASE_URL:-postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT}}"
 export AUTH_SECRET="${AUTH_SECRET:-$(openssl rand -base64 48 2>/dev/null || node -e 'console.log(crypto.randomUUID()+crypto.randomUUID())')}"
-export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://${lan_host}:${API_PORT}/api/v1}"
-export NEXT_PUBLIC_REALTIME_URL="${NEXT_PUBLIC_REALTIME_URL:-ws://${lan_host}:${REALTIME_PORT}/match}"
-export CORS_ORIGINS="${CORS_ORIGINS:-http://${lan_host}:${WEB_PORT},http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}}"
+export NEXT_PUBLIC_API_URL="http://${lan_host}:${API_PORT}/api/v1"
+export NEXT_PUBLIC_REALTIME_URL="ws://${lan_host}:${REALTIME_PORT}/match"
+export CORS_ORIGINS="http://${lan_host}:${WEB_PORT},http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
 
 printf 'Iniciando DueloDev para torneo LAN\n'
 printf 'Web:      http://%s:%s\n' "$lan_host" "$WEB_PORT"
