@@ -97,6 +97,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       submissionRepo,
       queue: judgeQueue,
       problemRepo,
+      matchRepo: roomRepo,
       logger,
     });
 

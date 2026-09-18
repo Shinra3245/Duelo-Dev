@@ -297,6 +297,55 @@ describe('Judge Queue & Submission Reconciler (doc 04 §4, §5)', () => {
       expect(stats.failed).toBe(1);
     });
 
+    it('no reencola envíos pendientes de una partida terminada o cerrada', async () => {
+      const submissionRepo = new InMemorySubmissionRepository();
+      const roomRepo = new InMemoryRoomRepository();
+      const queue = new InMemoryJudgeQueue();
+      const matchId = randomUUID();
+      const now = Date.now();
+
+      await roomRepo.createMatch({
+        id: matchId,
+        room_code: 'CLOSED1',
+        mode: 'puntos',
+        status: 'abandoned',
+        host_id: randomUUID(),
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          categories: ['muy_facil'],
+          num_problems: 1,
+          time_per_problem_s: 60,
+        },
+      });
+      await submissionRepo.createSubmission({
+        match_id: matchId,
+        round_id: randomUUID(),
+        user_id: randomUUID(),
+        problem_id: randomUUID(),
+        language: 'python',
+        source_code: 'print("closed")',
+        time_limit_ms: 1000,
+        memory_limit_mb: 128,
+        admission_seq: 1,
+        status: 'queued',
+        received_at: new Date(now - 5000).toISOString(),
+      });
+
+      const reconciler = new SubmissionReconciler({
+        submissionRepo,
+        queue,
+        matchRepo: roomRepo,
+        gracePeriodMs: 2000,
+      });
+      const stats = await reconciler.reconcileOnce(now);
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.reenqueued).toBe(0);
+      expect(stats.failed).toBe(0);
+      expect(queue.count()).toBe(0);
+    });
+
     it('inicia y detiene el timer periódico de reconciliación limpiamente', () => {
       const submissionRepo = new InMemorySubmissionRepository();
       const queue = new InMemoryJudgeQueue();

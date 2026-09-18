@@ -4,7 +4,11 @@ import {
   type JudgeJobStreamMessage,
   type Logger,
 } from '@duelodev/shared';
-import type { ProblemRepository, SubmissionRepository } from '../repositories/types.js';
+import type {
+  ProblemRepository,
+  RoomRepository,
+  SubmissionRepository,
+} from '../repositories/types.js';
 import type { JudgeQueue, ReconciliationStats, SubmissionReconcilerOptions } from './types.js';
 
 /**
@@ -16,6 +20,7 @@ export class SubmissionReconciler {
   private readonly submissionRepo: SubmissionRepository;
   private readonly queue: JudgeQueue;
   private readonly problemRepo: ProblemRepository | undefined;
+  private readonly matchRepo: Pick<RoomRepository, 'findMatchById'> | undefined;
   private readonly logger: Logger;
   private readonly intervalMs: number;
   private readonly batchSize: number;
@@ -29,6 +34,7 @@ export class SubmissionReconciler {
     this.submissionRepo = options.submissionRepo;
     this.queue = options.queue;
     this.problemRepo = options.problemRepo;
+    this.matchRepo = options.matchRepo;
     this.logger = options.logger ?? createLogger('submission-reconciler');
     this.intervalMs = options.intervalMs ?? 5000;
     this.batchSize = options.batchSize ?? 50;
@@ -59,6 +65,10 @@ export class SubmissionReconciler {
         }
 
         stats.scanned++;
+
+        if (!(await this.shouldReenqueueSubmission(submission.match_id))) {
+          continue;
+        }
 
         const receivedAtMs = new Date(submission.received_at).getTime();
         const ageMs = now - receivedAtMs;
@@ -120,6 +130,28 @@ export class SubmissionReconciler {
     }
 
     return stats;
+  }
+
+  private async shouldReenqueueSubmission(matchId: string): Promise<boolean> {
+    if (!this.matchRepo) return true;
+
+    try {
+      const match = await this.matchRepo.findMatchById(matchId);
+      if (!match || match.status === 'finished' || match.status === 'abandoned') {
+        this.logger.info('Envío pendiente omitido porque su partida ya es terminal', {
+          match_id: matchId,
+          status: match?.status ?? 'missing',
+        });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      this.logger.warn('No se pudo comprobar el estado de la partida; se omite el reintento', {
+        match_id: matchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
   }
 
   /**
