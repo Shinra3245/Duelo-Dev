@@ -88,8 +88,7 @@ elif mode == 'exit137':
 elif mode == 'mle':
     chunks = []
     while True:
-        chunks.append(bytearray(16 * 1024 * 1024))
-        time.sleep(0.01)
+        chunks.append(bytearray(64 * 1024 * 1024))
 else:
     raise AssertionError(mode)
 '''
@@ -107,7 +106,7 @@ prepared = prepare_submission(compiler, 'python', source)
 assert prepared.succeeded and prepared.artifact is not None, prepared
 
 try:
-    sandbox = SandboxSpec(prepared.artifact.reference, prepared.run_argv, 500, 256)
+    sandbox = SandboxSpec(prepared.artifact.reference, prepared.run_argv, 2000, 256)
     inputs = [
         CaseInput(1, b'dirty\n'),
         CaseInput(2, b'check\n'),
