@@ -39,7 +39,9 @@ trap cleanup EXIT
 trap handle_signal INT TERM
 
 load_env_defaults() {
-  [[ -f .env ]] || return
+  if [[ ! -f .env ]]; then
+    return 0
+  fi
   local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line#${line%%[![:space:]]*}}"
@@ -163,6 +165,32 @@ wait_http_ready() {
   exit 1
 }
 
+ensure_web_build_available() {
+  if [[ -f web/.next/BUILD_ID ]]; then
+    return
+  fi
+
+  printf 'Error: SKIP_BUILD=1 requiere un build previo de web/.next.\n' >&2
+  printf 'Ejecuta primero npm run build o reinicia sin SKIP_BUILD=1.\n' >&2
+  exit 1
+}
+
+require_port_available() {
+  local port="$1"
+  local label="$2"
+
+  if ! command -v ss >/dev/null 2>&1; then
+    printf 'Aviso: no se pudo verificar el puerto %s (%s); falta ss en PATH.\n' "$port" "$label" >&2
+    return
+  fi
+
+  if ss -H -ltn "sport = :${port}" | grep -q .; then
+    printf 'Error: el puerto %s (%s) ya está en uso.\n' "$port" "$label" >&2
+    printf 'Detén la instancia anterior o usa %s_PORT=otro_puerto.\n' "${label^^}" >&2
+    exit 1
+  fi
+}
+
 load_env_defaults
 
 lan_host="$(detect_lan_host)"
@@ -195,6 +223,14 @@ printf 'Web:      http://%s:%s\n' "$lan_host" "$WEB_PORT"
 printf 'API:      %s\n' "$NEXT_PUBLIC_API_URL"
 printf 'Realtime: %s\n' "$NEXT_PUBLIC_REALTIME_URL"
 warn_if_suspicious_lan_host "$lan_host"
+
+require_port_available "$API_PORT" api
+require_port_available "$REALTIME_PORT" realtime
+require_port_available "$WEB_PORT" web
+
+if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+  ensure_web_build_available
+fi
 
 scripts/tournament-preflight.sh
 

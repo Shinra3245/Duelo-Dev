@@ -38,6 +38,7 @@ venv/
 # Datos locales
 *.log
 tmp/
+/scratch/
 /data/
 pgdata/
 

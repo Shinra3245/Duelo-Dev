@@ -7,7 +7,9 @@ cd "$repo_root"
 failures=0
 
 load_env_defaults() {
-  [[ -f .env ]] || return
+  if [[ ! -f .env ]]; then
+    return 0
+  fi
   local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line#${line%%[![:space:]]*}}"
