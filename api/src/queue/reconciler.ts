@@ -138,7 +138,7 @@ export class SubmissionReconciler {
     try {
       const match = await this.matchRepo.findMatchById(matchId);
       if (!match || match.status === 'finished' || match.status === 'abandoned') {
-        this.logger.info('Envío pendiente omitido porque su partida ya es terminal', {
+        this.logger.debug('Envío pendiente omitido porque su partida ya es terminal', {
           match_id: matchId,
           status: match?.status ?? 'missing',
         });
