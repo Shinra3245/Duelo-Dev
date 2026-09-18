@@ -60,7 +60,7 @@ export class RoomService {
   }
 
   /**
-   * Crea una nueva sala de juego. Requiere usuario registrado (doc 04 §2).
+   * Crea una nueva sala de juego. Requiere una sesión válida de usuario o invitado.
    */
   async createRoom(
     userId: string,
@@ -70,14 +70,6 @@ export class RoomService {
     const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new HttpError(401, ERROR_CODES.UNAUTHENTICATED, ERROR_MESSAGES.UNAUTHENTICATED);
-    }
-
-    if (user.role !== 'user') {
-      throw new HttpError(
-        403,
-        ERROR_CODES.FORBIDDEN,
-        'Solo los usuarios registrados pueden crear salas.',
-      );
     }
 
     // Generar código de sala único

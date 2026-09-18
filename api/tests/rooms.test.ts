@@ -145,8 +145,8 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
       expect(data.error.code).toBe(ERROR_CODES.UNAUTHENTICATED);
     });
 
-    it('rechaza crear sala a usuarios con rol guest con 403 FORBIDDEN', async () => {
-      const guest = await app.ctx.authService.createGuest('guest-nobie');
+    it('crea una sala exitosamente para un usuario invitado autenticado', async () => {
+      const guest = await app.ctx.authService.createGuest('guest-host');
 
       const res = await fetch(`${baseUrl}/api/v1/rooms`, {
         method: 'POST',
@@ -157,9 +157,13 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
         body: JSON.stringify({ config: validPuntosConfig }),
       });
 
-      expect(res.status).toBe(403);
-      const data = (await res.json()) as ApiError;
-      expect(data.error.code).toBe(ERROR_CODES.FORBIDDEN);
+      expect(res.status).toBe(201);
+      const data = (await res.json()) as RoomCreatedResponse;
+      expect(data.config.mode).toBe('puntos');
+      expect(typeof data.room_code).toBe('string');
+
+      const details = await app.ctx.roomRepo.findMatchByRoomCode(data.room_code);
+      expect(details?.host_id).toBe(guest.user.id);
     });
 
     it('rechaza crear sala con configuración inválida o award_on_timeout prohibido', async () => {
