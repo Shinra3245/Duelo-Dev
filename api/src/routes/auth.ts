@@ -218,3 +218,37 @@ export async function handleConvertGuest(
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 200, responseBody);
 }
+
+export async function handleMe(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+): Promise<void> {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use GET.');
+  }
+
+  const rawAccessToken = extractAccessToken(req);
+  if (!rawAccessToken) {
+    throw new HttpError(401, ERROR_CODES.UNAUTHENTICATED, ERROR_MESSAGES.UNAUTHENTICATED);
+  }
+
+  const session = ctx.authService.authenticateAccessToken(rawAccessToken);
+  const user = await ctx.userRepo.findById(session.userId);
+  if (!user) {
+    throw new HttpError(401, ERROR_CODES.UNAUTHENTICATED, 'Usuario no encontrado');
+  }
+
+  const response: AuthUserResponse = {
+    user: {
+      id: user.id,
+      email: user.email ?? null,
+      gamertag: user.gamertag,
+      role: user.role,
+      created_at: user.created_at,
+    },
+  };
+
+  sendJson(req, res, 200, response);
+}

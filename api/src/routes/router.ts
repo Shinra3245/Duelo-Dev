@@ -9,6 +9,7 @@ import {
   handleLogout,
   handleRefresh,
   handleRegister,
+  handleMe,
 } from './auth.js';
 import {
   handleCreateRoom,
@@ -68,6 +69,11 @@ export async function dispatchRoute(
 
     if (pathname === '/api/v1/auth/register') {
       await handleRegister(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/me') {
+      await handleMe(req, res, ctx);
       return;
     }
 
