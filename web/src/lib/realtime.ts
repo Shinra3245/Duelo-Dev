@@ -115,4 +115,37 @@ export class RealtimeClient {
   }
 }
 
-export const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL || 'ws://localhost:3002/match';
+const DEFAULT_REALTIME_URL = 'ws://localhost:3002/match';
+
+export const realtimeUrl = resolveRealtimeUrl();
+
+function resolveRealtimeUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_REALTIME_URL || DEFAULT_REALTIME_URL;
+  if (typeof window === 'undefined') {
+    return configuredUrl;
+  }
+
+  const browserHost = window.location.hostname;
+  if (isLoopbackHost(browserHost)) {
+    return configuredUrl;
+  }
+
+  try {
+    const parsed = new URL(configuredUrl);
+    if (!isLoopbackHost(parsed.hostname)) {
+      return configuredUrl;
+    }
+
+    parsed.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    parsed.hostname = browserHost;
+    parsed.port = parsed.port || '3002';
+    return parsed.toString();
+  } catch {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${protocol}://${browserHost}:3002/match`;
+  }
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}

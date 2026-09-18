@@ -18,7 +18,9 @@ import type {
   MatchSummaryResponse,
 } from '@duelodev/shared';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiClientError extends Error {
   constructor(
@@ -28,6 +30,44 @@ export class ApiClientError extends Error {
     super(data.error?.message || 'API Error');
     this.name = 'ApiClientError';
   }
+}
+
+function resolveApiBaseUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL;
+  if (typeof window === 'undefined') {
+    return stripTrailingSlash(configuredUrl);
+  }
+
+  return stripTrailingSlash(rewriteLoopbackForLanBrowser(configuredUrl, '3001'));
+}
+
+function rewriteLoopbackForLanBrowser(configuredUrl: string, fallbackPort: string) {
+  const browserHost = window.location.hostname;
+  if (isLoopbackHost(browserHost)) {
+    return configuredUrl;
+  }
+
+  try {
+    const parsed = new URL(configuredUrl);
+    if (!isLoopbackHost(parsed.hostname)) {
+      return configuredUrl;
+    }
+
+    parsed.protocol = window.location.protocol;
+    parsed.hostname = browserHost;
+    parsed.port = parsed.port || fallbackPort;
+    return parsed.toString();
+  } catch {
+    return `${window.location.protocol}//${browserHost}:${fallbackPort}/api/v1`;
+  }
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function stripTrailingSlash(url: string) {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
