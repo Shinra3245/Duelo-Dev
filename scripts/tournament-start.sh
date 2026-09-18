@@ -222,7 +222,7 @@ export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT}}"
 ensure_auth_secret
 export NEXT_PUBLIC_API_URL="http://${lan_host}:${API_PORT}/api/v1"
 export NEXT_PUBLIC_REALTIME_URL="ws://${lan_host}:${REALTIME_PORT}/match"
-export CORS_ORIGINS="http://${lan_host}:${WEB_PORT},http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
+export CORS_ORIGINS="*"
 
 printf 'Iniciando DueloDev para torneo LAN\n'
 printf 'Web:      http://%s:%s\n' "$lan_host" "$WEB_PORT"
@@ -257,7 +257,7 @@ pids+=("$!")
 printf '%s\n' "$!" > "$state_dir/realtime.pid"
 wait_http_ready "http://127.0.0.1:${REALTIME_PORT}/readyz" realtime
 
-if [[ "${START_JUDGE_VM:-auto}" != "0" ]]; then
+if false; then
   if scripts/judge-vm-worker-start.sh; then
     judge_started=true
     : > "$state_dir/judge-started"

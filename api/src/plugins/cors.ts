@@ -73,6 +73,7 @@ export function handleCorsPreflight(
 }
 
 function isAllowedOrigin(origin: string, allowedOrigins: string[]): boolean {
+  if (allowedOrigins.includes('*')) return true;
   const normalizedOrigin = normalizeOrigin(origin);
   if (!normalizedOrigin) return false;
 
