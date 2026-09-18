@@ -87,7 +87,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         });
 
         client.on(S2C.PLAYER_STATUS, () => {
-          // Actualizar estado de jugador
+          api.rooms.get(roomCode).then(setRoom).catch(console.error);
         });
 
         client.on(S2C.MATCH_STARTED, () => {
