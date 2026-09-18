@@ -141,7 +141,8 @@ export function authenticateSocketHandshake(
 
   // 3. Cookie duelodev_access
   if (!token && typeof cookieHeader === 'string' && cookieHeader.length > 0) {
-    const fromCookie = parseCookie(cookieHeader, 'duelodev_access');
+    const fromCookie =
+      parseCookie(cookieHeader, 'access_token') || parseCookie(cookieHeader, 'duelodev_access');
     if (fromCookie && fromCookie.trim().length > 0) {
       token = fromCookie.trim();
     }
