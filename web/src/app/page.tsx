@@ -114,61 +114,102 @@ export default function Home() {
   };
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center">Cargando...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200">
+        <div className="flex items-center gap-3 text-sm font-medium">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-300" />
+          Preparando DueloDev...
+        </div>
+      </div>
+    );
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-8 lg:p-24 bg-gray-50">
-      <div className="w-full max-w-4xl grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="bg-white rounded-xl shadow-md p-8">
-          <p className="text-sm font-semibold text-blue-700 mb-2">Modo torneo local</p>
-          <h1 className="text-3xl font-bold mb-4 text-gray-800">DueloDev</h1>
-          <p className="text-gray-600 mb-6">
-            Crea duelos de programación para dos jugadores, comparte el código de sala y deja que el
-            juez evalúe las soluciones en tiempo real.
-          </p>
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 sm:py-10 lg:px-10">
+      <div className="pointer-events-none absolute -left-32 -top-32 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-indigo-500/20 blur-3xl" />
+      <div className="relative mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-stretch">
+        <section className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10">
+          <div>
+            <div className="mb-7 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300 font-black text-slate-950 shadow-lg shadow-cyan-400/20">
+                D
+              </span>
+              <div>
+                <p className="text-sm font-bold tracking-[0.18em] text-cyan-200">DUELODEV</p>
+                <p className="text-xs text-slate-400">Torneo de programación en tiempo real</p>
+              </div>
+            </div>
+            <p className="mb-3 inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">
+              Modo torneo local
+            </p>
+            <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
+              Piensa rápido.
+              <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
+                Programa mejor.
+              </span>
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+              Resuelve problemas, recibe veredictos del juez y sigue el marcador de tu sala sin
+              perder el ritmo del duelo.
+            </p>
 
-          <ol className="space-y-3 text-sm text-gray-700">
-            <li className="flex gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
-                1
-              </span>
-              <span>Ingresa con un gamertag de invitado para identificarte durante el duelo.</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
-                2
-              </span>
-              <span>Crea una sala en modo Puntos o Rondas y comparte el código con tu rival.</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
-                3
-              </span>
-              <span>
-                Cuando ambos estén dentro, el anfitrión inicia la partida y se envía Python 3.
-              </span>
-            </li>
-          </ol>
+            <ol className="mt-8 space-y-4 text-sm text-slate-200">
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 font-bold text-cyan-200 ring-1 ring-white/10">
+                  1
+                </span>
+                <span className="pt-1">
+                  Ingresa con un gamertag para identificarte durante el duelo.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 font-bold text-cyan-200 ring-1 ring-white/10">
+                  2
+                </span>
+                <span className="pt-1">
+                  Únete a la sala con el código que te entregue el organizador.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 font-bold text-cyan-200 ring-1 ring-white/10">
+                  3
+                </span>
+                <span className="pt-1">
+                  Escribe tu solución en Python 3 y observa el resultado al instante.
+                </span>
+              </li>
+            </ol>
+          </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-              <h2 className="font-semibold text-green-900">Puntos</h2>
-              <p className="mt-1 text-sm text-green-800">
-                Gana quien obtenga primero Accepted en el problema activo.
+          <div className="mt-10 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4">
+              <h2 className="font-bold text-emerald-200">Puntos</h2>
+              <p className="mt-1 text-sm leading-6 text-emerald-100/80">
+                Acumula puntos y casos resueltos durante la partida.
               </p>
             </div>
-            <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
-              <h2 className="font-semibold text-purple-900">Rondas</h2>
-              <p className="mt-1 text-sm text-purple-800">
-                Se acumulan puntos a través de varios problemas del duelo.
+            <div className="rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-4">
+              <h2 className="font-bold text-indigo-200">Rondas</h2>
+              <p className="mt-1 text-sm leading-6 text-indigo-100/80">
+                Supera problemas consecutivos y mantén tu posición en el marcador.
               </p>
             </div>
           </div>
         </section>
 
-        <section className="bg-white rounded-xl shadow-md p-8">
-          <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Entrar al torneo</h2>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8">
+          <div className="mb-7">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
+              Acceso de jugador
+            </p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+              Entrar al torneo
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Usa un nombre visible para tus rivales y el código de sala del organizador.
+            </p>
+          </div>
 
           {loadError && (
             <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -176,71 +217,95 @@ export default function Home() {
             </div>
           )}
 
-          {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
+          {error && (
+            <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800">
+              {error}
+            </div>
+          )}
 
           {!user ? (
-            <form onSubmit={handleGuestLogin} className="space-y-4">
+            <form onSubmit={handleGuestLogin} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Gamertag</label>
+                <label className="mb-2 block text-sm font-bold text-slate-800" htmlFor="gamertag">
+                  Gamertag
+                </label>
                 <input
+                  id="gamertag"
                   type="text"
                   value={gamertag}
                   onChange={(e) => setGamertag(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                   placeholder="Ej. ninja-dev"
                   required
                   pattern={'^[A-Za-z0-9\\-]{3,20}$'}
                   title="De 3 a 20 caracteres alfanuméricos o guiones"
                 />
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Entre 3 y 20 caracteres. Usa letras, números o guiones.
+                </p>
               </div>
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors"
+                className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
               >
                 {isLoggingIn ? 'Iniciando...' : 'Jugar como Invitado'}
               </button>
             </form>
           ) : (
             <div className="space-y-6">
-              <div className="flex justify-between items-center bg-gray-100 p-3 rounded">
-                <div>
-                  <p className="text-sm text-gray-500">Conectado como</p>
-                  <p className="font-bold text-gray-800">{user.gamertag}</p>
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
+                    Conectado como
+                  </p>
+                  <p className="mt-1 break-all font-mono text-lg font-black leading-6 text-slate-950">
+                    {user.gamertag}
+                  </p>
                 </div>
-                <button onClick={handleLogout} className="text-sm text-red-600 hover:text-red-800">
+                <button
+                  onClick={handleLogout}
+                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-100 hover:text-rose-800"
+                >
                   Salir
                 </button>
               </div>
 
-              <div className="pt-4 border-t border-gray-200">
-                <h2 className="text-xl font-semibold mb-4 text-gray-800">Crear Sala</h2>
+              <div className="border-t border-slate-200 pt-5">
+                <h2 className="mb-3 text-xl font-black text-slate-950">Crear Sala</h2>
+                <p className="mb-4 text-sm leading-6 text-slate-600">
+                  Disponible para el anfitrión del torneo. Elige el formato de la partida.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => handleCreateRoom('puntos')}
                     disabled={isCreatingRoom}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
+                    className="rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Puntos'}
                   </button>
                   <button
                     onClick={() => handleCreateRoom('rondas')}
                     disabled={isCreatingRoom}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
+                    className="rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Rondas'}
                   </button>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200">
-                <h2 className="text-xl font-semibold mb-4 text-gray-800">Unirse a Sala</h2>
-                <form onSubmit={handleJoinRoom} className="flex gap-2">
+              <div className="border-t border-slate-200 pt-5">
+                <h2 className="mb-2 text-xl font-black text-slate-950">Unirse a sala</h2>
+                <p className="mb-4 text-sm leading-6 text-slate-600">
+                  Escribe el código de seis caracteres que te compartió el organizador.
+                </p>
+                <form onSubmit={handleJoinRoom} className="flex flex-col gap-3 sm:flex-row">
                   <input
                     type="text"
                     value={roomCode}
                     onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                    aria-label="Código de sala"
+                    className="min-w-0 flex-1 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-black uppercase tracking-[0.18em] text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white sm:text-left"
                     placeholder="CÓDIGO"
                     maxLength={6}
                     required
@@ -248,7 +313,7 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={isJoiningRoom}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
+                    className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
                   </button>
