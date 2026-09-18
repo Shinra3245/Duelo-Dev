@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RealtimeClient } from '../src/lib/realtime.js';
+import { buildCodeSyncUrl, CodeSyncClient } from '../src/lib/code-sync.js';
 
 type WebSocketMessageHandler = (event: { data: string }) => void;
 type WebSocketCloseHandler = () => void;
@@ -139,5 +140,49 @@ describe('Realtime Client', () => {
 
     expect(ws.close).toHaveBeenCalledTimes(1);
     expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('construye la ruta Yjs del jugador sin perder el token de transporte', () => {
+    const url = new URL(
+      buildCodeSyncUrl('ws://test:3002/match?token=transport', 'match 1', 'user/1'),
+    );
+
+    expect(url.pathname).toBe('/yjs/match%201/user%2F1');
+    expect(url.searchParams.get('token')).toBe('transport');
+  });
+
+  it('recibe snapshot y envía actualizaciones textuales del editor', async () => {
+    const onSync = vi.fn();
+    const onUpdate = vi.fn();
+    const client = new CodeSyncClient('ws://test:3002/match', 'match-1', 'user-1', {
+      onSync,
+      onUpdate,
+    });
+
+    client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const ws = MockWebSocket.instances[0]!;
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: 'sync',
+        match_id: 'match-1',
+        target_user_id: 'user-1',
+        round_id: 'round-1',
+        generation: 1,
+        source_code: '',
+      }),
+    });
+    ws.onmessage?.({
+      data: JSON.stringify({ type: 'update', generation: 1, source_code: 'x = 1' }),
+    });
+    client.sendCode('print(1)');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(onSync).toHaveBeenCalledWith(expect.objectContaining({ type: 'sync' }));
+    expect(onUpdate).toHaveBeenCalledWith('x = 1');
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'update', generation: 1, source_code: 'print(1)' }),
+    );
+    client.disconnect();
   });
 });

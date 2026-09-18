@@ -3,6 +3,7 @@
 import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
+import { CodeSyncClient } from '@/lib/code-sync';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores } from '@duelodev/shared';
@@ -34,6 +35,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [matchState, setMatchState] = useState<MatchSyncPayload | null>(null);
 
   const [sourceCode, setSourceCode] = useState('');
+  const [rivalCode, setRivalCode] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAwaitingVerdict, setIsAwaitingVerdict] = useState(false);
   const [isStartingMatch, setIsStartingMatch] = useState(false);
@@ -44,6 +46,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [matchSummary, setMatchSummary] = useState<MatchSummaryResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const sourceCodeRef = useRef(sourceCode);
+  const lastPublishedSourceRef = useRef(sourceCode);
+  const codeSyncClientsRef = useRef<Map<string, CodeSyncClient>>(new Map());
 
   // App load
   useEffect(() => {
@@ -242,6 +247,78 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       client?.disconnect();
     };
   }, [user, roomCode, router]);
+
+  useEffect(() => {
+    sourceCodeRef.current = sourceCode;
+  }, [sourceCode]);
+
+  const codeSyncTargetKey =
+    room &&
+    user &&
+    matchState &&
+    ['running', 'settling', 'finished', 'abandoned'].includes(room.status)
+      ? [
+          user.id,
+          ...room.players
+            .filter(
+              (player) =>
+                player.user_id !== user.id &&
+                (room.status === 'finished' ||
+                  room.status === 'abandoned' ||
+                  matchState.reveal_flags[player.user_id] === true),
+            )
+            .map((player) => player.user_id),
+        ]
+          .sort()
+          .join(',')
+      : '';
+
+  useEffect(() => {
+    if (!room || !user || !matchState || !codeSyncTargetKey) return;
+
+    const targetUserIds = codeSyncTargetKey.split(',').filter(Boolean);
+    const clients = new Map<string, CodeSyncClient>();
+
+    for (const targetUserId of targetUserIds) {
+      const client = new CodeSyncClient(realtimeUrl, room.match_id, targetUserId, {
+        onSync: (message) => {
+          if (targetUserId === user.id) {
+            if (!sourceCodeRef.current && message.source_code) {
+              sourceCodeRef.current = message.source_code;
+              setSourceCode(message.source_code);
+            }
+            return;
+          }
+          setRivalCode((previous) => ({ ...previous, [targetUserId]: message.source_code }));
+        },
+        onUpdate: (nextCode) => {
+          if (targetUserId !== user.id) {
+            setRivalCode((previous) => ({ ...previous, [targetUserId]: nextCode }));
+          }
+        },
+      });
+      clients.set(targetUserId, client);
+      client.connect();
+    }
+
+    codeSyncClientsRef.current = clients;
+    setRivalCode({});
+
+    return () => {
+      clients.forEach((client) => client.disconnect());
+      if (codeSyncClientsRef.current === clients) {
+        codeSyncClientsRef.current = new Map();
+      }
+      setRivalCode({});
+    };
+  }, [room?.match_id, user?.id, codeSyncTargetKey]);
+
+  useEffect(() => {
+    const ownerClient = codeSyncClientsRef.current.get(user?.id ?? '');
+    if (!ownerClient || lastPublishedSourceRef.current === sourceCode) return;
+    lastPublishedSourceRef.current = sourceCode;
+    ownerClient.sendCode(sourceCode);
+  }, [sourceCode, user?.id, codeSyncTargetKey]);
 
   useEffect(() => {
     if (matchState?.problem_id) {
@@ -676,6 +753,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       room={room}
                       matchState={matchState}
                       currentUserId={user.id}
+                      rivalCode={rivalCode}
                       onToggleReveal={handleToggleReveal}
                     />
 
@@ -964,11 +1042,13 @@ function RivalBoards({
   room,
   matchState,
   currentUserId,
+  rivalCode,
   onToggleReveal,
 }: {
   room: RoomDetailsResponse;
   matchState: MatchSyncPayload;
   currentUserId: string;
+  rivalCode: Record<string, string>;
   onToggleReveal: () => void;
 }) {
   const scoreMap = new Map(matchState.scores.map((score) => [score.user_id, score]));
@@ -999,6 +1079,9 @@ function RivalBoards({
         {rivals.map((player) => {
           const score = scoreMap.get(player.user_id);
           const isRevealed = matchState.reveal_flags[player.user_id] ?? false;
+          const canViewCode =
+            isRevealed || room.status === 'finished' || room.status === 'abandoned';
+          const liveCode = rivalCode[player.user_id];
           const status = matchState.players[player.user_id] ?? 'disconnected';
           return (
             <div
@@ -1029,9 +1112,21 @@ function RivalBoards({
                   Problema
                 </span>
               </div>
-              <p className="mt-3 border-t border-slate-800 pt-2 text-xs text-slate-400">
-                {isRevealed ? 'Código revelado por el jugador.' : 'Código oculto por permisos.'}
-              </p>
+              <div className="mt-3 border-t border-slate-800 pt-3">
+                {canViewCode ? (
+                  liveCode === undefined ? (
+                    <p className="text-xs text-slate-400">Sincronizando código…</p>
+                  ) : (
+                    <pre
+                      aria-label={`Código de ${player.gamertag}`}
+                      className="max-h-48 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-xs leading-5 text-slate-100"
+                      dangerouslySetInnerHTML={{ __html: highlightPython(liveCode) || ' ' }}
+                    />
+                  )
+                ) : (
+                  <p className="text-xs text-slate-400">Código oculto por permisos.</p>
+                )}
+              </div>
             </div>
           );
         })}
