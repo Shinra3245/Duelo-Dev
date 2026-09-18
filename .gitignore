@@ -25,6 +25,9 @@ build/
 .next/
 coverage/
 *.tsbuildinfo
+playwright-report/
+test-results/
+blob-report/
 
 # Python (juez)
 __pycache__/
