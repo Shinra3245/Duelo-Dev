@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { api } from '@/lib/api';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import type {
@@ -15,8 +17,11 @@ import type {
 const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'];
 type AccessMode = 'register' | 'login' | 'guest';
 
+gsap.registerPlugin(useGSAP);
+
 export default function Home() {
   const router = useRouter();
+  const landingRef = useRef<HTMLElement>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -35,6 +40,42 @@ export default function Home() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+
+  useGSAP(
+    () => {
+      const media = gsap.matchMedia();
+
+      media.add('(prefers-reduced-motion: no-preference)', () => {
+        gsap
+          .timeline({ defaults: { duration: 0.55, ease: 'power2.out' } })
+          .from('[data-landing-item]', {
+            autoAlpha: 0,
+            y: 18,
+            stagger: 0.07,
+          });
+
+        gsap.to('[data-landing-orb="primary"]', {
+          x: 18,
+          y: 14,
+          duration: 6,
+          ease: 'sine.inOut',
+          repeat: -1,
+          yoyo: true,
+        });
+        gsap.to('[data-landing-orb="secondary"]', {
+          x: -16,
+          y: -12,
+          duration: 7,
+          ease: 'sine.inOut',
+          repeat: -1,
+          yoyo: true,
+        });
+      });
+
+      return () => media.revert();
+    },
+    { dependencies: [loading], revertOnUpdate: true, scope: landingRef },
+  );
 
   useEffect(() => {
     api.auth
@@ -141,13 +182,27 @@ export default function Home() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 sm:py-10 lg:px-10">
-      <div className="pointer-events-none absolute -left-32 -top-32 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-indigo-500/20 blur-3xl" />
+    <main
+      ref={landingRef}
+      className="relative min-h-screen overflow-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 sm:py-10 lg:px-10"
+    >
+      <div
+        aria-hidden="true"
+        data-landing-orb="primary"
+        className="pointer-events-none absolute -left-32 -top-32 h-80 w-80 will-change-transform rounded-full bg-cyan-400/20 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        data-landing-orb="secondary"
+        className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 will-change-transform rounded-full bg-indigo-500/20 blur-3xl"
+      />
       <div className="relative mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-stretch">
-        <section className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10">
+        <section
+          data-landing-item
+          className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10"
+        >
           <div>
-            <div className="mb-7 flex items-center gap-3">
+            <div data-landing-item className="mb-7 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300 font-black text-slate-950 shadow-lg shadow-cyan-400/20">
                 D
               </span>
@@ -156,21 +211,30 @@ export default function Home() {
                 <p className="text-xs text-slate-400">Torneo de programación en tiempo real</p>
               </div>
             </div>
-            <p className="mb-3 inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">
+            <p
+              data-landing-item
+              className="mb-3 inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-cyan-200"
+            >
               Modo torneo local
             </p>
-            <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
+            <h1
+              data-landing-item
+              className="max-w-xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl"
+            >
               Piensa rápido.
               <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
                 Programa mejor.
               </span>
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+            <p
+              data-landing-item
+              className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg"
+            >
               Resuelve problemas, recibe veredictos del juez y sigue el marcador de tu sala sin
               perder el ritmo del duelo.
             </p>
 
-            <ol className="mt-8 space-y-4 text-sm text-slate-200">
+            <ol data-landing-item className="mt-8 space-y-4 text-sm text-slate-200">
               <li className="flex gap-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 font-bold text-cyan-200 ring-1 ring-white/10">
                   1
@@ -198,14 +262,14 @@ export default function Home() {
             </ol>
           </div>
 
-          <div className="mt-10 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4">
+          <div data-landing-item className="mt-10 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 transition-transform duration-200 motion-safe:hover:-translate-y-1">
               <h2 className="font-bold text-emerald-200">Puntos</h2>
               <p className="mt-1 text-sm leading-6 text-emerald-100/80">
                 Acumula puntos y casos resueltos durante la partida.
               </p>
             </div>
-            <div className="rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-4">
+            <div className="rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-4 transition-transform duration-200 motion-safe:hover:-translate-y-1">
               <h2 className="font-bold text-indigo-200">Rondas</h2>
               <p className="mt-1 text-sm leading-6 text-indigo-100/80">
                 Supera problemas consecutivos y mantén tu posición en el marcador.
@@ -214,7 +278,10 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8">
+        <section
+          data-landing-item
+          className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8"
+        >
           <div className="mb-7">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
               Acceso de jugador
@@ -260,7 +327,7 @@ export default function Home() {
                       accessMode === mode
                         ? 'bg-slate-950 text-white shadow'
                         : 'text-slate-600 hover:bg-white'
-                    }`}
+                    } motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]`}
                   >
                     {label}
                   </button>
@@ -344,7 +411,8 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={isLoggingIn}
-                  className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                  aria-busy={isLoggingIn}
+                  className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.99]"
                 >
                   {isLoggingIn
                     ? 'Procesando...'
@@ -384,14 +452,16 @@ export default function Home() {
                   <button
                     onClick={() => handleCreateRoom('puntos')}
                     disabled={isCreatingRoom}
-                    className="rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    aria-busy={isCreatingRoom}
+                    className="rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Puntos'}
                   </button>
                   <button
                     onClick={() => handleCreateRoom('rondas')}
                     disabled={isCreatingRoom}
-                    className="rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    aria-busy={isCreatingRoom}
+                    className="rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Rondas'}
                   </button>
@@ -417,7 +487,8 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={isJoiningRoom}
-                    className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    aria-busy={isJoiningRoom}
+                    className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
                   </button>
