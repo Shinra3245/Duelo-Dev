@@ -37,6 +37,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [problem, setProblem] = useState<ProblemPublicResponse | null>(null);
   const [finishedMatch, setFinishedMatch] = useState<MatchFinishedPayload | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
+  const [now, setNow] = useState(() => Date.now());
 
   // App load
   useEffect(() => {
@@ -174,6 +175,14 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     }
   }, [matchState?.problem_id]);
 
+  useEffect(() => {
+    if (!matchState?.ends_at || room?.status === 'finished') return;
+
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [matchState?.ends_at, room?.status]);
+
   const handleSubmitCode = async () => {
     if (!room || !matchState || !matchState.problem_id || !matchState.round_id) return;
     setIsSubmitting(true);
@@ -251,6 +260,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       (winnerId) =>
         room.players.find((player) => player.user_id === winnerId)?.gamertag ?? winnerId,
     ) ?? [];
+  const endsAtMs = matchState?.ends_at ? new Date(matchState.ends_at).getTime() : null;
+  const secondsRemaining =
+    endsAtMs === null ? null : Math.max(0, Math.ceil((endsAtMs - now) / 1000));
+  const timeLabel = secondsRemaining === null ? 'Sin reloj activo' : formatClock(secondsRemaining);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -361,6 +374,30 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               <h2 className="text-2xl font-bold text-green-700">
                 {room.status === 'finished' ? 'Partida finalizada' : '¡Partida en curso!'}
               </h2>
+
+              {matchState && (
+                <div
+                  className={`rounded-lg border p-4 shadow-sm ${
+                    secondsRemaining !== null && secondsRemaining <= 30 && room.status === 'running'
+                      ? 'border-amber-300 bg-amber-50 text-amber-900'
+                      : 'border-blue-200 bg-blue-50 text-blue-900'
+                  }`}
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Tiempo restante</p>
+                      <p className="text-3xl font-bold tabular-nums">{timeLabel}</p>
+                    </div>
+                    <p className="text-sm">
+                      {room.status === 'settling'
+                        ? 'El tiempo terminó; esperando resultados pendientes del juez.'
+                        : room.status === 'running'
+                          ? 'El envío debe recibirse antes de que termine el reloj.'
+                          : 'La partida ya no acepta nuevos envíos.'}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {finishedMatch && (
                 <div className="bg-blue-50 border border-blue-200 text-blue-900 p-4 rounded shadow-sm">
@@ -501,4 +538,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       </div>
     </div>
   );
+}
+
+function formatClock(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
