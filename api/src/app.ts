@@ -93,6 +93,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     options.authSecret ??
     process.env['AUTH_SECRET'] ??
     'duelodev-default-dev-secret-change-in-production';
+  const ephemeralGuestSessions =
+    options.ephemeralGuestSessions ?? process.env['EPHEMERAL_GUEST_SESSIONS'] === '1';
   const authService =
     options.authService ??
     new AuthService({
@@ -159,6 +161,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     roomService,
     submissionService,
     retentionService,
+    ephemeralGuestSessions,
     auditService,
     metricsProvider,
     metrics,

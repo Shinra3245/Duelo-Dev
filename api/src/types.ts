@@ -100,6 +100,8 @@ export interface ApiAppOptions {
   authSecret?: string;
   /** Si es true, siembra los problemas piloto en problemRepo al iniciar la app. */
   seedPilotProblems?: boolean;
+  /** Si es true, los invitados se anonimizan al cerrar su sesión. */
+  ephemeralGuestSessions?: boolean;
 }
 
 /** Contexto compartido para el ciclo de vida de peticiones HTTP en API. */
@@ -125,6 +127,7 @@ export interface ApiContext {
   roomService: RoomService;
   submissionService: SubmissionService;
   retentionService: RetentionService;
+  ephemeralGuestSessions: boolean;
   auditService?: AuditService;
   csrfOptions?: CsrfOptions;
   rateLimiter?: RateLimiter;

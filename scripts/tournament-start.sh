@@ -219,6 +219,7 @@ export REALTIME_HOST="${REALTIME_HOST:-0.0.0.0}"
 export WEB_PORT="${WEB_PORT:-3000}"
 export DATABASE_URL="${DATABASE_URL:-postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT}}"
+export EPHEMERAL_GUEST_SESSIONS="${EPHEMERAL_GUEST_SESSIONS:-1}"
 ensure_auth_secret
 export NEXT_PUBLIC_API_URL="http://${lan_host}:${API_PORT}/api/v1"
 export NEXT_PUBLIC_REALTIME_URL="ws://${lan_host}:${REALTIME_PORT}/match"

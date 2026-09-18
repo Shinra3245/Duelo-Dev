@@ -3,6 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
+import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores } from '@duelodev/shared';
 import type {
@@ -48,6 +49,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       .then((res) => setUser(res.user))
       .catch(() => router.push('/'));
   }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    return registerGuestSessionCleanup();
+  }, [user]);
 
   // Load room & connect
   useEffect(() => {

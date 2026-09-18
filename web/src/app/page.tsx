@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import type {
   UserProfile,
   MatchConfig,
@@ -43,6 +44,11 @@ export default function Home() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    return registerGuestSessionCleanup();
+  }, [user]);
 
   const handleGuestLogin = async (e: React.FormEvent) => {
     e.preventDefault();

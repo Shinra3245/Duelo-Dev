@@ -17,6 +17,7 @@ describe('Auth REST API (/api/v1/auth & /api/v1/users)', () => {
     app = createApp({
       serviceName: 'api-auth-test',
       authSecret: 'test-secret-duelodev-xyz-1234567890',
+      ephemeralGuestSessions: true,
     });
     // Escuchar en un puerto efímero asignado por el SO
     await app.start(0, '127.0.0.1');
@@ -230,6 +231,34 @@ describe('Auth REST API (/api/v1/auth & /api/v1/users)', () => {
       expect(res.status).toBe(400);
       const data = (await res.json()) as ApiError;
       expect(data.error.code).toBe(ERROR_CODES.VALIDATION_FAILED);
+    });
+
+    it('anonimiza la sesión guest al cerrar sesión y libera el gamertag efímero', async () => {
+      const guestRes = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'ephemeral-guest' }),
+      });
+      const guestData = (await guestRes.json()) as AuthUserResponse;
+      const guestCookies = extractCookies(guestRes);
+
+      const logoutRes = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: {
+          Cookie: `${AUTH_COOKIE_NAMES.ACCESS_TOKEN}=${guestCookies[AUTH_COOKIE_NAMES.ACCESS_TOKEN]}; ${AUTH_COOKIE_NAMES.REFRESH_TOKEN}=${guestCookies[AUTH_COOKIE_NAMES.REFRESH_TOKEN]}`,
+        },
+      });
+
+      expect(logoutRes.status).toBe(200);
+      const storedGuest = await app.ctx.userRepo.findById(guestData.user.id);
+      expect(storedGuest?.gamertag).toMatch(/^anon-/);
+
+      const reusedRes = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'ephemeral-guest' }),
+      });
+      expect(reusedRes.status).toBe(201);
     });
 
     it('responde 405 Method Not Allowed ante métodos distintos a POST', async () => {

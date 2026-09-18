@@ -203,9 +203,24 @@ export async function handleLogout(
     throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use POST.');
   }
 
+  let guestUserId: string | undefined;
+  const rawAccessToken = extractAccessToken(req);
+  if (rawAccessToken) {
+    try {
+      const session = ctx.authService.authenticateAccessToken(rawAccessToken);
+      guestUserId = session.userId;
+    } catch {
+      // El cierre de sesión también debe limpiar cookies aunque el access token haya expirado.
+    }
+  }
+
   const refreshToken = await extractRefreshToken(req);
   if (refreshToken) {
     await ctx.authService.logout(refreshToken);
+  }
+
+  if (ctx.ephemeralGuestSessions && guestUserId) {
+    await ctx.retentionService.anonymizeGuest(guestUserId);
   }
 
   clearAuthCookies(res);

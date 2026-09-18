@@ -97,6 +97,7 @@ export async function createProductionApp(
     databasePing,
     redisPing,
     seedPilotProblems: config.seedPilotProblems ?? false,
+    ephemeralGuestSessions: process.env['EPHEMERAL_GUEST_SESSIONS'] === '1',
     corsOptions: {
       allowedOrigins: config.corsOrigins ?? [],
       allowCredentials: true,
