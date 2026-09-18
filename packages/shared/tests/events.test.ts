@@ -217,6 +217,7 @@ describe('contrato de eventos y estado de partida', () => {
       server_time: 1700000000000,
       match_id: 'match-1',
       state_version: 12,
+      status: 'finished',
       winner_ids: ['user-1', 'user-2'],
       winner_id: null,
       finish_reason: 'time_expired',
@@ -257,6 +258,8 @@ describe('contrato de eventos y estado de partida', () => {
     // Invariante violado: ganador único pero winner_id nulo o discordante
     expect(isMatchFinishedPayload({ ...singleFinish, winner_id: null })).toBe(false);
     expect(isMatchFinishedPayload({ ...singleFinish, winner_id: 'user-2' })).toBe(false);
+    expect(isMatchFinishedPayload({ ...singleFinish, status: 'abandoned' })).toBe(true);
+    expect(isMatchFinishedPayload({ ...singleFinish, status: 'running' })).toBe(false);
   });
 
   it('sincronización personalizada de Rondas no expone problemas futuros e implementa guardias', () => {

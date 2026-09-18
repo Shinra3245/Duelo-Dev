@@ -533,6 +533,7 @@ export class MatchHub {
 
     this.broadcastMatchFinished(matchId, {
       match_id: matchId,
+      status: 'abandoned',
       state_version: session.state_version,
       server_time: now,
       winner_ids: [],
@@ -782,6 +783,7 @@ export class MatchHub {
       const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
       const matchFinishedPayload: MatchFinishedPayload = {
         match_id: matchId,
+        status: session.status === 'abandoned' ? 'abandoned' : 'finished',
         state_version: session.state_version,
         server_time: now,
         winner_ids: winnerIds,
@@ -849,6 +851,7 @@ export class MatchHub {
       const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
       const matchFinishedPayload: MatchFinishedPayload = {
         match_id: matchId,
+        status: session.status === 'abandoned' ? 'abandoned' : 'finished',
         state_version: session.state_version,
         server_time: now,
         winner_ids: winnerIds,
@@ -1043,6 +1046,7 @@ export class MatchHub {
         const winnerId = finishAct.type === 'finish_match' ? finishAct.winner_id : null;
         const matchFinishedPayload: MatchFinishedPayload = {
           match_id: matchId,
+          status: session.status === 'abandoned' ? 'abandoned' : 'finished',
           state_version: session.state_version,
           server_time: now,
           winner_ids: winnerIds,

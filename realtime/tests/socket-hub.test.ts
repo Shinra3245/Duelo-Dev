@@ -507,6 +507,7 @@ describe('MatchHub', () => {
 
       const payload: MatchFinishedPayload = {
         match_id: 'match-1',
+        status: 'finished',
         state_version: 5,
         server_time: 5000,
         winner_ids: ['user-1'],

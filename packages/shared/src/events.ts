@@ -388,6 +388,8 @@ export interface PlayerStatusPayload extends ServerStamped {
 }
 
 export interface MatchFinishedPayload extends StateStamped {
+  /** Estado durable resultante para distinguir una finalización normal de un abandono/cierre. */
+  status: 'finished' | 'abandoned';
   /** Todos los ganadores en empates; vacío en partida abandonada (doc 02 §6). */
   winner_ids: string[];
   /** Singular para compatibilidad; null cuando hay empate o no hay ganador. */
@@ -589,6 +591,7 @@ export function isMatchFinishedPayload(value: unknown): value is MatchFinishedPa
     typeof p.server_time !== 'number' ||
     !Number.isFinite(p.server_time) ||
     p.server_time <= 0 ||
+    (p.status !== 'finished' && p.status !== 'abandoned') ||
     !Array.isArray(p.winner_ids) ||
     !p.winner_ids.every((id) => typeof id === 'string' && id.length > 0) ||
     !isMatchFinishReason(p.finish_reason) ||

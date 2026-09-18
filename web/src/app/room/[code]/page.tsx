@@ -185,13 +185,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           const typedPayload = payload as MatchFinishedPayload;
           setIsAwaitingVerdict(false);
           setFinishedMatch(typedPayload);
-          setRoom((prev) => (prev ? { ...prev, status: 'finished' } : prev));
+          setRoom((prev) => (prev ? { ...prev, status: typedPayload.status } : prev));
           setMatchState((prev) =>
             prev
               ? {
                   ...prev,
                   state_version: typedPayload.state_version,
-                  status: 'finished',
+                  status: typedPayload.status,
                   scores: typedPayload.final_scores,
                   winner_ids: typedPayload.winner_ids,
                   winner_id: typedPayload.winner_id,
@@ -334,7 +334,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const isHost = room.host_id === user.id;
   const isLobby = room.status === 'lobby';
   const isPlaying =
-    room.status === 'running' || room.status === 'settling' || room.status === 'finished';
+    room.status === 'running' ||
+    room.status === 'settling' ||
+    room.status === 'finished' ||
+    room.status === 'abandoned';
   const canUseRealtime = isConnected && wsClient !== null;
   const hasRequiredPlayers = room.players.length >= room.config.max_players;
   const canStartMatch = canUseRealtime && hasRequiredPlayers && !isStartingMatch;
@@ -510,7 +513,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                     Duelo en vivo
                   </p>
                   <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-950">
-                    {room.status === 'finished' ? 'Resultados finales' : 'Partida en curso'}
+                    {room.status === 'abandoned'
+                      ? 'Sala cerrada'
+                      : room.status === 'finished'
+                        ? 'Resultados finales'
+                        : 'Partida en curso'}
                   </h2>
                 </div>
                 <span className="text-sm font-medium text-slate-500">
@@ -546,7 +553,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                 </div>
               )}
 
-              {room.status === 'finished' && (
+              {(room.status === 'finished' || room.status === 'abandoned') && (
                 <FinalStandings scores={displayedScores} players={room.players} />
               )}
 
