@@ -87,7 +87,7 @@ export class AdminService {
   ): Promise<Array<AdminPlayerSummary & { match_id: string; room_code: string }>> {
     const limit = boundedPageValue(options.limit, 100, 500);
     const offset = boundedPageValue(options.offset, 0, 100_000);
-    const matches = await this.requireRoomListing({ limit: 1_000, offset: 0 });
+    const matches = await this.loadHistoricalMatches();
     const query = options.query?.trim().toLowerCase();
     const rows: Array<AdminPlayerSummary & { match_id: string; room_code: string }> = [];
 
@@ -115,7 +115,7 @@ export class AdminService {
   }
 
   async ranking(): Promise<AdminRankingEntry[]> {
-    const matches = await this.requireRoomListing({ limit: 1_000, offset: 0 });
+    const matches = await this.loadHistoricalMatches();
     const aggregate = new Map<string, Omit<AdminRankingEntry, 'rank' | 'gamertag'>>();
 
     for (const match of matches) {
@@ -222,6 +222,16 @@ export class AdminService {
       throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
     }
     return this.roomRepo.findAllMatches(options);
+  }
+
+  private async loadHistoricalMatches() {
+    const pageSize = 500;
+    const matches = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.requireRoomListing({ limit: pageSize, offset });
+      matches.push(...page);
+      if (page.length < pageSize) return matches;
+    }
   }
 
   private async toRoomSummary(match: MatchEntity): Promise<AdminRoomSummary> {
