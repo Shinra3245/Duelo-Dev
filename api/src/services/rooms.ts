@@ -243,7 +243,7 @@ export class RoomService {
     const roomCode = rawRoomCode.trim().toUpperCase();
     const match = await this.roomRepo.findMatchByRoomCode(roomCode);
 
-    if (!match || match.status === 'finished' || match.status === 'abandoned') {
+    if (!match) {
       throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
     }
 

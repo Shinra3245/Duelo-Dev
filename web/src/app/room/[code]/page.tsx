@@ -17,6 +17,7 @@ import type {
   ProblemBeginPayload,
   EventErrorPayload,
   MatchFinishedPayload,
+  MatchSummaryResponse,
   PlayerScore,
   RevealChangedPayload,
 } from '@duelodev/shared';
@@ -40,6 +41,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [verdict, setVerdict] = useState<VerdictPayload | null>(null);
   const [problem, setProblem] = useState<ProblemPublicResponse | null>(null);
   const [finishedMatch, setFinishedMatch] = useState<MatchFinishedPayload | null>(null);
+  const [matchSummary, setMatchSummary] = useState<MatchSummaryResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
   const [now, setNow] = useState(() => Date.now());
 
@@ -69,6 +71,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     setProblem(null);
     setVerdict(null);
     setFinishedMatch(null);
+    setMatchSummary(null);
     setActionError('');
 
     api.rooms
@@ -82,6 +85,12 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         let matchSyncRequested = res.status !== 'lobby';
 
         setRoom(res);
+        if (res.status === 'finished' || res.status === 'abandoned') {
+          api.matches
+            .summary(res.match_id)
+            .then((summary) => setMatchSummary(summary))
+            .catch(console.error);
+        }
 
         // Conectar WS
         client = new RealtimeClient(realtimeUrl);
@@ -186,6 +195,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           setIsAwaitingVerdict(false);
           setFinishedMatch(typedPayload);
           setRoom((prev) => (prev ? { ...prev, status: typedPayload.status } : prev));
+          api.matches
+            .summary(typedPayload.match_id)
+            .then((summary) => setMatchSummary(summary))
+            .catch(console.error);
           setMatchState((prev) =>
             prev
               ? {
@@ -237,7 +250,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   }, [matchState?.problem_id]);
 
   useEffect(() => {
-    if (!matchState?.ends_at || room?.status === 'finished') return;
+    if (!matchState?.ends_at || room?.status === 'finished' || room?.status === 'abandoned') return;
 
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -348,7 +361,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     !isSubmitting &&
     !isAwaitingVerdict;
   const displayedScores: PlayerScore[] = [
-    ...(finishedMatch?.final_scores ?? matchState?.scores ?? []),
+    ...(finishedMatch?.final_scores ?? matchSummary?.final_scores ?? matchState?.scores ?? []),
   ].sort(comparePlayerScores);
   const endsAtMs = matchState?.ends_at ? new Date(matchState.ends_at).getTime() : null;
   const secondsRemaining =
@@ -607,8 +620,16 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       )}
                     </div>
 
-                    {room.status !== 'finished' && (
+                    {room.status !== 'finished' && room.status !== 'abandoned' && (
                       <LiveStandings scores={displayedScores} players={room.players} />
+                    )}
+
+                    {matchSummary && (
+                      <VisibleCodeSnapshots
+                        summary={matchSummary}
+                        players={room.players}
+                        currentUserId={user.id}
+                      />
                     )}
 
                     {verdict && (
@@ -663,8 +684,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       disabled={!canSubmit}
                       className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                     >
-                      {room.status === 'finished'
-                        ? 'Partida finalizada'
+                      {room.status === 'finished' || room.status === 'abandoned'
+                        ? room.status === 'abandoned'
+                          ? 'Sala cerrada'
+                          : 'Partida finalizada'
                         : isSubmitting
                           ? 'Enviando...'
                           : isAwaitingVerdict
@@ -716,6 +739,64 @@ function FinalStandings({
         <p className="text-sm text-slate-300">Ordenada de mayor a menor puntuación</p>
       </div>
       <StandingsTable scores={scores} players={players} dark />
+    </section>
+  );
+}
+
+function VisibleCodeSnapshots({
+  summary,
+  players,
+  currentUserId,
+}: {
+  summary: MatchSummaryResponse;
+  players: RoomPlayerSummary[];
+  currentUserId: string;
+}) {
+  const playerNames = new Map(players.map((player) => [player.user_id, player.gamertag]));
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-4">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
+          Código compartido
+        </p>
+        <h3 className="mt-1 text-xl font-black text-slate-950">Soluciones autorizadas</h3>
+        <p className="mt-1 text-sm leading-6 text-slate-500">
+          Sólo aparecen tu código y los snapshots de rivales que autorizaron su revelación.
+        </p>
+      </div>
+      {summary.snapshots.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+          No hay snapshots de código disponibles para esta partida.
+        </p>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {summary.snapshots.map((snapshot, index) => {
+            const isOwn = snapshot.user_id === currentUserId;
+            return (
+              <article
+                key={`${snapshot.user_id}-${snapshot.round_id}-${snapshot.captured_at}-${index}`}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3 text-xs">
+                  <span className="font-mono font-bold text-cyan-200">
+                    {playerNames.get(snapshot.user_id) ?? snapshot.user_id}
+                    {isOwn ? ' · tú' : ''}
+                  </span>
+                  <span className="text-slate-400">Python 3 · snapshot autorizado</span>
+                </div>
+                <pre
+                  aria-label={`Código de ${playerNames.get(snapshot.user_id) ?? 'jugador'}`}
+                  className="max-h-72 overflow-auto p-4 font-mono text-xs leading-6 text-slate-100"
+                  dangerouslySetInnerHTML={{
+                    __html: highlightPython(snapshot.source_code) || ' ',
+                  }}
+                />
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

@@ -394,6 +394,34 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
       const data = (await res.json()) as ApiError;
       expect(data.error.code).toBe(ERROR_CODES.FORBIDDEN);
     });
+
+    it('permite a un miembro consultar una sala terminada para mostrar su estado final', async () => {
+      const host = await registerUser('host-terminal@example.com', 'host-terminal');
+      const createRes = await fetch(`${baseUrl}/api/v1/rooms`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${host.accessToken}`,
+        },
+        body: JSON.stringify({ config: validRondasConfig }),
+      });
+      const room = (await createRes.json()) as RoomCreatedResponse;
+
+      await app.ctx.roomRepo.updateMatch(room.match_id, {
+        status: 'abandoned',
+        finish_reason: 'admin_override',
+        finished_at: new Date().toISOString(),
+      });
+
+      const detailsRes = await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}`, {
+        headers: { Authorization: `Bearer ${host.accessToken}` },
+      });
+
+      expect(detailsRes.status).toBe(200);
+      const details = (await detailsRes.json()) as RoomDetailsResponse;
+      expect(details.status).toBe('abandoned');
+      expect(details.players).toHaveLength(1);
+    });
   });
 
   describe('POST /api/v1/rooms/:code/start (Inicio de partida)', () => {

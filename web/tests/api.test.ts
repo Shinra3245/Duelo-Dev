@@ -90,6 +90,13 @@ describe('REST API Client', () => {
     expect(mockFetch.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
   });
 
+  it('consulta el resumen final para mostrar snapshots autorizados', async () => {
+    await api.matches.summary('match-terminal');
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/matches/match-terminal/summary');
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' });
+  });
+
   it('parsea 204 No Content sin llamar response.json', async () => {
     const json = vi.fn();
     mockFetch.mockResolvedValueOnce({
