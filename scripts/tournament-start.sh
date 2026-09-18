@@ -58,6 +58,70 @@ load_env_defaults() {
     fi
   done < .env
 }
+
+env_file_has_key() {
+  local key="$1"
+  [[ -f .env ]] && grep -Eq "^[[:space:]]*${key}=" .env
+}
+
+generate_auth_secret() {
+  openssl rand -base64 48 2>/dev/null || node -e 'console.log(crypto.randomUUID()+crypto.randomUUID())'
+}
+
+write_auth_secret_to_env() {
+  local generated_secret="$1"
+
+  if [[ ! -f .env ]]; then
+    umask 077
+    : > .env
+  fi
+
+  if env_file_has_key AUTH_SECRET; then
+    local temp_env
+    temp_env="$(mktemp)"
+    GENERATED_AUTH_SECRET="$generated_secret" awk '
+      BEGIN { written = 0 }
+      /^[[:space:]]*AUTH_SECRET=/ {
+        if (written == 0) {
+          print "AUTH_SECRET=" ENVIRON["GENERATED_AUTH_SECRET"]
+          written = 1
+        }
+        next
+      }
+      { print }
+    ' .env > "$temp_env"
+    cat "$temp_env" > .env
+    rm -f "$temp_env"
+    return
+  fi
+
+  if [[ -s .env ]]; then
+    local last_byte
+    last_byte="$(tail -c 1 .env | od -An -t x1 | tr -d '[:space:]')"
+    if [[ "$last_byte" != "0a" ]]; then
+      printf '\n' >> .env
+    fi
+  fi
+
+  {
+    printf '\n# Generado por scripts/tournament-start.sh para mantener sesiones tras reinicios.\n'
+    printf 'AUTH_SECRET=%s\n' "$generated_secret"
+  } >> .env
+}
+
+ensure_auth_secret() {
+  if [[ -n "${AUTH_SECRET:-}" ]]; then
+    return
+  fi
+
+  local generated_secret
+  generated_secret="$(generate_auth_secret)"
+  export AUTH_SECRET="$generated_secret"
+
+  write_auth_secret_to_env "$generated_secret"
+  printf 'ok: AUTH_SECRET generado y guardado en .env para reinicios del torneo.\n'
+}
+
 detect_lan_host() {
   if [[ -n "${LAN_HOST:-}" ]]; then
     printf '%s\n' "$LAN_HOST"
@@ -72,6 +136,17 @@ detect_lan_host() {
     fi
   fi
   hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+warn_if_suspicious_lan_host() {
+  local detected_host="$1"
+  if [[ -n "${LAN_HOST:-}" ]]; then
+    return
+  fi
+
+  if [[ "$detected_host" == 10.0.2.* || "$detected_host" == 172.1[6-9].* || "$detected_host" == 172.2[0-9].* || "$detected_host" == 172.3[0-1].* ]]; then
+    printf 'Aviso: LAN_HOST detectado como %s. Si los alumnos no pueden entrar, reinicia con LAN_HOST=IP_WIFI npm run tournament:start\n' "$detected_host" >&2
+  fi
 }
 
 wait_http_ready() {
@@ -110,7 +185,7 @@ export REALTIME_HOST="${REALTIME_HOST:-0.0.0.0}"
 export WEB_PORT="${WEB_PORT:-3000}"
 export DATABASE_URL="${DATABASE_URL:-postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/${POSTGRES_DB}}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT}}"
-export AUTH_SECRET="${AUTH_SECRET:-$(openssl rand -base64 48 2>/dev/null || node -e 'console.log(crypto.randomUUID()+crypto.randomUUID())')}"
+ensure_auth_secret
 export NEXT_PUBLIC_API_URL="http://${lan_host}:${API_PORT}/api/v1"
 export NEXT_PUBLIC_REALTIME_URL="ws://${lan_host}:${REALTIME_PORT}/match"
 export CORS_ORIGINS="http://${lan_host}:${WEB_PORT},http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
@@ -119,11 +194,16 @@ printf 'Iniciando DueloDev para torneo LAN\n'
 printf 'Web:      http://%s:%s\n' "$lan_host" "$WEB_PORT"
 printf 'API:      %s\n' "$NEXT_PUBLIC_API_URL"
 printf 'Realtime: %s\n' "$NEXT_PUBLIC_REALTIME_URL"
+warn_if_suspicious_lan_host "$lan_host"
 
 scripts/tournament-preflight.sh
 
 docker compose up -d --wait
-npm run build
+if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+  printf 'Aviso: SKIP_BUILD=1 activo; se usará el último build disponible.\n'
+else
+  npm run build
+fi
 
 npm run start --workspace @duelodev/api &
 pids+=("$!")

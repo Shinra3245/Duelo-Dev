@@ -52,6 +52,17 @@ detect_lan_host() {
   hostname -I 2>/dev/null | awk '{print $1}'
 }
 
+warn_if_suspicious_lan_host() {
+  local detected_host="$1"
+  if [[ -n "${LAN_HOST:-}" ]]; then
+    return
+  fi
+
+  if [[ "$detected_host" == 10.0.2.* || "$detected_host" == 172.1[6-9].* || "$detected_host" == 172.2[0-9].* || "$detected_host" == 172.3[0-1].* ]]; then
+    printf 'aviso: LAN_HOST parece una IP de VM/NAT (%s); si otros equipos no abren la web, usa LAN_HOST=IP_WIFI\n' "$detected_host"
+  fi
+}
+
 check_port() {
   local port="$1"
   local label="$2"
@@ -90,6 +101,7 @@ if [[ -z "$lan_host" ]]; then
   failures=$((failures + 1))
 else
   printf 'ok: LAN_HOST=%s\n' "$lan_host"
+  warn_if_suspicious_lan_host "$lan_host"
 fi
 
 api_port="${API_PORT:-3001}"

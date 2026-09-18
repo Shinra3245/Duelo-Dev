@@ -17,6 +17,7 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   // Auth state
   const [gamertag, setGamertag] = useState('');
@@ -34,7 +35,12 @@ export default function Home() {
     api.auth
       .me()
       .then((res) => setUser(res.user))
-      .catch(() => setUser(null))
+      .catch((err: unknown) => {
+        setUser(null);
+        if (!isAuthStatus(err)) {
+          setLoadError(getFriendlyErrorMessage(err, 'No se pudo conectar con el servidor.'));
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -46,7 +52,7 @@ export default function Home() {
       const res = await api.auth.guest(gamertag);
       setUser(res.user);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Error al iniciar sesión');
+      setError(getFriendlyErrorMessage(err, 'Error al iniciar sesión'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -88,7 +94,7 @@ export default function Home() {
       const res = await api.rooms.create({ config });
       router.push(`/room/${res.room_code}`);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Error al crear la sala');
+      setError(getFriendlyErrorMessage(err, 'Error al crear la sala'));
       setIsCreatingRoom(false); // Only reset if error, if success we are redirecting
     }
   };
@@ -102,7 +108,7 @@ export default function Home() {
       const res = await api.rooms.join(roomCode.toUpperCase(), { gamertag: user.gamertag });
       router.push(`/room/${res.room_code}`);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Error al unirse a la sala');
+      setError(getFriendlyErrorMessage(err, 'Error al unirse a la sala'));
       setIsJoiningRoom(false);
     }
   };
@@ -163,6 +169,12 @@ export default function Home() {
 
         <section className="bg-white rounded-xl shadow-md p-8">
           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Entrar al torneo</h2>
+
+          {loadError && (
+            <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {loadError}
+            </div>
+          )}
 
           {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
 
@@ -248,4 +260,17 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+function isAuthStatus(err: unknown) {
+  const status = (err as { status?: number }).status;
+  return status === 401 || status === 403;
+}
+
+function getFriendlyErrorMessage(err: unknown, fallback: string) {
+  const message = (err as Error).message || fallback;
+  if (message === 'Failed to fetch' || message.toLowerCase().includes('fetch')) {
+    return 'No se pudo conectar con el servidor. Verifica que este equipo esté en el mismo Wi‑Fi del torneo y que la URL LAN mostrada por el servidor sea la correcta.';
+  }
+  return message;
 }
