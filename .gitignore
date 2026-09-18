@@ -49,3 +49,4 @@ pgdata/
 !.vscode/extensions.json
 
 /autogen_team.py
+.aider*
