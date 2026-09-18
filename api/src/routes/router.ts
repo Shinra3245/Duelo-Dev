@@ -24,6 +24,13 @@ import {
   handleGetSubmissionDetails,
 } from './submissions.js';
 import { handleGetMatchSummary } from './matches.js';
+import {
+  handleAdminCreateRoom,
+  handleAdminPlayers,
+  handleAdminRanking,
+  handleAdminResult,
+  handleAdminRooms,
+} from './admin.js';
 
 export function sendJson(
   req: IncomingMessage,
@@ -105,6 +112,32 @@ export async function dispatchRoute(
 
     if (pathname === '/api/v1/rooms') {
       await handleCreateRoom(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/rooms') {
+      await handleAdminRooms(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/rooms/create') {
+      await handleAdminCreateRoom(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/players') {
+      await handleAdminPlayers(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/ranking') {
+      await handleAdminRanking(req, res, ctx);
+      return;
+    }
+
+    const adminResultMatch = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)\/result$/);
+    if (adminResultMatch) {
+      await handleAdminResult(req, res, ctx, adminResultMatch[1]!);
       return;
     }
 

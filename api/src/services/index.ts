@@ -8,3 +8,4 @@ export * from './judgment.js';
 export * from './retention.js';
 export * from './audit.js';
 export * from './metrics.js';
+export * from './admin.js';

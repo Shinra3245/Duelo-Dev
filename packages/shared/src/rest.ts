@@ -31,7 +31,7 @@ export const IDEMPOTENCY_WINDOW_S = 60;
 
 // ────────────────────────────────── Auth ──────────────────────────────────
 
-export const USER_ROLES = ['user', 'guest'] as const;
+export const USER_ROLES = ['user', 'guest', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export function isUserRole(value: unknown): value is UserRole {
@@ -201,6 +201,73 @@ export interface MatchSummaryResponse {
   started_at: string;
   finished_at: string;
   snapshots: MatchCodeSnapshot[];
+}
+
+// ─────────────────────────────── Administración ───────────────────────────────
+
+export interface AdminPlayerSummary {
+  user_id: string;
+  gamertag: string;
+  email: string | null;
+  score: number;
+  cases_total: number;
+  time_total_ms: number;
+  connection_status: string;
+  is_ready: boolean;
+  is_revealed: boolean;
+}
+
+export interface AdminRoomSummary {
+  match_id: string;
+  room_code: string;
+  mode: GameModeName;
+  status: MatchStatus;
+  config: MatchConfig;
+  host_id: string;
+  winner_ids: string[];
+  winner_id: string | null;
+  finish_reason: MatchFinishReason | null;
+  started_at: string | null;
+  ends_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  players: AdminPlayerSummary[];
+}
+
+export interface AdminRoomsResponse {
+  rooms: AdminRoomSummary[];
+  limit: number;
+  offset: number;
+}
+
+export interface AdminPlayersResponse {
+  players: Array<AdminPlayerSummary & { match_id: string; room_code: string }>;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminRankingEntry {
+  rank: number;
+  user_id: string;
+  gamertag: string;
+  matches_played: number;
+  wins: number;
+  score: number;
+  cases_total: number;
+  time_total_ms: number;
+}
+
+export interface AdminRankingResponse {
+  ranking: AdminRankingEntry[];
+}
+
+export interface AdminManualResultRequest {
+  winner_ids: string[];
+}
+
+export interface AdminManualResultResponse {
+  room: AdminRoomSummary;
+  audited: boolean;
 }
 
 // ────────────────────── Guardias de invariantes REST ──────────────────────

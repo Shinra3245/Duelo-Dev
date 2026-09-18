@@ -46,7 +46,7 @@ describe('contratos REST de /api/v1', () => {
   it('valida roles de usuario y estados de envío', () => {
     expect(isUserRole('user')).toBe(true);
     expect(isUserRole('guest')).toBe(true);
-    expect(isUserRole('admin')).toBe(false);
+    expect(isUserRole('admin')).toBe(true);
 
     expect(isSubmissionStatus('queued')).toBe(true);
     expect(isSubmissionStatus('judging')).toBe(true);

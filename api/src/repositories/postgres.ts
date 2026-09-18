@@ -217,6 +217,14 @@ export class PostgresUserRepository implements UserRepository {
     return res.rows[0] ? mapUserRow(res.rows[0]) : null;
   }
 
+  async findAll(limit = 100, offset = 0): Promise<UserEntity[]> {
+    const res = await this.pool.query(
+      'SELECT * FROM users ORDER BY created_at ASC LIMIT $1 OFFSET $2',
+      [limit, offset],
+    );
+    return res.rows.map(mapUserRow);
+  }
+
   async create(input: CreateUserInput): Promise<UserEntity> {
     const id = input.id ?? randomUUID();
     const email = input.email ? input.email.trim().toLowerCase() : null;
@@ -406,6 +414,30 @@ export class PostgresRoomRepository implements RoomRepository {
       roomCode.trim(),
     ]);
     return res.rows[0] ? mapMatchRow(res.rows[0]) : null;
+  }
+
+  async findAllMatches(
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: MatchEntity['status'];
+    } = {},
+  ): Promise<MatchEntity[]> {
+    const limit = options.limit ?? 100;
+    const offset = options.offset ?? 0;
+    const values: unknown[] = [];
+    let statusClause = '';
+    if (options.status !== undefined) {
+      values.push(options.status);
+      statusClause = `WHERE status = $${values.length}`;
+    }
+    values.push(limit, offset);
+    const res = await this.pool.query(
+      `SELECT * FROM matches ${statusClause}
+       ORDER BY created_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values,
+    );
+    return res.rows.map(mapMatchRow);
   }
 
   async updateMatch(

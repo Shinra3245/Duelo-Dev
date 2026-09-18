@@ -1,0 +1,150 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { AddressInfo } from 'node:net';
+import { createApp, type ApiApp } from '../src/app.js';
+import { hashPassword } from '../src/services/password.js';
+import { ADMIN_ALLOWED_EMAIL } from '../src/services/admin.js';
+import { AUTH_COOKIE_NAMES } from '../src/plugins/cookies.js';
+import { ERROR_CODES, type AuthUserResponse } from '@duelodev/shared';
+
+describe('Panel administrativo protegido', () => {
+  let app: ApiApp;
+  let baseUrl: string;
+  let adminCookie: string;
+  let userCookie: string;
+
+  function accessCookie(response: Response): string {
+    const setCookies =
+      typeof response.headers.getSetCookie === 'function'
+        ? response.headers.getSetCookie()
+        : [response.headers.get('set-cookie') ?? ''];
+    const access = setCookies.find((value) =>
+      value.startsWith(`${AUTH_COOKIE_NAMES.ACCESS_TOKEN}=`),
+    );
+    expect(access).toBeDefined();
+    return access!.split(';', 1)[0]!;
+  }
+
+  beforeAll(async () => {
+    app = createApp({ authSecret: 'admin-test-secret-32-characters-minimum' });
+    await app.ctx.userRepo.create({
+      email: ADMIN_ALLOWED_EMAIL,
+      password_hash: await hashPassword('AdminPassword123!'),
+      gamertag: 'admin-duelodev',
+      role: 'admin',
+    });
+    await app.start(0, '127.0.0.1');
+    const address = app.server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const adminLogin = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: ADMIN_ALLOWED_EMAIL, password: 'AdminPassword123!' }),
+    });
+    expect(adminLogin.status).toBe(200);
+    const adminBody = (await adminLogin.json()) as AuthUserResponse;
+    expect(adminBody.user.role).toBe('admin');
+    adminCookie = accessCookie(adminLogin);
+
+    const userRegister = await fetch(`${baseUrl}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'player-admin-test@example.com',
+        password: 'PlayerPassword123!',
+        gamertag: 'player-admin-test',
+      }),
+    });
+    expect(userRegister.status).toBe(201);
+    userCookie = accessCookie(userRegister);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('expone el rol admin en /auth/me y deniega el panel a usuarios normales', async () => {
+    const me = await fetch(`${baseUrl}/api/v1/auth/me`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(me.status).toBe(200);
+    expect(((await me.json()) as AuthUserResponse).user.role).toBe('admin');
+
+    const forbidden = await fetch(`${baseUrl}/api/v1/admin/ranking`, {
+      headers: { Cookie: userCookie },
+    });
+    expect(forbidden.status).toBe(403);
+    expect((await forbidden.json()).error.code).toBe(ERROR_CODES.FORBIDDEN);
+  });
+
+  it('permite crear sólo salas administrativas de 2 o 3 jugadores', async () => {
+    const valid = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 3,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(valid.status).toBe(201);
+
+    const invalid = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 4,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
+  it('lista salas, ordena el ranking y audita el ganador manual', async () => {
+    const roomsResponse = await fetch(`${baseUrl}/api/v1/admin/rooms`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(roomsResponse.status).toBe(200);
+    const rooms = (await roomsResponse.json()) as {
+      rooms: Array<{ match_id: string; players: Array<{ user_id: string }> }>;
+    };
+    expect(rooms.rooms).toHaveLength(1);
+    const room = rooms.rooms[0]!;
+    const adminPlayer = room.players[0]!;
+
+    const result = await fetch(`${baseUrl}/api/v1/admin/rooms/${room.match_id}/result`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ winner_ids: [adminPlayer.user_id] }),
+    });
+    expect(result.status).toBe(200);
+    const resultBody = (await result.json()) as {
+      room: { status: string; winner_ids: string[] };
+      audited: boolean;
+    };
+    expect(resultBody.room.status).toBe('finished');
+    expect(resultBody.room.winner_ids).toEqual([adminPlayer.user_id]);
+    expect(resultBody.audited).toBe(true);
+
+    const ranking = await fetch(`${baseUrl}/api/v1/admin/ranking`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(ranking.status).toBe(200);
+    expect(
+      ((await ranking.json()) as { ranking: Array<{ user_id: string; wins: number }> }).ranking[0]
+        ?.wins,
+    ).toBe(1);
+
+    const events = await app.ctx.eventRepo!.findEventsByName('admin_result_overridden');
+    expect(events).toHaveLength(1);
+  });
+});

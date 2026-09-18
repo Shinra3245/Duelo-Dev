@@ -26,6 +26,7 @@ import { validateCsrfOrigin } from './plugins/csrf.js';
 import { applyCorsHeaders, handleCorsPreflight } from './plugins/cors.js';
 import { HttpError } from './plugins/body-parser.js';
 import { dispatchRoute } from './routes/router.js';
+import { AdminService } from './services/admin.js';
 
 export interface ApiApp {
   ctx: ApiContext;
@@ -69,6 +70,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const eventRepo = options.eventRepo ?? new InMemoryEventRepository();
   const judgeQueue = options.judgeQueue ?? new InMemoryJudgeQueue();
   const auditService = options.auditService ?? new AuditService(eventRepo, logger);
+  const adminService =
+    options.adminService ?? new AdminService({ roomRepo, userRepo, auditService });
 
   const defaultMetricsProvider = createOperationalMetricsProvider(
     { roomRepo, submissionRepo, userRepo, eventRepo },
@@ -163,6 +166,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     retentionService,
     ephemeralGuestSessions,
     auditService,
+    adminService,
     metricsProvider,
     metrics,
     ...(rateLimiter !== undefined ? { rateLimiter } : {}),

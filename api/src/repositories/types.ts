@@ -3,6 +3,7 @@ import type {
   MatchCodeSnapshotEntity,
   MatchEntity,
   MatchPlayerEntity,
+  MatchStatus,
   ProblemEntity,
   RefreshTokenEntity,
   SubmissionEntity,
@@ -34,6 +35,7 @@ export interface UserRepository {
   findById(id: string): Promise<UserEntity | null>;
   findByEmail(email: string): Promise<UserEntity | null>;
   findByGamertag(gamertag: string): Promise<UserEntity | null>;
+  findAll?(limit?: number, offset?: number): Promise<UserEntity[]>;
   create(input: CreateUserInput): Promise<UserEntity>;
   update(id: string, input: UpdateUserInput): Promise<UserEntity | null>;
   count(): Promise<number>;
@@ -101,6 +103,11 @@ export interface RoomRepository {
   createMatch(input: CreateMatchInput): Promise<MatchEntity>;
   findMatchById(id: string): Promise<MatchEntity | null>;
   findMatchByRoomCode(roomCode: string): Promise<MatchEntity | null>;
+  findAllMatches?(options?: {
+    limit?: number;
+    offset?: number;
+    status?: MatchStatus;
+  }): Promise<MatchEntity[]>;
   updateMatch(
     id: string,
     input: Partial<

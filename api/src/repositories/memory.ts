@@ -64,6 +64,13 @@ export class InMemoryUserRepository implements UserRepository {
     return null;
   }
 
+  async findAll(limit = 100, offset = 0): Promise<UserEntity[]> {
+    return [...this.users.values()]
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .slice(offset, offset + limit)
+      .map((user) => ({ ...user }));
+  }
+
   async create(input: CreateUserInput): Promise<UserEntity> {
     const now = new Date().toISOString();
     const user: UserEntity = {
@@ -275,6 +282,22 @@ export class InMemoryRoomRepository implements RoomRepository {
     if (!id) return null;
     const match = this.matches.get(id);
     return match ? { ...match } : null;
+  }
+
+  async findAllMatches(
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: MatchEntity['status'];
+    } = {},
+  ): Promise<MatchEntity[]> {
+    const limit = options.limit ?? 100;
+    const offset = options.offset ?? 0;
+    return [...this.matches.values()]
+      .filter((match) => options.status === undefined || match.status === options.status)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(offset, offset + limit)
+      .map((match) => ({ ...match }));
   }
 
   async updateMatch(

@@ -123,6 +123,7 @@ export const MATCH_FINISH_REASONS = [
   'all_players_left',
   'judge_unavailable',
   'host_timeout',
+  'admin_override',
 ] as const;
 
 export type MatchFinishReason = (typeof MATCH_FINISH_REASONS)[number];
@@ -135,6 +136,7 @@ export const MATCH_FINISH_REASON_LABELS: Record<MatchFinishReason, string> = {
   all_players_left: 'Partida abandonada por todos los participantes',
   judge_unavailable: 'Servicio de evaluación no disponible',
   host_timeout: 'Tiempo de espera del anfitrión agotado en lobby',
+  admin_override: 'Resolución manual del administrador',
 };
 
 export function isMatchFinishReason(value: unknown): value is MatchFinishReason {

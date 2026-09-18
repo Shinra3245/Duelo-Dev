@@ -19,6 +19,7 @@ import type { CsrfOptions } from './plugins/csrf.js';
 import type { CorsOptions } from './plugins/cors.js';
 import type { RateLimiter } from './plugins/rate-limit.js';
 import type { ReadinessProbe, ReadinessProbeResult } from './infrastructure/probes.js';
+import type { AdminService } from './services/admin.js';
 
 export type { ReadinessProbe, ReadinessProbeResult };
 
@@ -84,6 +85,8 @@ export interface ApiAppOptions {
   submissionService?: SubmissionService;
   /** Servicio de auditoría y registro de eventos. Si no se especifica, se instancia automáticamente. */
   auditService?: AuditService;
+  /** Servicio de operaciones protegidas del panel administrativo. */
+  adminService?: AdminService;
   /** Publicador de avisos de resultados en judge:results. Si no se especifica, se crea uno en memoria. */
   resultPublisher?: ResultPublisher;
   /** Servicio de aplicación de resultados durables del juez. Si no se especifica, se instancia automáticamente. */
@@ -129,6 +132,7 @@ export interface ApiContext {
   retentionService: RetentionService;
   ephemeralGuestSessions: boolean;
   auditService?: AuditService;
+  adminService: AdminService;
   csrfOptions?: CsrfOptions;
   rateLimiter?: RateLimiter;
   rateLimitConfig?: {

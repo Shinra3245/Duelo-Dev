@@ -15,6 +15,7 @@ import {
 import { RedisJudgeQueue, RedisResultPublisher } from './queue/redis.js';
 import { parseCorsOrigins } from './plugins/cors.js';
 import { runMigrations } from './services/migrations.js';
+import { ensureConfiguredAdmin } from './services/admin.js';
 
 export * from './types.js';
 export * from './schemas/index.js';
@@ -29,6 +30,7 @@ export * from './routes/auth.js';
 export * from './routes/rooms.js';
 export * from './routes/submissions.js';
 export * from './routes/matches.js';
+export * from './routes/admin.js';
 export * from './routes/router.js';
 export { createApp, type ApiApp };
 
@@ -106,6 +108,11 @@ export async function createProductionApp(
       allowedOrigins: config.corsOrigins ?? [],
     },
   });
+
+  const adminPassword = process.env['ADMIN_PASSWORD'];
+  if (adminPassword) {
+    await ensureConfiguredAdmin(userRepo, adminPassword);
+  }
 
   const originalClose = app.close.bind(app);
   const extendedClose = async (): Promise<void> => {

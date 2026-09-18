@@ -99,13 +99,13 @@ export function appendSetCookie(res: ServerResponse, cookieStr: string): void {
 export function setAuthCookies(
   res: ServerResponse,
   tokens: { accessToken?: string; refreshToken?: string },
-  secure = false,
+  secure = process.env['NODE_ENV'] === 'production',
 ): void {
   if (tokens.refreshToken) {
     const refreshCookie = serializeCookie(AUTH_COOKIE_NAMES.REFRESH_TOKEN, tokens.refreshToken, {
       httpOnly: true,
       secure,
-      sameSite: 'Lax',
+      sameSite: secure ? 'Strict' : 'Lax',
       path: '/api/v1/auth',
       maxAge: REFRESH_TOKEN_MAX_AGE_S,
     });
@@ -116,7 +116,7 @@ export function setAuthCookies(
     const accessCookie = serializeCookie(AUTH_COOKIE_NAMES.ACCESS_TOKEN, tokens.accessToken, {
       httpOnly: true,
       secure,
-      sameSite: 'Lax',
+      sameSite: secure ? 'Strict' : 'Lax',
       path: '/',
       maxAge: ACCESS_TOKEN_MAX_AGE_S,
     });
@@ -127,18 +127,21 @@ export function setAuthCookies(
 /**
  * Limpia las cookies de autenticación expirándolas inmediatamente.
  */
-export function clearAuthCookies(res: ServerResponse, secure = false): void {
+export function clearAuthCookies(
+  res: ServerResponse,
+  secure = process.env['NODE_ENV'] === 'production',
+): void {
   const clearRefresh = serializeCookie(AUTH_COOKIE_NAMES.REFRESH_TOKEN, '', {
     httpOnly: true,
     secure,
-    sameSite: 'Lax',
+    sameSite: secure ? 'Strict' : 'Lax',
     path: '/api/v1/auth',
     maxAge: 0,
   });
   const clearAccess = serializeCookie(AUTH_COOKIE_NAMES.ACCESS_TOKEN, '', {
     httpOnly: true,
     secure,
-    sameSite: 'Lax',
+    sameSite: secure ? 'Strict' : 'Lax',
     path: '/',
     maxAge: 0,
   });

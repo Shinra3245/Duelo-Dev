@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE,
   password_hash VARCHAR(255),
   gamertag VARCHAR(20) NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'guest')),
+  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'guest', 'admin')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   CONSTRAINT chk_users_gamertag CHECK (gamertag ~ '^[A-Za-z0-9-]{3,20}$')
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS matches (
   winner_id UUID REFERENCES users(id),
   finish_reason VARCHAR(32) CHECK (finish_reason IS NULL OR finish_reason IN (
     'target_reached', 'problems_exhausted', 'time_expired', 'abandonment',
-    'all_players_left', 'judge_unavailable', 'host_timeout'
+    'all_players_left', 'judge_unavailable', 'host_timeout', 'admin_override'
   )),
   started_at TIMESTAMPTZ,
   ends_at TIMESTAMPTZ,
