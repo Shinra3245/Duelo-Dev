@@ -40,6 +40,10 @@ function playerLabel(player: AdminPlayerSummary): string {
   return player.email ? `${player.gamertag} · ${player.email}` : player.gamertag;
 }
 
+function isActiveRoom(room: AdminRoomSummary): boolean {
+  return room.status === 'lobby' || room.status === 'running' || room.status === 'settling';
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -55,6 +59,8 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [config, setConfig] = useState(defaultConfig);
   const [winnerSelections, setWinnerSelections] = useState<Record<string, string[]>>({});
+
+  const activeRooms = rooms.filter(isActiveRoom);
 
   const loadAdminData = async () => {
     const [roomsResponse, rankingResponse, playersResponse] = await Promise.all([
@@ -137,6 +143,46 @@ export default function AdminPage() {
       await loadAdminData();
     } catch (requestError: unknown) {
       setError(getErrorMessage(requestError, 'No se pudo crear la sala.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCloseRoom = async (room: AdminRoomSummary) => {
+    if (!window.confirm(`¿Cerrar la sala ${room.room_code}? Se conservará todo su historial.`)) {
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      await api.admin.closeRoom(room.match_id);
+      await loadAdminData();
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudo cerrar la sala.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCloseAllRooms = async () => {
+    if (activeRooms.length === 0) return;
+    if (
+      !window.confirm(
+        `¿Cerrar las ${activeRooms.length} salas activas? Se conservarán jugadores, partidas e historial.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      await api.admin.closeAllRooms();
+      setWinnerSelections({});
+      await loadAdminData();
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudieron cerrar las salas activas.'));
     } finally {
       setBusy(false);
     }
@@ -267,6 +313,28 @@ export default function AdminPage() {
           </article>
         </section>
 
+        <section className="admin-panel admin-danger-panel" aria-labelledby="room-control-title">
+          <div className="admin-section-heading">
+            <div>
+              <p className="admin-kicker">CONTROL DE OPERACIÓN</p>
+              <h2 id="room-control-title">Cierre de salas</h2>
+            </div>
+            <span className="admin-badge">{activeRooms.length} activas</span>
+          </div>
+          <p className="admin-muted">
+            Cerrar una sala la marca como abandonada y conserva sus jugadores, resultados e
+            historial.
+          </p>
+          <button
+            className="admin-danger"
+            type="button"
+            onClick={() => void handleCloseAllRooms()}
+            disabled={busy || activeRooms.length === 0}
+          >
+            {busy ? 'Procesando…' : `Cerrar todas las salas activas (${activeRooms.length})`}
+          </button>
+        </section>
+
         <section className="admin-panel" aria-labelledby="create-room-title">
           <div className="admin-section-heading">
             <div>
@@ -391,14 +459,26 @@ export default function AdminPage() {
                   <span className="admin-muted">
                     Ganadores actuales: {room.winner_ids.length || 'ninguno'}
                   </span>
-                  <button
-                    className="admin-secondary"
-                    type="button"
-                    onClick={() => void handleSetResult(room)}
-                    disabled={busy}
-                  >
-                    Guardar resolución manual
-                  </button>
+                  <div className="admin-room-actions">
+                    <button
+                      className="admin-secondary"
+                      type="button"
+                      onClick={() => void handleSetResult(room)}
+                      disabled={busy}
+                    >
+                      Guardar resolución manual
+                    </button>
+                    {isActiveRoom(room) && (
+                      <button
+                        className="admin-danger"
+                        type="button"
+                        onClick={() => void handleCloseRoom(room)}
+                        disabled={busy}
+                      >
+                        Cerrar sala
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}

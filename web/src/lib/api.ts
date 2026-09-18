@@ -20,6 +20,8 @@ import type {
   AdminPlayersResponse,
   AdminRankingResponse,
   AdminRoomsResponse,
+  AdminCloseRoomResponse,
+  AdminCloseRoomsResponse,
 } from '@duelodev/shared';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
@@ -164,6 +166,14 @@ export const api = {
       request<RoomCreatedResponse>('/admin/rooms/create', {
         method: 'POST',
         body: JSON.stringify(data),
+      }),
+    closeRoom: (matchId: string) =>
+      request<AdminCloseRoomResponse>(`/admin/rooms/${matchId}/close`, {
+        method: 'POST',
+      }),
+    closeAllRooms: () =>
+      request<AdminCloseRoomsResponse>('/admin/rooms/close-all', {
+        method: 'POST',
       }),
     players: (query?: string) =>
       request<AdminPlayersResponse>(

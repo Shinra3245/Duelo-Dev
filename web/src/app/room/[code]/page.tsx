@@ -52,7 +52,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   }, [router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role !== 'guest') return;
     return registerGuestSessionCleanup();
   }, [user]);
 

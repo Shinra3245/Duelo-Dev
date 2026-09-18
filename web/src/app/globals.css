@@ -223,6 +223,7 @@ textarea:focus-visible {
 }
 .admin-primary,
 .admin-secondary,
+.admin-danger,
 .admin-link {
   border-radius: 0.65rem;
   padding: 0.7rem 0.9rem;
@@ -241,7 +242,8 @@ textarea:focus-visible {
   transform: translateY(-1px);
 }
 .admin-primary:disabled,
-.admin-secondary:disabled {
+.admin-secondary:disabled,
+.admin-danger:disabled {
   cursor: not-allowed;
   opacity: 0.55;
   transform: none;
@@ -250,6 +252,19 @@ textarea:focus-visible {
   border: 1px solid #475569;
   background: #1e293b;
   color: #e2e8f0;
+}
+.admin-danger {
+  border: 1px solid #be123c;
+  background: #9f1239;
+  color: #ffe4e6;
+}
+.admin-danger:hover {
+  transform: translateY(-1px);
+  background: #be123c;
+}
+.admin-danger-panel {
+  border-color: rgb(244 63 94 / 0.4);
+  background: rgb(76 5 25 / 0.28);
 }
 .admin-link {
   margin-top: 1rem;
@@ -302,6 +317,12 @@ textarea:focus-visible {
 .admin-room-footer {
   padding-top: 0.7rem;
   border-top: 1px solid #1e293b;
+}
+.admin-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 .admin-table-wrap {
   overflow-x: auto;

@@ -80,6 +80,16 @@ describe('REST API Client', () => {
     expect(config?.headers).toHaveProperty('Idempotency-Key', 'my-idempotency-key');
   });
 
+  it('usa los endpoints administrativos para cerrar una o todas las salas', async () => {
+    await api.admin.closeRoom('match-123');
+    await api.admin.closeAllRooms();
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/admin/rooms/match-123/close');
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+    expect(mockFetch.mock.calls[1]?.[0]).toContain('/admin/rooms/close-all');
+    expect(mockFetch.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
+  });
+
   it('parsea 204 No Content sin llamar response.json', async () => {
     const json = vi.fn();
     mockFetch.mockResolvedValueOnce({

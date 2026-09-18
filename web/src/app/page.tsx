@@ -13,6 +13,7 @@ import type {
 } from '@duelodev/shared';
 
 const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'];
+type AccessMode = 'register' | 'login' | 'guest';
 
 export default function Home() {
   const router = useRouter();
@@ -21,7 +22,10 @@ export default function Home() {
   const [loadError, setLoadError] = useState('');
 
   // Auth state
+  const [accessMode, setAccessMode] = useState<AccessMode>('register');
   const [gamertag, setGamertag] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   // Room state
@@ -46,19 +50,25 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role !== 'guest') return;
     return registerGuestSessionCleanup();
   }, [user]);
 
-  const handleGuestLogin = async (e: React.FormEvent) => {
+  const handleAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoggingIn(true);
     try {
-      const res = await api.auth.guest(gamertag);
+      const res =
+        accessMode === 'guest'
+          ? await api.auth.guest(gamertag)
+          : accessMode === 'register'
+            ? await api.auth.register({ email, password, gamertag })
+            : await api.auth.login({ email, password });
       setUser(res.user);
+      setPassword('');
     } catch (err: unknown) {
-      setError(getFriendlyErrorMessage(err, 'Error al iniciar sesión'));
+      setError(getFriendlyErrorMessage(err, 'No se pudo completar el acceso'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -230,40 +240,128 @@ export default function Home() {
           )}
 
           {!user ? (
-            <form onSubmit={handleGuestLogin} className="space-y-5">
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-800" htmlFor="gamertag">
-                  Gamertag
-                </label>
-                <input
-                  id="gamertag"
-                  type="text"
-                  value={gamertag}
-                  onChange={(e) => setGamertag(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
-                  placeholder="Ej. ninja-dev"
-                  required
-                  pattern={'^[A-Za-z0-9\\-]{3,20}$'}
-                  title="De 3 a 20 caracteres alfanuméricos o guiones"
-                />
-                <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Entre 3 y 20 caracteres. Usa letras, números o guiones.
-                </p>
+            <>
+              <div className="mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
+                {(
+                  [
+                    ['register', 'Registrarse'],
+                    ['login', 'Ingresar'],
+                    ['guest', 'Invitado'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setAccessMode(mode);
+                      setError('');
+                    }}
+                    className={`rounded-xl px-2 py-2 text-xs font-bold transition ${
+                      accessMode === mode
+                        ? 'bg-slate-950 text-white shadow'
+                        : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-              >
-                {isLoggingIn ? 'Iniciando...' : 'Jugar como Invitado'}
-              </button>
-            </form>
+
+              <form onSubmit={handleAccess} className="space-y-5">
+                {accessMode !== 'guest' && (
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-800" htmlFor="email">
+                      Correo electrónico
+                    </label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      placeholder="tu-correo@ejemplo.com"
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+                )}
+
+                {accessMode !== 'login' && (
+                  <div>
+                    <label
+                      className="mb-2 block text-sm font-bold text-slate-800"
+                      htmlFor="gamertag"
+                    >
+                      Gamertag
+                    </label>
+                    <input
+                      id="gamertag"
+                      type="text"
+                      value={gamertag}
+                      onChange={(e) => setGamertag(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      placeholder="Ej. ninja-dev"
+                      required
+                      pattern={'^[A-Za-z0-9\\-]{3,20}$'}
+                      title="De 3 a 20 caracteres alfanuméricos o guiones"
+                    />
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      Entre 3 y 20 caracteres. Usa letras, números o guiones.
+                    </p>
+                  </div>
+                )}
+
+                {accessMode !== 'guest' && (
+                  <div>
+                    <label
+                      className="mb-2 block text-sm font-bold text-slate-800"
+                      htmlFor="password"
+                    >
+                      Contraseña
+                    </label>
+                    <input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      placeholder="Mínimo 8 caracteres"
+                      autoComplete={accessMode === 'register' ? 'new-password' : 'current-password'}
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                )}
+
+                <p className="rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-xs leading-5 text-indigo-900">
+                  {accessMode === 'register'
+                    ? 'Para el torneo recomendamos registrarte: tu gamertag quedará vinculado a tu cuenta.'
+                    : accessMode === 'login'
+                      ? 'Ingresa con la cuenta registrada que usarás durante el torneo.'
+                      : 'El modo invitado sólo pide un gamertag y es provisional.'}
+                </p>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                >
+                  {isLoggingIn
+                    ? 'Procesando...'
+                    : accessMode === 'register'
+                      ? 'Crear cuenta y entrar'
+                      : accessMode === 'login'
+                        ? 'Entrar con mi cuenta'
+                        : 'Jugar como Invitado'}
+                </button>
+              </form>
+            </>
           ) : (
             <div className="space-y-6">
               <div className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
-                    Conectado como
+                    {user.role === 'guest' ? 'Invitado' : 'Cuenta registrada'}
                   </p>
                   <p className="mt-1 break-all font-mono text-lg font-black leading-6 text-slate-950">
                     {user.gamertag}
