@@ -695,7 +695,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                             : 'Enviar Solución'}
                     </button>
 
-                    <p className="text-xs leading-5 text-slate-500">
+                    <p id="python-editor-help" className="text-xs leading-5 text-slate-500">
                       Lenguaje habilitado en el MVP: Python 3. Evita enviar varias veces el mismo
                       código mientras el juez procesa tu solución.
                     </p>
@@ -888,34 +888,74 @@ function PythonEditor({
   onChange: (value: string) => void;
   disabled: boolean;
 }) {
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const lineCount = Math.max(1, value.split('\n').length);
 
   return (
-    <div className="relative h-96 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
-      <pre
-        ref={highlightRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 m-0 overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-sm leading-6 text-slate-100"
-        dangerouslySetInnerHTML={{ __html: highlightPython(value) || ' ' }}
-      />
-      <textarea
-        aria-label="Editor de solución Python"
-        className="relative h-full w-full resize-none bg-transparent p-5 font-mono text-sm leading-6 text-transparent caret-cyan-300 outline-none placeholder:text-slate-500"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onScroll={(event) => {
-          if (highlightRef.current) {
-            highlightRef.current.scrollTop = event.currentTarget.scrollTop;
-            highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
-          }
-        }}
-        placeholder="Escribe tu código en Python 3 aquí..."
-        spellCheck={false}
-        disabled={disabled}
-      />
-      <span className="pointer-events-none absolute right-4 top-3 rounded-full bg-cyan-300/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200">
-        Python 3 · IDE
-      </span>
+    <div className="overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs">
+        <span className="font-mono font-bold text-slate-200">solution.py</span>
+        <span className="rounded-full bg-cyan-300/10 px-2 py-1 font-bold uppercase tracking-[0.14em] text-cyan-200">
+          Python 3 · IDE
+        </span>
+      </div>
+      <div className="relative flex h-[28rem] min-h-0">
+        <div
+          ref={lineNumbersRef}
+          aria-hidden="true"
+          className="w-12 shrink-0 overflow-hidden border-r border-slate-800 bg-slate-900/80 px-3 py-5 text-right font-mono text-sm leading-6 text-slate-500 select-none"
+        >
+          {Array.from({ length: lineCount }, (_, index) => (
+            <div key={index}>{index + 1}</div>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1">
+          <pre
+            ref={highlightRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 m-0 overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-sm leading-6 text-slate-100"
+            dangerouslySetInnerHTML={{ __html: highlightPython(value) || ' ' }}
+          />
+          <textarea
+            ref={editorRef}
+            aria-describedby="python-editor-help"
+            aria-label="Editor de solución Python"
+            className="relative h-full w-full resize-none overflow-auto bg-transparent p-5 font-mono text-sm leading-6 text-transparent caret-cyan-300 outline-none placeholder:text-slate-500"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return;
+              event.preventDefault();
+              const start = event.currentTarget.selectionStart;
+              const end = event.currentTarget.selectionEnd;
+              const nextValue = `${value.slice(0, start)}  ${value.slice(end)}`;
+              onChange(nextValue);
+              requestAnimationFrame(() => {
+                if (!editorRef.current) return;
+                editorRef.current.focus();
+                editorRef.current.selectionStart = start + 2;
+                editorRef.current.selectionEnd = start + 2;
+              });
+            }}
+            onScroll={(event) => {
+              if (highlightRef.current) {
+                highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+                highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+              }
+              if (lineNumbersRef.current) {
+                lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+              }
+            }}
+            placeholder="Escribe tu código en Python 3 aquí..."
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            disabled={disabled}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -942,7 +982,8 @@ function RivalBoards({
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-300">Rivales</p>
           <h3 className="mt-1 text-lg font-black">Tableros y progreso</h3>
           <p className="mt-1 text-xs leading-5 text-slate-400">
-            El código rival sólo aparece cuando su dueño lo revela o la partida termina.
+            El estado se sincroniza en vivo. El código aparece en el resumen cuando su dueño lo
+            revela.
           </p>
         </div>
         <button
