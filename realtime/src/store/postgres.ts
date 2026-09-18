@@ -13,6 +13,10 @@ function clonePlayer(player: ConnectedPlayer): ConnectedPlayer {
   return { ...player };
 }
 
+function toPersistentConnection(connection: PlayerConnection): 'connected' | 'disconnected' {
+  return connection === 'connected' ? 'connected' : 'disconnected';
+}
+
 function cloneSession(session: RealtimeMatchSession): RealtimeMatchSession {
   const clonedPlayers = new Map<string, ConnectedPlayer>();
   for (const [id, player] of session.players) {
@@ -210,7 +214,7 @@ export class PostgresMatchStore implements MatchStore {
           player.current_problem_idx,
           player.is_ready,
           player.is_revealed,
-          player.connection === 'reconnecting' ? 'disconnected' : player.connection,
+          toPersistentConnection(player.connection),
           session.match_id,
           userId,
         ],
@@ -246,7 +250,7 @@ export class PostgresMatchStore implements MatchStore {
        SET connection_status = $1
        WHERE match_id = $2 AND user_id = $3
        RETURNING *`,
-      [connection, matchId, userId],
+      [toPersistentConnection(connection), matchId, userId],
     );
 
     if (res.rows.length === 0) {
