@@ -118,6 +118,21 @@ describe('Panel administrativo protegido', () => {
       }),
     });
     expect(invalid.status).toBe(400);
+
+    const inactiveDifficulty = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['dificil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(inactiveDifficulty.status).toBe(400);
   });
 
   it('lista salas, ordena el ranking y audita el ganador manual', async () => {

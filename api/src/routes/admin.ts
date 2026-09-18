@@ -3,6 +3,7 @@ import {
   ERROR_CODES,
   ERROR_MESSAGES,
   isMatchStatus,
+  type ActiveProblemCategory,
   type AdminManualResultRequest,
   type AdminPlayersResponse,
   type AdminRankingResponse,
@@ -76,9 +77,20 @@ export async function handleAdminCreateRoom(
   const admin = await requireAdmin(req, ctx);
   const body = await parseJsonBody(req);
   const validated = validateCreateRoomRequest(body);
-  if (!validated.ok || validated.data.config.max_players > 3) {
+  if (
+    !validated.ok ||
+    validated.data.config.max_players > 3 ||
+    !validated.data.config.categories.every(
+      (category): category is ActiveProblemCategory => category !== 'dificil',
+    )
+  ) {
     throw new HttpError(400, ERROR_CODES.VALIDATION_FAILED, ERROR_MESSAGES.VALIDATION_FAILED, {
-      errors: [{ field: 'config.max_players', message: 'Una sala debe admitir 2 o 3 jugadores.' }],
+      errors: [
+        {
+          field: 'config',
+          message: 'Una sala debe admitir 2 o 3 jugadores y usar dificultades activas.',
+        },
+      ],
     });
   }
 

@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ACTIVE_PROBLEM_CATEGORIES, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
 import type {
   AdminPlayerSummary,
   AdminRankingEntry,
   AdminRoomSummary,
   CreateRoomRequest,
+  ActiveProblemCategory,
   UserProfile,
 } from '@duelodev/shared';
 import { api, ApiClientError } from '@/lib/api';
@@ -138,6 +140,15 @@ export default function AdminPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleCategory = (category: ActiveProblemCategory) => {
+    setConfig((current) => {
+      const categories = current.config.categories.includes(category)
+        ? current.config.categories.filter((item) => item !== category)
+        : [...current.config.categories, category];
+      return { config: { ...current.config, categories } } as CreateRoomRequest;
+    });
   };
 
   const toggleWinner = (roomId: string, userId: string) => {
@@ -323,6 +334,19 @@ export default function AdminPage() {
                 }
               />
             </label>
+            <fieldset className="admin-difficulty-fieldset">
+              <legend>Dificultad</legend>
+              {ACTIVE_PROBLEM_CATEGORIES.map((category) => (
+                <label className="admin-check-label" key={category}>
+                  <input
+                    type="checkbox"
+                    checked={config.config.categories.includes(category)}
+                    onChange={() => toggleCategory(category)}
+                  />
+                  {PROBLEM_CATEGORY_LABELS[category]}
+                </label>
+              ))}
+            </fieldset>
             <button className="admin-primary" type="submit" disabled={busy}>
               {busy ? 'Guardando…' : 'Crear sala'}
             </button>

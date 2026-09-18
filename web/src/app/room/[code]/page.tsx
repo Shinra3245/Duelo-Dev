@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
@@ -18,6 +18,7 @@ import type {
   EventErrorPayload,
   MatchFinishedPayload,
   PlayerScore,
+  RevealChangedPayload,
 } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -150,6 +151,36 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           setMatchState((prev) => (prev ? { ...prev, scores: typedPayload.scores } : prev));
         });
 
+        client.on(S2C.REVEAL_CHANGED, (payload: unknown) => {
+          const typedPayload = payload as RevealChangedPayload;
+          setMatchState((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  reveal_flags: {
+                    ...prev.reveal_flags,
+                    [typedPayload.user_id]: typedPayload.visible,
+                  },
+                }
+              : prev,
+          );
+        });
+
+        client.on(S2C.PLAYER_STATUS, (payload: unknown) => {
+          const typedPayload = payload as {
+            user_id: string;
+            status: MatchSyncPayload['players'][string];
+          };
+          setMatchState((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  players: { ...prev.players, [typedPayload.user_id]: typedPayload.status },
+                }
+              : prev,
+          );
+        });
+
         client.on(S2C.MATCH_FINISHED, (payload: unknown) => {
           const typedPayload = payload as MatchFinishedPayload;
           setIsAwaitingVerdict(false);
@@ -269,6 +300,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     if (!isConnected) return;
     setActionError('');
     wsClient?.send(C2S.READY, {});
+  };
+
+  const handleToggleReveal = () => {
+    if (!isConnected || !wsClient || !user || !matchState) return;
+    wsClient.send(C2S.TOGGLE_REVEAL, {
+      visible: !(matchState.reveal_flags[user.id] ?? false),
+    });
   };
 
   const handleCopyRoomCode = async () => {
@@ -600,13 +638,17 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
                   {/* Panel Derecho: Editor */}
                   <div className="space-y-4">
-                    <textarea
-                      aria-label="Editor de solución Python"
-                      className="h-96 w-full resize-y rounded-3xl border border-slate-300 bg-slate-950 p-5 font-mono text-sm leading-6 text-slate-100 shadow-inner placeholder:text-slate-500 focus:border-cyan-400"
+                    <PythonEditor
                       value={sourceCode}
-                      onChange={(e) => setSourceCode(e.target.value)}
-                      placeholder="Escribe tu código en Python 3 aquí..."
+                      onChange={setSourceCode}
                       disabled={isSubmitting || room.status !== 'running'}
+                    />
+
+                    <RivalBoards
+                      room={room}
+                      matchState={matchState}
+                      currentUserId={user.id}
+                      onToggleReveal={handleToggleReveal}
                     />
 
                     <button
@@ -747,4 +789,150 @@ function StandingsTable({
 function formatScoreTime(timeMs: number) {
   if (!Number.isFinite(timeMs) || timeMs < 0) return '—';
   return `${(timeMs / 1000).toFixed(1)} s`;
+}
+
+function PythonEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const highlightRef = useRef<HTMLPreElement>(null);
+
+  return (
+    <div className="relative h-96 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
+      <pre
+        ref={highlightRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 m-0 overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-sm leading-6 text-slate-100"
+        dangerouslySetInnerHTML={{ __html: highlightPython(value) || ' ' }}
+      />
+      <textarea
+        aria-label="Editor de solución Python"
+        className="relative h-full w-full resize-none bg-transparent p-5 font-mono text-sm leading-6 text-transparent caret-cyan-300 outline-none placeholder:text-slate-500"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onScroll={(event) => {
+          if (highlightRef.current) {
+            highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+            highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+          }
+        }}
+        placeholder="Escribe tu código en Python 3 aquí..."
+        spellCheck={false}
+        disabled={disabled}
+      />
+      <span className="pointer-events-none absolute right-4 top-3 rounded-full bg-cyan-300/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200">
+        Python 3 · IDE
+      </span>
+    </div>
+  );
+}
+
+function RivalBoards({
+  room,
+  matchState,
+  currentUserId,
+  onToggleReveal,
+}: {
+  room: RoomDetailsResponse;
+  matchState: MatchSyncPayload;
+  currentUserId: string;
+  onToggleReveal: () => void;
+}) {
+  const scoreMap = new Map(matchState.scores.map((score) => [score.user_id, score]));
+  const rivals = room.players.filter((player) => player.user_id !== currentUserId);
+  const ownReveal = matchState.reveal_flags[currentUserId] ?? false;
+
+  return (
+    <section className="rounded-3xl border border-slate-800 bg-slate-900 p-4 text-slate-100 shadow-lg sm:p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-300">Rivales</p>
+          <h3 className="mt-1 text-lg font-black">Tableros y progreso</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            El código rival sólo aparece cuando su dueño lo revela o la partida termina.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleReveal}
+          className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-400/20"
+        >
+          {ownReveal ? 'Ocultar mi código' : 'Revelar mi código'}
+        </button>
+      </div>
+      <div className="grid gap-3">
+        {rivals.length === 0 && <p className="text-sm text-slate-400">Esperando rivales…</p>}
+        {rivals.map((player) => {
+          const score = scoreMap.get(player.user_id);
+          const isRevealed = matchState.reveal_flags[player.user_id] ?? false;
+          const status = matchState.players[player.user_id] ?? 'disconnected';
+          return (
+            <div
+              className="rounded-2xl border border-slate-700 bg-slate-950/70 p-3"
+              key={player.user_id}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate font-mono text-sm font-bold text-slate-100">
+                  {player.gamertag}
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${status === 'connected' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-400/15 text-amber-200'}`}
+                >
+                  {status === 'connected' ? 'Conectado' : status}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <span>
+                  <b className="block text-base text-cyan-200">{score?.score ?? 0}</b>Puntos
+                </span>
+                <span>
+                  <b className="block text-base text-cyan-200">{score?.cases_total ?? 0}</b>Casos
+                </span>
+                <span>
+                  <b className="block text-base text-cyan-200">
+                    {(score?.current_problem_idx ?? 0) + 1}
+                  </b>
+                  Problema
+                </span>
+              </div>
+              <p className="mt-3 border-t border-slate-800 pt-2 text-xs text-slate-400">
+                {isRevealed ? 'Código revelado por el jugador.' : 'Código oculto por permisos.'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function highlightPython(value: string): string {
+  const escaped = escapeHtml(value);
+  return escaped.replace(
+    /(#.*|&quot;.*?&quot;|&#39;.*?&#39;|\b(?:and|as|assert|class|def|elif|else|for|from|if|import|in|is|not|or|return|while|True|False|None)\b|\b\d+(?:\.\d+)?\b)/g,
+    (token) => {
+      const color = token.startsWith('#')
+        ? 'text-emerald-300'
+        : token.startsWith('&quot;') || token.startsWith('&#39;')
+          ? 'text-amber-300'
+          : /^\d/.test(token)
+            ? 'text-fuchsia-300'
+            : 'text-cyan-300';
+      return `<span class="${color}">${token}</span>`;
+    },
+  );
 }

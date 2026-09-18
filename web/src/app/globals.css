@@ -192,6 +192,35 @@ textarea:focus-visible {
   padding: 0.7rem 0.8rem;
   color: #f8fafc;
 }
+.admin-difficulty-fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+.admin-difficulty-fieldset legend {
+  width: 100%;
+  margin-bottom: 0.2rem;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.admin-check-label {
+  display: flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 0.45rem 0.6rem;
+  color: #cbd5e1 !important;
+  font-size: 0.75rem !important;
+}
+.admin-check-label input {
+  width: auto;
+}
 .admin-primary,
 .admin-secondary,
 .admin-link {
