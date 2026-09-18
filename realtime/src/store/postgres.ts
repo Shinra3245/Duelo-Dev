@@ -210,7 +210,7 @@ export class PostgresMatchStore implements MatchStore {
           player.current_problem_idx,
           player.is_ready,
           player.is_revealed,
-          player.connection,
+          player.connection === 'reconnecting' ? 'disconnected' : player.connection,
           session.match_id,
           userId,
         ],
