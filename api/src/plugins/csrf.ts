@@ -65,6 +65,10 @@ export function validateCsrfOrigin(req: IncomingMessage, options: CsrfOptions = 
   // Lista de orígenes permitidos configurados
   const allowedList = (options.allowedOrigins ?? []).map((o) => o.toLowerCase());
 
+  if (allowedList.includes('*')) {
+    return;
+  }
+
   // Si está en la lista explícita, se permite de inmediato
   if (allowedList.includes(requestOrigin)) {
     return;
