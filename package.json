@@ -31,7 +31,8 @@
     "judge:vm:start": "./scripts/judge-vm-worker-start.sh",
     "judge:vm:stop": "./scripts/judge-vm-worker-stop.sh",
     "tournament:smoke": "node ./scripts/tournament-smoke.mjs",
-    "tournament:status": "./scripts/tournament-status.sh"
+    "tournament:status": "./scripts/tournament-status.sh",
+    "tournament:stop": "./scripts/tournament-stop.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

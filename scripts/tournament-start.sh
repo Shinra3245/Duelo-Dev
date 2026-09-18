@@ -7,6 +7,7 @@ cd "$repo_root"
 pids=()
 judge_started=false
 cleaned_up=false
+state_dir="${TOURNAMENT_STATE_DIR:-tmp/tournament}"
 
 cleanup() {
   if [[ "$cleaned_up" == true ]]; then
@@ -27,6 +28,9 @@ cleanup() {
       pkill -KILL -P "$pid" >/dev/null 2>&1 || true
       kill -KILL "$pid" >/dev/null 2>&1 || true
     done
+  fi
+  if [[ -d "$state_dir" ]]; then
+    rm -f "$state_dir"/api.pid "$state_dir"/realtime.pid "$state_dir"/web.pid "$state_dir"/judge-started
   fi
 }
 
@@ -192,6 +196,8 @@ require_port_available() {
 }
 
 load_env_defaults
+mkdir -p "$state_dir"
+chmod 700 "$state_dir"
 
 lan_host="$(detect_lan_host)"
 if [[ -z "$lan_host" ]]; then
@@ -243,15 +249,18 @@ fi
 
 npm run start --workspace @duelodev/api &
 pids+=("$!")
+printf '%s\n' "$!" > "$state_dir/api.pid"
 wait_http_ready "http://127.0.0.1:${API_PORT}/readyz" api
 
 npm run start --workspace @duelodev/realtime &
 pids+=("$!")
+printf '%s\n' "$!" > "$state_dir/realtime.pid"
 wait_http_ready "http://127.0.0.1:${REALTIME_PORT}/readyz" realtime
 
 if [[ "${START_JUDGE_VM:-auto}" != "0" ]]; then
   if scripts/judge-vm-worker-start.sh; then
     judge_started=true
+    : > "$state_dir/judge-started"
   elif [[ "${REQUIRE_JUDGE_VM:-0}" == "1" ]]; then
     printf 'Error: el worker del juez no pudo iniciar y REQUIRE_JUDGE_VM=1.\n' >&2
     exit 1
@@ -262,6 +271,7 @@ fi
 
 npm run start --workspace @duelodev/web -- -H 0.0.0.0 -p "$WEB_PORT" &
 pids+=("$!")
+printf '%s\n' "$!" > "$state_dir/web.pid"
 
 printf '\nTorneo listo en http://%s:%s\n' "$lan_host" "$WEB_PORT"
 printf 'Presiona Ctrl+C para detener API, realtime, web y el worker iniciado por este script.\n'
