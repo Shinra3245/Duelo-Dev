@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { createApp, type ApiApp } from '../src/app.js';
 import { hashPassword } from '../src/services/password.js';
 import { ADMIN_ALLOWED_EMAIL } from '../src/services/admin.js';
+import { ensureConfiguredAdmin } from '../src/services/admin.js';
+import { InMemoryUserRepository } from '../src/repositories/memory.js';
 import { AUTH_COOKIE_NAMES } from '../src/plugins/cookies.js';
 import { ERROR_CODES, type AuthUserResponse } from '@duelodev/shared';
 
@@ -61,6 +63,15 @@ describe('Panel administrativo protegido', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  it('bootstrap idempotente sólo eleva la identidad administrativa permitida', async () => {
+    const users = new InMemoryUserRepository();
+    const first = await ensureConfiguredAdmin(users, 'BootstrapPassword123!');
+    const second = await ensureConfiguredAdmin(users, 'BootstrapPassword123!');
+    expect(first.id).toBe(second.id);
+    expect(second.email).toBe(ADMIN_ALLOWED_EMAIL);
+    expect(second.role).toBe('admin');
   });
 
   it('expone el rol admin en /auth/me y deniega el panel a usuarios normales', async () => {
