@@ -265,6 +265,51 @@ describe('Auth REST API (/api/v1/auth & /api/v1/users)', () => {
     });
   });
 
+  describe('GET /api/v1/auth/me', () => {
+    it('retorna el perfil autenticado usando la cookie access_token', async () => {
+      const loginRes = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: 'alice@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const cookies = extractCookies(loginRes);
+      const accessToken = cookies[AUTH_COOKIE_NAMES.ACCESS_TOKEN];
+      expect(accessToken).toBeDefined();
+
+      const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+        headers: {
+          Cookie: `${AUTH_COOKIE_NAMES.ACCESS_TOKEN}=${accessToken}`,
+        },
+      });
+
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as AuthUserResponse;
+      expect(data.user.email).toBe('alice@example.com');
+      expect(data.user.gamertag).toBe('alice-coder');
+      expect(data.user.role).toBe('user');
+    });
+
+    it('rechaza consulta sin access token con 401 UNAUTHENTICATED', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/auth/me`);
+
+      expect(res.status).toBe(401);
+      const data = (await res.json()) as ApiError;
+      expect(data.error.code).toBe(ERROR_CODES.UNAUTHENTICATED);
+    });
+
+    it('responde 405 Method Not Allowed ante métodos distintos a GET', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(405);
+      expect(res.headers.get('allow')).toBe('GET');
+    });
+  });
+
   describe('POST /api/v1/auth/logout', () => {
     it('revoca la sesión, limpia las cookies y responde 200 ok', async () => {
       // 1. Iniciar sesión
