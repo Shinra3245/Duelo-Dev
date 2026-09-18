@@ -15,6 +15,11 @@ test('un jugador invitado puede entrar y conservar su gamertag', async ({ page }
 
   await page.getByRole('button', { name: 'Salir' }).click();
   await expect(page.getByRole('button', { name: 'Invitado', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Invitado', exact: true }).click();
+  await page.getByLabel('Gamertag').fill(gamertag);
+  await page.getByRole('button', { name: 'Jugar como Invitado' }).click();
+  await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
 });
 
 test('el panel administrativo mantiene el acceso privado', async ({ page }) => {

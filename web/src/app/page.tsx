@@ -31,6 +31,8 @@ export default function Home() {
   const [gamertag, setGamertag] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [conversionEmail, setConversionEmail] = useState('');
+  const [conversionPassword, setConversionPassword] = useState('');
   const [error, setError] = useState('');
 
   // Room state
@@ -38,6 +40,7 @@ export default function Home() {
 
   // Loading states
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isConvertingGuest, setIsConvertingGuest] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isJoiningRoom, setIsJoiningRoom] = useState(false);
 
@@ -121,6 +124,25 @@ export default function Home() {
       setUser(null);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleConvertGuest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setIsConvertingGuest(true);
+    try {
+      const res = await api.auth.convertGuest({
+        email: conversionEmail,
+        password: conversionPassword,
+      });
+      setUser(res.user);
+      setConversionEmail('');
+      setConversionPassword('');
+    } catch (err: unknown) {
+      setError(getFriendlyErrorMessage(err, 'No se pudo guardar la cuenta'));
+    } finally {
+      setIsConvertingGuest(false);
     }
   };
 
@@ -467,6 +489,57 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+
+              {user.role === 'guest' && (
+                <div className="border-t border-slate-200 pt-5">
+                  <h2 className="mb-2 text-xl font-black text-slate-950">Conserva tu gamertag</h2>
+                  <p className="mb-4 text-sm leading-6 text-slate-600">
+                    Registra este invitado para usar el mismo nombre durante todo el torneo y
+                    conservar su historial.
+                  </p>
+                  <form onSubmit={handleConvertGuest} className="space-y-4">
+                    <label
+                      className="block text-sm font-bold text-slate-800"
+                      htmlFor="convert-email"
+                    >
+                      Correo electrónico
+                      <input
+                        id="convert-email"
+                        type="email"
+                        value={conversionEmail}
+                        onChange={(event) => setConversionEmail(event.target.value)}
+                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                        autoComplete="email"
+                        required
+                      />
+                    </label>
+                    <label
+                      className="block text-sm font-bold text-slate-800"
+                      htmlFor="convert-password"
+                    >
+                      Contraseña
+                      <input
+                        id="convert-password"
+                        type="password"
+                        value={conversionPassword}
+                        onChange={(event) => setConversionPassword(event.target.value)}
+                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                        autoComplete="new-password"
+                        minLength={8}
+                        required
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={isConvertingGuest}
+                      aria-busy={isConvertingGuest}
+                      className="w-full rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 font-bold text-indigo-800 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isConvertingGuest ? 'Guardando...' : 'Registrar mi cuenta'}
+                    </button>
+                  </form>
+                </div>
+              )}
 
               <div className="border-t border-slate-200 pt-5">
                 <h2 className="mb-2 text-xl font-black text-slate-950">Unirse a sala</h2>

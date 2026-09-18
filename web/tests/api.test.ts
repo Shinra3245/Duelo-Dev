@@ -90,6 +90,19 @@ describe('REST API Client', () => {
     expect(mockFetch.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
   });
 
+  it('convierte un invitado en cuenta sin cambiar el flujo de cookies', async () => {
+    await api.auth.convertGuest({
+      email: 'player@example.com',
+      password: 'Password123!',
+    });
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/users/convert');
+    expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      credentials: 'include',
+    });
+  });
+
   it('consulta el resumen final para mostrar snapshots autorizados', async () => {
     await api.matches.summary('match-terminal');
 

@@ -1,6 +1,7 @@
 import { ERROR_CODES } from '@duelodev/shared';
 import type {
   ApiError,
+  ConvertGuestRequest,
   RegisterRequest,
   AuthUserResponse,
   LoginRequest,
@@ -123,6 +124,11 @@ export const api = {
       request<AuthUserResponse>('/auth/guest', {
         method: 'POST',
         body: JSON.stringify({ gamertag }),
+      }),
+    convertGuest: (data: ConvertGuestRequest) =>
+      request<AuthUserResponse>('/users/convert', {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
     me: () => request<AuthUserResponse>('/auth/me'),
     logout: () => request<LogoutResponse>('/auth/logout', { method: 'POST' }),
