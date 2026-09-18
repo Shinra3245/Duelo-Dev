@@ -10,6 +10,7 @@ import {
   AUTH_COOKIE_NAMES,
   clearAuthCookies,
   getRequestCookies,
+  isSecureRequest,
   setAuthCookies,
 } from '../plugins/cookies.js';
 import {
@@ -89,10 +90,14 @@ export async function handleRegister(
   }
 
   const result = await ctx.authService.register(validated.data);
-  setAuthCookies(res, {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-  });
+  setAuthCookies(
+    res,
+    {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
+    isSecureRequest(req),
+  );
 
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 201, responseBody);
@@ -122,10 +127,14 @@ export async function handleLogin(
   }
 
   const result = await ctx.authService.login(validated.data);
-  setAuthCookies(res, {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-  });
+  setAuthCookies(
+    res,
+    {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
+    isSecureRequest(req),
+  );
 
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 200, responseBody);
@@ -153,10 +162,14 @@ export async function handleGuest(
   }
 
   const result = await ctx.authService.createGuest(validated.data.gamertag);
-  setAuthCookies(res, {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-  });
+  setAuthCookies(
+    res,
+    {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
+    isSecureRequest(req),
+  );
 
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 201, responseBody);
@@ -223,7 +236,7 @@ export async function handleLogout(
     await ctx.retentionService.anonymizeGuest(guestUserId);
   }
 
-  clearAuthCookies(res);
+  clearAuthCookies(res, isSecureRequest(req));
   const responseBody: LogoutResponse = { ok: true };
   sendJson(req, res, 200, responseBody);
 }
@@ -257,10 +270,14 @@ export async function handleConvertGuest(
   }
 
   const result = await ctx.authService.convertGuest(session.userId, validated.data);
-  setAuthCookies(res, {
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-  });
+  setAuthCookies(
+    res,
+    {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    },
+    isSecureRequest(req),
+  );
 
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 200, responseBody);

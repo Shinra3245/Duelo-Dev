@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ERROR_CODES, ERROR_MESSAGES } from '@duelodev/shared';
 import { HttpError, parseJsonBody } from '../plugins/body-parser.js';
-import { setAuthCookies } from '../plugins/cookies.js';
+import { isSecureRequest, setAuthCookies } from '../plugins/cookies.js';
 import {
   validateCreateRoomRequest,
   validateJoinRoomRequest,
@@ -90,7 +90,7 @@ export async function handleJoinRoom(
   const result = await ctx.roomService.joinRoom(roomCode, validated.data, authenticatedUserId);
 
   if (result.newGuestTokens) {
-    setAuthCookies(res, result.newGuestTokens);
+    setAuthCookies(res, result.newGuestTokens, isSecureRequest(req));
   }
 
   sendJson(req, res, 200, result.response);

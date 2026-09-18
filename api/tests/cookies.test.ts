@@ -3,6 +3,7 @@ import type { ServerResponse } from 'node:http';
 import {
   AUTH_COOKIE_NAMES,
   clearAuthCookies,
+  isSecureRequest,
   parseCookies,
   serializeCookie,
   setAuthCookies,
@@ -56,6 +57,31 @@ describe('Cookies Plugin', () => {
     it('codifica valores de cookie adecuadamente con URI encoding', () => {
       const cookie = serializeCookie('name', 'user @ example / test');
       expect(cookie).toContain('name=user%20%40%20example%20%2F%20test');
+    });
+  });
+
+  describe('isSecureRequest', () => {
+    it('no marca como segura una cookie en HTTP LAN aunque production esté activo', () => {
+      const request = {
+        headers: {},
+        socket: { encrypted: false },
+      };
+
+      expect(isSecureRequest(request as never)).toBe(false);
+    });
+
+    it('detecta HTTPS directo y HTTPS indicado por un proxy confiable', () => {
+      const directRequest = {
+        headers: {},
+        socket: { encrypted: true },
+      };
+      const proxiedRequest = {
+        headers: { 'x-forwarded-proto': 'https, http' },
+        socket: { encrypted: false },
+      };
+
+      expect(isSecureRequest(directRequest as never)).toBe(true);
+      expect(isSecureRequest(proxiedRequest as never)).toBe(true);
     });
   });
 

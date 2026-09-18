@@ -50,6 +50,20 @@ export function getRequestCookies(req: IncomingMessage): Record<string, string> 
 }
 
 /**
+ * Determina si la solicitud llegó por HTTPS, tanto de forma directa como detrás de un proxy.
+ * El entorno de torneo LAN puede ejecutarse por HTTP aunque NODE_ENV sea production.
+ */
+export function isSecureRequest(req: IncomingMessage): boolean {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  if (forwardedProto) {
+    const firstProto = String(forwardedProto).split(',')[0]?.trim().toLowerCase();
+    return firstProto === 'https';
+  }
+
+  return (req.socket as typeof req.socket & { encrypted?: boolean }).encrypted === true;
+}
+
+/**
  * Serializa una cookie en formato Set-Cookie.
  */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
