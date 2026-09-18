@@ -37,6 +37,7 @@ import { applyModeActions, buildMatchContext, getGameMode } from '../gamemodes/o
 import type { MatchStore } from '../store/types.js';
 import type { RealtimeMatchSession } from '../types.js';
 import type { SocketClient, MatchRoom } from './types.js';
+import { playerRoundId } from '../gamemodes/round-id.js';
 
 export interface MatchHubOptions {
   matchStore: MatchStore;
@@ -912,7 +913,7 @@ export class MatchHub {
       roundId =
         session.status === 'lobby'
           ? session.current_round_id || null
-          : `round-u-${userId}-${problemIndex + 1}`;
+          : playerRoundId(session.match_id, userId, problemIndex);
       problemId = session.problem_ids ? (session.problem_ids[problemIndex] ?? null) : null;
       endsAt = session.match_ends_at ?? session.round_ends_at ?? null;
     }

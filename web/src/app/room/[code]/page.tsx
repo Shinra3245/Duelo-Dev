@@ -75,6 +75,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       .then((res) => {
         if (cancelled) return;
 
+        // Si la sala ya estaba iniciada al cargar, el JOIN inicial solicitará
+        // el MATCH_SYNC con el problema actual. En lobby dejamos la marca en
+        // falso para poder pedir ese mismo sync cuando el anfitrión inicie.
+        let matchSyncRequested = res.status !== 'lobby';
+
         setRoom(res);
 
         // Conectar WS
@@ -90,12 +95,29 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.MATCH_SYNC, (payload: unknown) => {
           const typedPayload = payload as MatchSyncPayload;
+          if (typedPayload.status !== 'lobby') {
+            matchSyncRequested = true;
+          }
           setMatchState(typedPayload);
           setRoom((prev) => (prev ? { ...prev, status: typedPayload.status } : prev));
         });
 
         client.on(S2C.PLAYER_STATUS, () => {
-          api.rooms.get(roomCode).then(setRoom).catch(console.error);
+          api.rooms
+            .get(roomCode)
+            .then((nextRoom) => {
+              setRoom(nextRoom);
+
+              // El start de la API persiste el estado en PostgreSQL. El
+              // anfitrión solicita el sync al terminar el start, mientras
+              // que los rivales reciben PLAYER_STATUS. Solicitar el JOIN una
+              // sola vez evita que se queden con el MATCH_SYNC del lobby.
+              if (nextRoom.status !== 'lobby' && !matchSyncRequested) {
+                matchSyncRequested = true;
+                client?.send(C2S.JOIN_MATCH, { match_id: nextRoom.match_id });
+              }
+            })
+            .catch(console.error);
         });
 
         client.on(S2C.MATCH_STARTED, () => {

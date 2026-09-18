@@ -22,6 +22,7 @@ import type {
   SubmissionVerdictContext,
 } from '@duelodev/shared';
 import { determineWinners, resolveWinnerId } from '@duelodev/shared';
+import { playerRoundId } from './round-id.js';
 
 export class RondasMode implements PureGameMode {
   readonly modeName = 'rondas' as const;
@@ -48,7 +49,7 @@ export class RondasMode implements PureGameMode {
         user_id: userId,
         next_problem_id: firstProblemId,
         next_problem_index: 0,
-        next_round_id: `round-u-${userId}-1`,
+        next_round_id: playerRoundId(ctx.match_id, userId, 0),
         ends_at: endsAt,
       });
     }
@@ -113,7 +114,7 @@ export class RondasMode implements PureGameMode {
           user_id: submission.user_id,
           next_problem_id: nextProblemId,
           next_problem_index: nextProblemIdx,
-          next_round_id: `round-u-${submission.user_id}-${nextProblemIdx + 1}`,
+          next_round_id: playerRoundId(ctx.match_id, submission.user_id, nextProblemIdx),
           ends_at: endsAt,
         });
       } else {

@@ -14,6 +14,7 @@ import { MatchHub } from '../src/socket/hub.js';
 import type { SocketClient } from '../src/socket/types.js';
 import { InMemoryMatchStore } from '../src/store/memory.js';
 import type { RealtimeMatchSession } from '../src/types.js';
+import { playerRoundId } from '../src/gamemodes/round-id.js';
 
 interface MockSocketClient extends SocketClient {
   emittedEvents: Array<{ event: string; payload: unknown }>;
@@ -608,12 +609,12 @@ describe('MatchHub', () => {
       expect(begin2).toBeDefined();
 
       const begin1Payload = begin1?.payload as ProblemBeginPayload;
-      expect(begin1Payload.round_id).toBe('round-u-user-1-1');
+      expect(begin1Payload.round_id).toBe(playerRoundId('match-rondas', 'user-1', 0));
       expect(begin1Payload.problem_id).toBe('p1');
       expect(begin1Payload.index).toBe(0);
 
       const begin2Payload = begin2?.payload as ProblemBeginPayload;
-      expect(begin2Payload.round_id).toBe('round-u-user-2-1');
+      expect(begin2Payload.round_id).toBe(playerRoundId('match-rondas', 'user-2', 0));
       expect(begin2Payload.problem_id).toBe('p1');
       expect(begin2Payload.index).toBe(0);
     });
@@ -703,7 +704,7 @@ describe('MatchHub', () => {
       const submission: SubmissionVerdictContext = {
         submission_id: 'sub-win',
         user_id: 'user-1',
-        round_id: 'round-u-user-1-3',
+        round_id: playerRoundId('match-rondas-target', 'user-1', 2),
         problem_id: 'p3',
         admission_seq: 1,
         received_at: 1000,
@@ -815,7 +816,7 @@ describe('MatchHub', () => {
 
       const syncR = clientR.emittedEvents.find((e) => e.event === S2C.MATCH_SYNC)
         ?.payload as MatchSyncPayload;
-      expect(syncR.round_id).toBe('round-u-user-1-1');
+      expect(syncR.round_id).toBe(playerRoundId('m-sync-r', 'user-1', 0));
       expect(syncR.problem_id).toBe('p-x');
       expect(syncR.ends_at).toBe(88888);
       expect((syncR as Record<string, unknown>).problem_order).toBeUndefined();

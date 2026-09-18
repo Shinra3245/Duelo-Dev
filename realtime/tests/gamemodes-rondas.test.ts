@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchContext, RondasMatchConfig, SubmissionVerdictContext } from '@duelodev/shared';
 import { RondasMode } from '../src/gamemodes/rondas.js';
+import { playerRoundId } from '../src/gamemodes/round-id.js';
 
 function createRondasContext(overrides?: Partial<MatchContext>): MatchContext {
   const config: RondasMatchConfig = {
@@ -62,7 +63,7 @@ describe('RondasMode', () => {
         user_id: 'user-1',
         next_problem_id: 'prob-1',
         next_problem_index: 0,
-        next_round_id: 'round-u-user-1-1',
+        next_round_id: playerRoundId('match-rondas-1', 'user-1', 0),
         ends_at: 1000 + 600 * 1000,
       });
 
@@ -71,7 +72,7 @@ describe('RondasMode', () => {
         user_id: 'user-2',
         next_problem_id: 'prob-1',
         next_problem_index: 0,
-        next_round_id: 'round-u-user-2-1',
+        next_round_id: playerRoundId('match-rondas-1', 'user-2', 0),
         ends_at: 1000 + 600 * 1000,
       });
     });
@@ -83,7 +84,7 @@ describe('RondasMode', () => {
       const submission: SubmissionVerdictContext = {
         submission_id: 'sub-r1',
         user_id: 'user-1',
-        round_id: 'round-u-user-1-1',
+        round_id: playerRoundId('match-rondas-1', 'user-1', 0),
         problem_id: 'prob-1',
         admission_seq: 1,
         received_at: 15000,
@@ -99,7 +100,7 @@ describe('RondasMode', () => {
       expect(actions).toContainEqual({
         type: 'award_score',
         user_id: 'user-1',
-        round_id: 'round-u-user-1-1',
+        round_id: playerRoundId('match-rondas-1', 'user-1', 0),
         score_delta: 1,
         cases_delta: 10,
         solve_elapsed_ms: 120,
@@ -111,7 +112,7 @@ describe('RondasMode', () => {
         user_id: 'user-1',
         next_problem_id: 'prob-2',
         next_problem_index: 1,
-        next_round_id: 'round-u-user-1-2',
+        next_round_id: playerRoundId('match-rondas-1', 'user-1', 1),
         ends_at: 20000 + 600 * 1000,
       });
 
@@ -147,7 +148,7 @@ describe('RondasMode', () => {
       const submission: SubmissionVerdictContext = {
         submission_id: 'sub-winning',
         user_id: 'user-1',
-        round_id: 'round-u-user-1-3',
+        round_id: playerRoundId('match-rondas-1', 'user-1', 2),
         problem_id: 'prob-3',
         admission_seq: 10,
         received_at: 48000,
@@ -172,7 +173,7 @@ describe('RondasMode', () => {
       const submission: SubmissionVerdictContext = {
         submission_id: 'sub-wa',
         user_id: 'user-1',
-        round_id: 'round-u-user-1-1',
+        round_id: playerRoundId('match-rondas-1', 'user-1', 0),
         problem_id: 'prob-1',
         admission_seq: 2,
         received_at: 5000,
@@ -188,7 +189,7 @@ describe('RondasMode', () => {
         {
           type: 'award_score',
           user_id: 'user-1',
-          round_id: 'round-u-user-1-1',
+          round_id: playerRoundId('match-rondas-1', 'user-1', 0),
           score_delta: 0,
           cases_delta: 5,
           solve_elapsed_ms: 0,

@@ -3,6 +3,7 @@ import type { ModeAction } from '@duelodev/shared';
 import { applyModeActions, buildMatchContext, getGameMode } from '../src/gamemodes/orchestrator.js';
 import { PuntosMode } from '../src/gamemodes/puntos.js';
 import { RondasMode } from '../src/gamemodes/rondas.js';
+import { playerRoundId } from '../src/gamemodes/round-id.js';
 import type { RealtimeMatchSession } from '../src/types.js';
 
 function createSampleSession(): RealtimeMatchSession {
@@ -249,12 +250,12 @@ describe('Gamemodes Orchestrator', () => {
       });
 
       expect(ctx.player_rounds).toBeDefined();
-      expect(ctx.player_rounds?.['user-1']?.round_id).toBe('round-u-user-1-1');
+      expect(ctx.player_rounds?.['user-1']?.round_id).toBe(playerRoundId('m1', 'user-1', 0));
       expect(ctx.player_rounds?.['user-1']?.problem_id).toBe('p-1');
       expect(ctx.player_rounds?.['user-1']?.problem_index).toBe(0);
       expect(ctx.player_rounds?.['user-1']?.ends_at).toBe(600000);
 
-      expect(ctx.player_rounds?.['user-2']?.round_id).toBe('round-u-user-2-2');
+      expect(ctx.player_rounds?.['user-2']?.round_id).toBe(playerRoundId('m1', 'user-2', 1));
       expect(ctx.player_rounds?.['user-2']?.problem_id).toBe('p-2');
       expect(ctx.player_rounds?.['user-2']?.problem_index).toBe(1);
       expect(ctx.player_rounds?.['user-2']?.ends_at).toBe(600000);

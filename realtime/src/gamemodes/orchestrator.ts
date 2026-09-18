@@ -17,6 +17,7 @@ import type {
 import type { RealtimeMatchSession } from '../types.js';
 import { PuntosMode } from './puntos.js';
 import { RondasMode } from './rondas.js';
+import { playerRoundId } from './round-id.js';
 
 const puntosInstance = new PuntosMode();
 const rondasInstance = new RondasMode();
@@ -79,7 +80,7 @@ export function buildMatchContext(options: BuildMatchContextOptions): MatchConte
       const idx = p.current_problem_idx ?? 0;
       const pId = problemIds[idx] ?? '';
       resolvedPlayerRounds[userId] = {
-        round_id: `round-u-${userId}-${idx + 1}`,
+        round_id: playerRoundId(session.match_id, userId, idx),
         problem_id: pId,
         problem_index: idx,
         status: session.round_status ?? 'open',
