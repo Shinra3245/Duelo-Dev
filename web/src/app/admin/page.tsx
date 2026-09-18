@@ -9,6 +9,7 @@ import type {
   AdminRoomSummary,
   CreateRoomRequest,
   ActiveProblemCategory,
+  MatchStatus,
   UserProfile,
 } from '@duelodev/shared';
 import { api, ApiClientError } from '@/lib/api';
@@ -44,6 +45,17 @@ function isActiveRoom(room: AdminRoomSummary): boolean {
   return room.status === 'lobby' || room.status === 'running' || room.status === 'settling';
 }
 
+type RoomStatusFilter = 'all' | MatchStatus;
+
+const roomStatusLabels: Record<RoomStatusFilter, string> = {
+  all: 'Todos los estados',
+  lobby: 'Lobby',
+  running: 'En curso',
+  settling: 'Resolviendo',
+  finished: 'Finalizadas',
+  abandoned: 'Cerradas',
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -59,8 +71,11 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [config, setConfig] = useState(defaultConfig);
   const [winnerSelections, setWinnerSelections] = useState<Record<string, string[]>>({});
+  const [roomStatusFilter, setRoomStatusFilter] = useState<RoomStatusFilter>('all');
 
   const activeRooms = rooms.filter(isActiveRoom);
+  const visibleRooms =
+    roomStatusFilter === 'all' ? rooms : rooms.filter((room) => room.status === roomStatusFilter);
 
   const loadAdminData = async () => {
     const [roomsResponse, rankingResponse, playersResponse] = await Promise.all([
@@ -427,11 +442,33 @@ export default function AdminPage() {
               <p className="admin-kicker">OPERACIÓN</p>
               <h2 id="rooms-title">Salas y resultados</h2>
             </div>
-            <span className="admin-muted">No se borran datos históricos</span>
+            <label className="admin-filter-label">
+              <span className="sr-only">Filtrar salas por estado</span>
+              <select
+                aria-label="Filtrar salas por estado"
+                value={roomStatusFilter}
+                onChange={(event) => setRoomStatusFilter(event.target.value as RoomStatusFilter)}
+              >
+                {Object.entries(roomStatusLabels).map(([status, label]) => (
+                  <option key={status} value={status}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          <p className="admin-muted">
+            {visibleRooms.length} salas visibles · No se borran datos históricos
+          </p>
           <div className="admin-room-list">
-            {rooms.length === 0 && <p className="admin-muted">Todavía no hay salas registradas.</p>}
-            {rooms.map((room) => (
+            {visibleRooms.length === 0 && (
+              <p className="admin-muted">
+                {roomStatusFilter === 'all'
+                  ? 'Todavía no hay salas registradas.'
+                  : `No hay salas con estado «${roomStatusLabels[roomStatusFilter]}».`}
+              </p>
+            )}
+            {visibleRooms.map((room) => (
               <article className="admin-room-card" key={room.match_id}>
                 <div className="admin-room-card-header">
                   <div>

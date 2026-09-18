@@ -97,6 +97,12 @@ describe('REST API Client', () => {
     expect(mockFetch.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' });
   });
 
+  it('permite consultar salas administrativas por estado', async () => {
+    await api.admin.rooms('abandoned');
+
+    expect(mockFetch.mock.calls[0]?.[0]).toContain('/admin/rooms?status=abandoned');
+  });
+
   it('parsea 204 No Content sin llamar response.json', async () => {
     const json = vi.fn();
     mockFetch.mockResolvedValueOnce({

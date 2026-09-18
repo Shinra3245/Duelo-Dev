@@ -184,13 +184,17 @@ textarea:focus-visible {
 }
 .admin-form input,
 .admin-room-form input,
-.admin-room-form select {
+.admin-room-form select,
+.admin-filter-label select {
   width: 100%;
   border: 1px solid #334155;
   border-radius: 0.65rem;
   background: #020617;
   padding: 0.7rem 0.8rem;
   color: #f8fafc;
+}
+.admin-filter-label {
+  min-width: 12rem;
 }
 .admin-difficulty-fieldset {
   display: flex;
