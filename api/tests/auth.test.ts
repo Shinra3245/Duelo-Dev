@@ -261,6 +261,27 @@ describe('Auth REST API (/api/v1/auth & /api/v1/users)', () => {
       expect(reusedRes.status).toBe(201);
     });
 
+    it('reactiva una identidad guest abandonada sin duplicar ni borrar su historial', async () => {
+      const firstRes = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'reconnect-guest' }),
+      });
+      const firstData = (await firstRes.json()) as AuthUserResponse;
+
+      const secondRes = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'reconnect-guest' }),
+      });
+      const secondData = (await secondRes.json()) as AuthUserResponse;
+
+      expect(secondRes.status).toBe(201);
+      expect(secondData.user.id).toBe(firstData.user.id);
+      expect(secondData.user.gamertag).toBe('reconnect-guest');
+      expect(extractCookies(secondRes)[AUTH_COOKIE_NAMES.ACCESS_TOKEN]).toBeDefined();
+    });
+
     it('responde 405 Method Not Allowed ante métodos distintos a POST', async () => {
       const res = await fetch(`${baseUrl}/api/v1/auth/guest`, {
         method: 'GET',

@@ -242,6 +242,17 @@ export class AuthService {
 
     const existing = await this.userRepo.findByGamertag(chosenGamertag);
     if (existing) {
+      if (existing.role === 'guest') {
+        const reactivated = await this.userRepo.update(existing.id, {
+          updated_at: new Date().toISOString(),
+        });
+        if (!reactivated) {
+          throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+        }
+
+        return this.issueTokensForUser(reactivated);
+      }
+
       throw new HttpError(409, ERROR_CODES.GAMERTAG_TAKEN, ERROR_MESSAGES.GAMERTAG_TAKEN);
     }
 
