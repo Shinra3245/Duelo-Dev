@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, ApiClientError } from '@/lib/api';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, MATCH_FINISH_REASON_LABELS } from '@duelodev/shared';
 import type {
@@ -206,7 +206,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   };
 
   const handleStartMatch = async () => {
-    if (!room || !isConnected || isStartingMatch) return;
+    const currentUser = user;
+    if (!room || !currentUser || !isConnected || isStartingMatch) return;
     setActionError('');
     setIsStartingMatch(true);
     try {
@@ -215,6 +216,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       wsClient?.send(C2S.JOIN_MATCH, { match_id: room.match_id });
     } catch (err) {
       console.error(err);
+      if (err instanceof ApiClientError && err.status === 403) {
+        try {
+          const currentSession = await api.auth.me();
+          if (currentSession.user.id !== currentUser.id) {
+            setActionError(
+              `La sesión de este navegador cambió a "${currentSession.user.gamertag}". Para probar dos jugadores, usa otro dispositivo, una ventana privada o un perfil de navegador separado para el rival.`,
+            );
+            return;
+          }
+        } catch {
+          // Conserva el mensaje de autorización si la sesión ya no puede consultarse.
+        }
+      }
       setActionError((err as Error).message || 'Error al empezar la partida');
     } finally {
       setIsStartingMatch(false);
