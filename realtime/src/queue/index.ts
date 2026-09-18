@@ -4,3 +4,4 @@ export * from './consumer.js';
 export * from './reconciler.js';
 export * from './postgres.js';
 export * from './redis.js';
+export * from './control.js';

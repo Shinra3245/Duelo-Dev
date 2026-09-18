@@ -6,13 +6,18 @@ import { ADMIN_ALLOWED_EMAIL } from '../src/services/admin.js';
 import { ensureConfiguredAdmin } from '../src/services/admin.js';
 import { InMemoryUserRepository } from '../src/repositories/memory.js';
 import { AUTH_COOKIE_NAMES } from '../src/plugins/cookies.js';
-import { ERROR_CODES, type AuthUserResponse } from '@duelodev/shared';
+import {
+  ERROR_CODES,
+  type AuthUserResponse,
+  type MatchControlNotification,
+} from '@duelodev/shared';
 
 describe('Panel administrativo protegido', () => {
   let app: ApiApp;
   let baseUrl: string;
   let adminCookie: string;
   let userCookie: string;
+  const controlNotifications: MatchControlNotification[] = [];
 
   function accessCookie(response: Response): string {
     const setCookies =
@@ -27,7 +32,14 @@ describe('Panel administrativo protegido', () => {
   }
 
   beforeAll(async () => {
-    app = createApp({ authSecret: 'admin-test-secret-32-characters-minimum' });
+    app = createApp({
+      authSecret: 'admin-test-secret-32-characters-minimum',
+      matchControlPublisher: {
+        publish: async (notification) => {
+          controlNotifications.push(notification);
+        },
+      },
+    });
     await app.ctx.userRepo.create({
       email: ADMIN_ALLOWED_EMAIL,
       password_hash: await hashPassword('AdminPassword123!'),
@@ -228,6 +240,10 @@ describe('Panel administrativo protegido', () => {
     expect(closeAllBody.closed_count).toBeGreaterThanOrEqual(1);
     expect(closeAllBody.rooms.find((room) => room.match_id === second.match_id)?.status).toBe(
       'abandoned',
+    );
+    expect(controlNotifications).toHaveLength(2);
+    expect(controlNotifications.every((notification) => notification.type === 'match_closed')).toBe(
+      true,
     );
   });
 });

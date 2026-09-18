@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   JUDGE_CONSUMER_GROUP,
+  MATCH_CONTROL_CHANNEL,
+  MATCH_CONTROL_SCHEMA_VERSION,
   JUDGE_RESULTS_CHANNEL,
   JUDGE_STREAM_KEY,
   JUDGE_STREAM_SCHEMA_VERSION,
+  isMatchControlNotification,
   isJudgeDurableResult,
   isJudgeJobStreamMessage,
   isJudgeResultNotification,
@@ -20,6 +23,24 @@ describe('contratos de cola del juez y Redis Streams', () => {
     expect(JUDGE_CONSUMER_GROUP).toBe('judges');
     expect(JUDGE_RESULTS_CHANNEL).toBe('judge:results');
     expect(JUDGE_STREAM_SCHEMA_VERSION).toBe(1);
+    expect(MATCH_CONTROL_CHANNEL).toBe('match:control');
+    expect(MATCH_CONTROL_SCHEMA_VERSION).toBe(1);
+  });
+
+  it('valida avisos internos de control administrativo sin aceptar datos incompletos', () => {
+    const notification = {
+      schema_version: MATCH_CONTROL_SCHEMA_VERSION,
+      type: 'match_closed' as const,
+      match_id: 'match-1',
+      state_version: 2,
+      issued_at_ms: 1700000000000,
+    };
+
+    expect(isMatchControlNotification(notification)).toBe(true);
+    expect(isMatchControlNotification({ ...notification, state_version: 0 })).toBe(false);
+    expect(isMatchControlNotification({ ...notification, type: 'unknown' })).toBe(false);
+    expect(isMatchControlNotification({ ...notification, match_id: '' })).toBe(false);
+    expect(isMatchControlNotification(null)).toBe(false);
   });
 
   it('valida mensajes de trabajo del juez en el stream e invariantes de seguridad', () => {

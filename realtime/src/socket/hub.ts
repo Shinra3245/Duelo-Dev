@@ -513,6 +513,43 @@ export class MatchHub {
   }
 
   /**
+   * Aplica un cierre administrativo recibido desde la API y lo difunde a los jugadores conectados.
+   * La API ya persiste la fuente de verdad; aquí sólo sincronizamos la sesión/timers del proceso.
+   */
+  async closeMatchFromAdmin(matchId: string, stateVersion: number): Promise<boolean> {
+    const session = await this.matchStore.getMatch(matchId);
+    if (!session || session.status === 'finished' || session.status === 'abandoned') {
+      return false;
+    }
+
+    const now = Date.now();
+    session.status = 'abandoned';
+    session.winner_ids = [];
+    session.finished_at = new Date(now).toISOString();
+    session.state_version = Math.max(session.state_version + 1, stateVersion);
+    await this.matchStore.saveMatch(session);
+    this.cancelRoundTimeout(matchId);
+    this.cancelMatchTimeout(matchId);
+
+    this.broadcastMatchFinished(matchId, {
+      match_id: matchId,
+      state_version: session.state_version,
+      server_time: now,
+      winner_ids: [],
+      winner_id: null,
+      finish_reason: 'admin_override',
+      final_scores: session.scores,
+      summary_url: `/api/v1/matches/${matchId}/summary`,
+    });
+
+    this.logger?.info('Cierre administrativo sincronizado en Realtime', {
+      match_id: matchId,
+      state_version: session.state_version,
+    });
+    return true;
+  }
+
+  /**
    * Difunde un evento PROBLEM_BEGIN a toda la sala de partida (modo Puntos).
    */
   broadcastProblemBegin(matchId: string, payload: ProblemBeginPayload): void {

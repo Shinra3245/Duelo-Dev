@@ -20,6 +20,7 @@ import type { CorsOptions } from './plugins/cors.js';
 import type { RateLimiter } from './plugins/rate-limit.js';
 import type { ReadinessProbe, ReadinessProbeResult } from './infrastructure/probes.js';
 import type { AdminService } from './services/admin.js';
+import type { MatchControlPublisher } from './queue/control.js';
 
 export type { ReadinessProbe, ReadinessProbeResult };
 
@@ -87,6 +88,8 @@ export interface ApiAppOptions {
   auditService?: AuditService;
   /** Servicio de operaciones protegidas del panel administrativo. */
   adminService?: AdminService;
+  /** Publicador interno para reflejar cierres administrativos en Realtime. */
+  matchControlPublisher?: MatchControlPublisher;
   /** Publicador de avisos de resultados en judge:results. Si no se especifica, se crea uno en memoria. */
   resultPublisher?: ResultPublisher;
   /** Servicio de aplicación de resultados durables del juez. Si no se especifica, se instancia automáticamente. */

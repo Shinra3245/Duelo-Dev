@@ -85,6 +85,12 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     stateReconciler.start();
   }
 
+  const unsubscribeMatchControl = options.matchControlSubscriber?.subscribe(
+    async (notification) => {
+      await matchHub.closeMatchFromAdmin(notification.match_id, notification.state_version);
+    },
+  );
+
   const ctx: RealtimeContext = {
     serviceName,
     version,
@@ -99,6 +105,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     reconciliationIntervalMs: options.reconciliationIntervalMs,
     resultsConsumer,
     stateReconciler,
+    matchControlSubscriber: options.matchControlSubscriber,
   };
 
   const requestListener = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -216,6 +223,7 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   const close = (): Promise<void> => {
     resultsConsumer?.stop();
     stateReconciler?.stop();
+    unsubscribeMatchControl?.();
     upgradeController.close();
     matchHub.clearAllTimers();
     yjsHub.close();

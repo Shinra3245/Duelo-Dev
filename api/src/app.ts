@@ -71,7 +71,15 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const judgeQueue = options.judgeQueue ?? new InMemoryJudgeQueue();
   const auditService = options.auditService ?? new AuditService(eventRepo, logger);
   const adminService =
-    options.adminService ?? new AdminService({ roomRepo, userRepo, auditService });
+    options.adminService ??
+    new AdminService({
+      roomRepo,
+      userRepo,
+      auditService,
+      ...(options.matchControlPublisher
+        ? { matchControlPublisher: options.matchControlPublisher }
+        : {}),
+    });
 
   const defaultMetricsProvider = createOperationalMetricsProvider(
     { roomRepo, submissionRepo, userRepo, eventRepo },

@@ -8,6 +8,7 @@ import { InMemoryMatchStore } from './store/memory.js';
 import { PostgresMatchStore } from './store/postgres.js';
 import { PostgresProcessedSubmissionStore, PostgresSubmissionProvider } from './queue/postgres.js';
 import { RedisResultSubscriber } from './queue/redis.js';
+import { RedisMatchControlSubscriber } from './queue/control.js';
 import type { ReadinessProbe } from './types.js';
 
 export * from './types.js';
@@ -39,6 +40,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
     pool: PgPool;
     redis: Redis;
     resultSubscriber: RedisResultSubscriber;
+    matchControlSubscriber: RedisMatchControlSubscriber;
   }
 > {
   if (!config.databaseUrl) {
@@ -61,6 +63,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
   const processedSubmissionStore = new PostgresProcessedSubmissionStore(pool);
   const submissionProvider = new PostgresSubmissionProvider(pool);
   const resultSubscriber = new RedisResultSubscriber({ redis });
+  const matchControlSubscriber = new RedisMatchControlSubscriber({ redis });
 
   const readinessProbes: ReadinessProbe[] = [
     {
@@ -82,6 +85,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
     processedSubmissionStore,
     submissionProvider,
     resultSubscriber,
+    matchControlSubscriber,
     authSecret: config.authSecret,
     readinessProbes,
     ...(config.reconnectGraceMs !== undefined ? { reconnectGraceMs: config.reconnectGraceMs } : {}),
@@ -102,6 +106,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
     pool,
     redis,
     resultSubscriber,
+    matchControlSubscriber,
     close: extendedClose,
   });
 }

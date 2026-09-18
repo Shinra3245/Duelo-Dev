@@ -13,6 +13,7 @@ import { HttpError } from '../plugins/body-parser.js';
 import type { RoomRepository, UserRepository } from '../repositories/types.js';
 import type { AuditService } from './audit.js';
 import { hashPassword } from './password.js';
+import type { MatchControlPublisher } from '../queue/control.js';
 
 /** Correo único autorizado para el panel administrativo. */
 export const ADMIN_ALLOWED_EMAIL = 'omarbolanos@gmail.com';
@@ -23,6 +24,7 @@ export interface AdminServiceOptions {
   roomRepo: RoomRepository;
   userRepo: UserRepository;
   auditService?: AuditService;
+  matchControlPublisher?: MatchControlPublisher;
 }
 
 export interface AdminListOptions {
@@ -66,11 +68,13 @@ export class AdminService {
   private readonly roomRepo: RoomRepository;
   private readonly userRepo: UserRepository;
   private readonly auditService: AuditService | undefined;
+  private readonly matchControlPublisher: MatchControlPublisher | undefined;
 
   constructor(options: AdminServiceOptions) {
     this.roomRepo = options.roomRepo;
     this.userRepo = options.userRepo;
     this.auditService = options.auditService;
+    this.matchControlPublisher = options.matchControlPublisher;
   }
 
   async listRooms(options: AdminListOptions = {}): Promise<AdminRoomSummary[]> {
@@ -243,6 +247,14 @@ export class AdminService {
       admin_user_id: adminUserId,
       previous_status: match.status,
       room_code: match.room_code,
+    });
+
+    await this.matchControlPublisher?.publish({
+      schema_version: 1,
+      type: 'match_closed',
+      match_id: match.id,
+      state_version: updated.state_version,
+      issued_at_ms: Date.now(),
     });
 
     return { room: await this.toRoomSummary(updated), closed: true, audited: true };

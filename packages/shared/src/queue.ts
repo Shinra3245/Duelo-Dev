@@ -18,6 +18,37 @@ export const JUDGE_STREAM_KEY = 'judge:stream';
 export const JUDGE_CONSUMER_GROUP = 'judges';
 export const JUDGE_RESULTS_CHANNEL = 'judge:results';
 export const JUDGE_STREAM_SCHEMA_VERSION = 1;
+export const MATCH_CONTROL_CHANNEL = 'match:control';
+export const MATCH_CONTROL_SCHEMA_VERSION = 1;
+
+/**
+ * Aviso interno para sincronizar cambios administrativos de una partida entre API y Realtime.
+ * No contiene credenciales, código fuente ni datos de los jugadores.
+ */
+export interface MatchControlNotification {
+  schema_version: number;
+  type: 'match_closed';
+  match_id: string;
+  state_version: number;
+  issued_at_ms: number;
+}
+
+export function isMatchControlNotification(value: unknown): value is MatchControlNotification {
+  if (typeof value !== 'object' || value === null) return false;
+  const notification = value as Record<string, unknown>;
+  return (
+    notification.schema_version === MATCH_CONTROL_SCHEMA_VERSION &&
+    notification.type === 'match_closed' &&
+    typeof notification.match_id === 'string' &&
+    notification.match_id.length > 0 &&
+    typeof notification.state_version === 'number' &&
+    Number.isInteger(notification.state_version) &&
+    notification.state_version >= 1 &&
+    typeof notification.issued_at_ms === 'number' &&
+    Number.isFinite(notification.issued_at_ms) &&
+    notification.issued_at_ms > 0
+  );
+}
 
 /**
  * Mensaje publicado en el stream `judge:stream` mediante XADD.

@@ -521,6 +521,37 @@ describe('MatchHub', () => {
       const finished = client.emittedEvents.find((e) => e.event === S2C.MATCH_FINISHED);
       expect(finished?.payload).toEqual(payload);
     });
+
+    it('cierra una partida por orden administrativo y cancela su estado activo', async () => {
+      const session = createSampleSession('match-admin-close');
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+      await hub.handleJoinMatch(client1, { match_id: session.match_id });
+      await hub.handleJoinMatch(client2, { match_id: session.match_id });
+      client1.emittedEvents.length = 0;
+      client2.emittedEvents.length = 0;
+
+      const closed = await hub.closeMatchFromAdmin(session.match_id, 5);
+
+      expect(closed).toBe(true);
+      expect((await store.getMatch(session.match_id))?.status).toBe('abandoned');
+      for (const client of [client1, client2]) {
+        expect(client.emittedEvents).toContainEqual({
+          event: S2C.MATCH_FINISHED,
+          payload: expect.objectContaining({
+            match_id: session.match_id,
+            state_version: 5,
+            winner_ids: [],
+            winner_id: null,
+            finish_reason: 'admin_override',
+          }),
+        });
+      }
+    });
   });
 
   describe('Orquestación de modos de juego y temporizadores (F3 Unidad 5)', () => {

@@ -15,6 +15,7 @@ import type {
 } from './queue/types.js';
 import type { JudgeResultsConsumer } from './queue/consumer.js';
 import type { MatchStateReconciler } from './queue/reconciler.js';
+import type { MatchControlSubscriber } from './queue/control.js';
 
 export type StructuredLogger = Logger;
 
@@ -72,6 +73,7 @@ export interface RealtimeAppOptions {
   submissionProvider?: SubmissionProvider | undefined;
   processedSubmissionStore?: ProcessedSubmissionStore | undefined;
   reconciliationIntervalMs?: number | undefined;
+  matchControlSubscriber?: MatchControlSubscriber | undefined;
 }
 
 export interface RealtimeContext {
@@ -88,4 +90,5 @@ export interface RealtimeContext {
   reconciliationIntervalMs?: number | undefined;
   resultsConsumer?: JudgeResultsConsumer | undefined;
   stateReconciler?: MatchStateReconciler | undefined;
+  matchControlSubscriber?: MatchControlSubscriber | undefined;
 }

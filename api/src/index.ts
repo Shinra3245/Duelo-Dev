@@ -13,6 +13,7 @@ import {
   PostgresUserRepository,
 } from './repositories/postgres.js';
 import { RedisJudgeQueue, RedisResultPublisher } from './queue/redis.js';
+import { RedisMatchControlPublisher } from './queue/control.js';
 import { parseCorsOrigins } from './plugins/cors.js';
 import { runMigrations } from './services/migrations.js';
 import { ensureConfiguredAdmin } from './services/admin.js';
@@ -78,6 +79,7 @@ export async function createProductionApp(
 
   const judgeQueue = new RedisJudgeQueue({ redis });
   const resultPublisher = new RedisResultPublisher({ redis });
+  const matchControlPublisher = new RedisMatchControlPublisher({ redis });
 
   const databasePing = async (): Promise<void> => {
     await pool.query('SELECT 1');
@@ -95,6 +97,7 @@ export async function createProductionApp(
     eventRepo,
     judgeQueue,
     resultPublisher,
+    matchControlPublisher,
     authSecret: config.authSecret,
     databasePing,
     redisPing,
