@@ -335,7 +335,12 @@ while monotonic() < deadline:
 
 assert row == ('completed', 'AC', 2, 2, None, None, None), row
 client = Redis(host='127.0.0.1', port=6379, decode_responses=True)
-assert client.xpending('judge:stream', 'judges')['pending'] == 0
+pending_deadline = monotonic() + 10
+pending = client.xpending('judge:stream', 'judges')
+while pending['pending'] != 0 and monotonic() < pending_deadline:
+    sleep(0.1)
+    pending = client.xpending('judge:stream', 'judges')
+assert pending['pending'] == 0, pending
 client.close()
 print('Caída SIGKILL, limpieza selectiva, XAUTOCLAIM y reejecución AC verificados.')
 PY
