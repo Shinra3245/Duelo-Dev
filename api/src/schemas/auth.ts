@@ -120,6 +120,42 @@ export function validateLoginRequest(input: unknown): ValidationResult<LoginRequ
   };
 }
 
+/** Valida en runtime el cuerpo de una petición para crear sesión invitada. */
+export function validateGuestRequest(input: unknown): ValidationResult<{ gamertag: string }> {
+  if (!isRecord(input)) {
+    return {
+      ok: false,
+      errors: [{ field: 'body', message: 'El cuerpo de la solicitud debe ser un objeto JSON.' }],
+    };
+  }
+
+  const errors: ValidationErrorDetail[] = [];
+  const gamertagErr = validateGamertagField(input['gamertag']);
+  if (gamertagErr) errors.push(gamertagErr);
+
+  const allowedKeys = new Set(['gamertag']);
+  for (const key of Object.keys(input)) {
+    if (!allowedKeys.has(key)) {
+      errors.push({
+        field: key,
+        message: `Propiedad no permitida: '${key}'.`,
+        code: 'ADDITIONAL_PROPERTY',
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    data: {
+      gamertag: input['gamertag'] as string,
+    },
+  };
+}
+
 /** Esquema formal JSON Schema para ConvertGuestRequest. */
 export const convertGuestRequestSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',

@@ -200,6 +200,48 @@ describe('Auth REST API (/api/v1/auth & /api/v1/users)', () => {
     });
   });
 
+  describe('POST /api/v1/auth/guest', () => {
+    it('crea una sesión invitada, responde perfil y emite cookies', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'guest-login-1' }),
+      });
+
+      expect(res.status).toBe(201);
+      const data = (await res.json()) as AuthUserResponse;
+      expect(data.user.gamertag).toBe('guest-login-1');
+      expect(data.user.role).toBe('guest');
+      expect(data.user.email).toBeNull();
+      expect(typeof data.user.id).toBe('string');
+
+      const cookies = extractCookies(res);
+      expect(cookies[AUTH_COOKIE_NAMES.ACCESS_TOKEN]).toBeDefined();
+      expect(cookies[AUTH_COOKIE_NAMES.REFRESH_TOKEN]).toBeDefined();
+    });
+
+    it('rechaza gamertag inválido con 400 VALIDATION_FAILED', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'ab' }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = (await res.json()) as ApiError;
+      expect(data.error.code).toBe(ERROR_CODES.VALIDATION_FAILED);
+    });
+
+    it('responde 405 Method Not Allowed ante métodos distintos a POST', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'GET',
+      });
+
+      expect(res.status).toBe(405);
+      expect(res.headers.get('allow')).toBe('POST');
+    });
+  });
+
   describe('POST /api/v1/auth/refresh y Detección de Reuso', () => {
     it('rota el token exitosamente con una cookie refresh válida', async () => {
       // 1. Iniciar sesión para obtener un refresh token fresco

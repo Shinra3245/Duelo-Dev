@@ -14,6 +14,7 @@ import {
 } from '../plugins/cookies.js';
 import {
   validateConvertGuestRequest,
+  validateGuestRequest,
   validateLoginRequest,
   validateRegisterRequest,
 } from '../schemas/auth.js';
@@ -128,6 +129,37 @@ export async function handleLogin(
 
   const responseBody: AuthUserResponse = { user: result.user };
   sendJson(req, res, 200, responseBody);
+}
+
+/**
+ * Manejador de POST /api/v1/auth/guest para crear una sesión invitada del MVP.
+ */
+export async function handleGuest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+): Promise<void> {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use POST.');
+  }
+
+  const body = await parseJsonBody(req);
+  const validated = validateGuestRequest(body);
+  if (!validated.ok) {
+    throw new HttpError(400, ERROR_CODES.VALIDATION_FAILED, ERROR_MESSAGES.VALIDATION_FAILED, {
+      errors: validated.errors,
+    });
+  }
+
+  const result = await ctx.authService.createGuest(validated.data.gamertag);
+  setAuthCookies(res, {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  });
+
+  const responseBody: AuthUserResponse = { user: result.user };
+  sendJson(req, res, 201, responseBody);
 }
 
 /**

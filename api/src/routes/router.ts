@@ -5,6 +5,7 @@ import { HttpError } from '../plugins/body-parser.js';
 import { handleHealthz, handleReadyz } from './health.js';
 import {
   handleConvertGuest,
+  handleGuest,
   handleLogin,
   handleLogout,
   handleRefresh,
@@ -79,6 +80,11 @@ export async function dispatchRoute(
 
     if (pathname === '/api/v1/auth/login') {
       await handleLogin(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/auth/guest') {
+      await handleGuest(req, res, ctx);
       return;
     }
 
