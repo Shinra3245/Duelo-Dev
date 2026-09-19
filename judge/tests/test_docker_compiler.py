@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from judge.compiler import CompilationObservation, compilation_request
+from judge.compiler import CompilationObservation, CompilationRequest, compilation_request
 from judge.docker_compiler import (
     DockerCompilationBackend,
     artifact_dockerfile,
@@ -155,3 +155,13 @@ def test_paths_and_image_reference_cannot_inject_dockerfile_commands(tmp_path: P
     assert argv[-len(request.compile_argv or ()) :] == request.compile_argv
     with pytest.raises(ValueError, match="digest"):
         artifact_dockerfile("gcc@sha256:" + DIGEST_A + "\nRUN id")
+
+
+def test_source_name_cannot_escape_the_private_context() -> None:
+    with pytest.raises(ValueError, match="fuente"):
+        CompilationRequest(
+            language="python",
+            source_name="../main.py",
+            source=b"print('ok')",
+            run_argv=("python3", "/app/main.py"),
+        )

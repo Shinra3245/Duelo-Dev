@@ -6,6 +6,7 @@ el contenido enviado en resultados o representaciones.
 """
 
 from dataclasses import dataclass, field
+from pathlib import PurePath
 from typing import Protocol
 
 from judge.languages import compile_timeout_ms, runtime_for
@@ -31,7 +32,12 @@ class CompilationRequest:
     def __post_init__(self) -> None:
         if self.language not in LANGUAGES:
             raise ValueError("Lenguaje no soportado")
-        if not self.source_name or not isinstance(self.source, bytes):
+        if (
+            not self.source_name
+            or PurePath(self.source_name).name != self.source_name
+            or self.source_name in {".", ".."}
+            or not isinstance(self.source, bytes)
+        ):
             raise ValueError("La fuente debe tener nombre y contenido binario")
         if len(self.source) > SOURCE_CODE_MAX_BYTES:
             raise ValueError("El código excede el límite permitido")
