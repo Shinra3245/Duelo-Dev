@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { api } from '@/lib/api';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import type {
@@ -18,7 +19,7 @@ import type {
 const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'];
 type AccessMode = 'register' | 'login' | 'guest';
 
-gsap.registerPlugin(useGSAP);
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const DuelArenaCanvas = dynamic(
   () => import('@/components/duel-arena/DuelArenaCanvas').then((module) => module.DuelArenaCanvas),
@@ -55,6 +56,8 @@ export default function Home() {
 
   useGSAP(
     () => {
+      if (loading || !landingRef.current) return;
+
       const media = gsap.matchMedia();
 
       media.add('(prefers-reduced-motion: no-preference)', () => {
@@ -81,6 +84,20 @@ export default function Home() {
           ease: 'sine.inOut',
           repeat: -1,
           yoyo: true,
+        });
+
+        gsap.utils.toArray<HTMLElement>('[data-scroll-reveal]').forEach((element) => {
+          gsap.from(element, {
+            autoAlpha: 0,
+            y: 28,
+            duration: 0.65,
+            ease: 'power2.out',
+            scrollTrigger: {
+              trigger: element,
+              start: 'top 86%',
+              once: true,
+            },
+          });
         });
       });
 
@@ -203,7 +220,10 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200">
+      <div
+        ref={landingRef as React.Ref<HTMLDivElement>}
+        className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200"
+      >
         <div className="flex items-center gap-3 text-sm font-medium">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-300" />
           Preparando DueloDev...
@@ -323,6 +343,7 @@ export default function Home() {
         </section>
 
         <section
+          id="player-access"
           data-landing-item
           className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8"
         >
@@ -593,6 +614,83 @@ export default function Home() {
           )}
         </section>
       </div>
+
+      <section className="landing-showcase" aria-labelledby="showcase-title">
+        <div data-scroll-reveal className="landing-showcase-heading">
+          <p className="landing-section-kicker">EL FLUJO DEL DUELO</p>
+          <h2 id="showcase-title">Una sala. Un problema. Tu siguiente jugada.</h2>
+          <p>
+            DueloDev convierte la práctica de Python en una arena compartida: entra, lee el reto,
+            escribe con intención y deja que el juez hable por tu código.
+          </p>
+        </div>
+
+        <div className="landing-flow-grid">
+          <article data-scroll-reveal className="landing-flow-card">
+            <span className="landing-flow-index">01</span>
+            <h3>Entra con identidad</h3>
+            <p>
+              Regístrate para conservar tu gamertag durante el torneo o prueba el modo invitado
+              cuando sólo quieras entrar a una sala.
+            </p>
+          </article>
+          <article data-scroll-reveal className="landing-flow-card landing-flow-card-featured">
+            <span className="landing-flow-index">02</span>
+            <h3>Compite en tiempo real</h3>
+            <p>
+              Comparte lobby, estado de conexión y tablero con tus rivales sin perder el foco del
+              problema que tienes delante.
+            </p>
+          </article>
+          <article data-scroll-reveal className="landing-flow-card">
+            <span className="landing-flow-index">03</span>
+            <h3>Lee el veredicto</h3>
+            <p>
+              Envía Python 3, recibe AC o el diagnóstico correspondiente y escala en el ranking de
+              la sala con total trazabilidad.
+            </p>
+          </article>
+        </div>
+
+        <div data-scroll-reveal className="landing-difficulty-panel">
+          <div className="landing-difficulty-intro">
+            <p className="landing-section-kicker">DIFICULTAD DE LA SALA</p>
+            <h3>Sube la presión a tu ritmo.</h3>
+            <p>
+              El organizador selecciona el nivel antes de abrir la sala. El núcleo activo mantiene
+              Python como único lenguaje para que la competición sea limpia y comparable.
+            </p>
+            <span className="landing-language-chip">PYTHON 3 · LENGUAJE ACTIVO</span>
+          </div>
+          <div className="landing-difficulty-grid">
+            <div className="landing-difficulty-card landing-difficulty-card-start">
+              <span>01</span>
+              <strong>Inicial</strong>
+              <p>Calienta con lógica directa y casos cortos.</p>
+            </div>
+            <div className="landing-difficulty-card landing-difficulty-card-easy">
+              <span>02</span>
+              <strong>Fácil</strong>
+              <p>Encuentra el patrón y gana velocidad.</p>
+            </div>
+            <div className="landing-difficulty-card landing-difficulty-card-medium">
+              <span>03</span>
+              <strong>Medio</strong>
+              <p>Combina estrategia, precisión y tiempo.</p>
+            </div>
+          </div>
+        </div>
+
+        <div data-scroll-reveal className="landing-final-cta">
+          <div>
+            <p className="landing-section-kicker">LISTO PARA EL PRIMER ROUND?</p>
+            <h3>Tu próximo rival ya puede estar esperando.</h3>
+          </div>
+          <a href="#player-access" className="landing-cta-link">
+            Entrar al duelo <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
     </main>
   );
 }

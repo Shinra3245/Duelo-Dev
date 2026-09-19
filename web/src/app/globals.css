@@ -265,6 +265,287 @@ textarea:focus-visible {
   }
 }
 
+.landing-showcase {
+  display: grid;
+  gap: 1.5rem;
+  width: min(72rem, 100%);
+  margin: 4rem auto 0;
+}
+
+.landing-showcase-heading {
+  max-width: 42rem;
+  padding: 1rem 0.25rem;
+}
+
+.landing-section-kicker {
+  margin: 0;
+  color: var(--duel-cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.landing-showcase-heading h2 {
+  max-width: 40rem;
+  margin: 0.6rem 0 0;
+  color: #f8fafc;
+  font-size: clamp(2.2rem, 6vw, 4.4rem);
+  font-weight: 950;
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+}
+
+.landing-showcase-heading > p:last-child {
+  max-width: 38rem;
+  margin: 1rem 0 0;
+  color: #afc0d4;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.landing-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.landing-flow-card {
+  min-height: 14rem;
+  padding: 1.35rem;
+  border: 1px solid rgb(148 163 184 / 0.18);
+  border-radius: 1.35rem;
+  background: linear-gradient(145deg, rgb(15 31 52 / 0.88), rgb(8 17 31 / 0.92));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.04);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease;
+}
+
+.landing-flow-card:hover {
+  border-color: rgb(103 232 249 / 0.36);
+  transform: translateY(-4px);
+}
+
+.landing-flow-card-featured {
+  border-color: rgb(168 85 247 / 0.4);
+  background:
+    radial-gradient(circle at 90% 0, rgb(168 85 247 / 0.18), transparent 44%),
+    linear-gradient(145deg, rgb(22 25 65 / 0.95), rgb(11 18 38 / 0.94));
+}
+
+.landing-flow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid rgb(103 232 249 / 0.25);
+  border-radius: 0.75rem;
+  color: var(--duel-cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.landing-flow-card h3 {
+  margin: 2.1rem 0 0;
+  color: #f8fafc;
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+}
+
+.landing-flow-card p {
+  margin: 0.55rem 0 0;
+  color: #a9bad0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.landing-difficulty-panel {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.78fr) minmax(0, 1.22fr);
+  gap: 1rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid rgb(103 232 249 / 0.2);
+  border-radius: 1.6rem;
+  background:
+    radial-gradient(circle at 0 100%, rgb(34 211 238 / 0.14), transparent 34%), rgb(9 22 38 / 0.86);
+  box-shadow: 0 24px 80px rgb(2 6 23 / 0.2);
+}
+
+.landing-difficulty-intro h3 {
+  margin: 0.65rem 0 0;
+  color: #f8fafc;
+  font-size: clamp(1.6rem, 3vw, 2.3rem);
+  font-weight: 900;
+  letter-spacing: -0.045em;
+}
+
+.landing-difficulty-intro > p:not(.landing-section-kicker) {
+  margin: 0.75rem 0 0;
+  color: #a9bad0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.landing-language-chip {
+  display: inline-flex;
+  margin-top: 1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgb(74 222 128 / 0.24);
+  border-radius: 999px;
+  color: #86efac;
+  background: rgb(74 222 128 / 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.landing-difficulty-grid {
+  display: grid;
+  gap: 0.7rem;
+  align-content: center;
+}
+
+.landing-difficulty-card {
+  display: grid;
+  grid-template-columns: 2rem minmax(5rem, 0.35fr) 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.25rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgb(148 163 184 / 0.16);
+  border-radius: 1rem;
+  background: rgb(2 6 23 / 0.36);
+}
+
+.landing-difficulty-card > span {
+  color: #71849a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.landing-difficulty-card strong {
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+.landing-difficulty-card p {
+  margin: 0;
+  color: #9fb2c8;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.landing-difficulty-card-start {
+  border-color: rgb(74 222 128 / 0.26);
+}
+
+.landing-difficulty-card-start > span {
+  color: #86efac;
+}
+
+.landing-difficulty-card-easy {
+  border-color: rgb(103 232 249 / 0.26);
+}
+
+.landing-difficulty-card-easy > span {
+  color: var(--duel-cyan);
+}
+
+.landing-difficulty-card-medium {
+  border-color: rgb(192 132 252 / 0.3);
+}
+
+.landing-difficulty-card-medium > span {
+  color: var(--duel-violet);
+}
+
+.landing-final-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.3rem 1.4rem;
+  border: 1px solid rgb(192 132 252 / 0.24);
+  border-radius: 1.35rem;
+  background: linear-gradient(90deg, rgb(31 25 73 / 0.84), rgb(15 29 49 / 0.82));
+}
+
+.landing-final-cta h3 {
+  margin: 0.35rem 0 0;
+  color: #f8fafc;
+  font-size: clamp(1.15rem, 2.3vw, 1.65rem);
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+.landing-cta-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgb(103 232 249 / 0.35);
+  border-radius: 0.85rem;
+  color: #062338;
+  background: var(--duel-cyan);
+  font-size: 0.85rem;
+  font-weight: 900;
+  text-decoration: none;
+  transition:
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.landing-cta-link:hover {
+  background: #a5f3fc;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 760px) {
+  .landing-showcase {
+    margin-top: 3rem;
+  }
+
+  .landing-flow-grid,
+  .landing-difficulty-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-flow-card {
+    min-height: 0;
+  }
+
+  .landing-difficulty-card {
+    grid-template-columns: 2rem minmax(5rem, 0.45fr) 1fr;
+  }
+
+  .landing-final-cta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .landing-cta-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-flow-card,
+  .landing-cta-link {
+    transition: none;
+  }
+}
+
 ::selection {
   color: #082f49;
   background: #67e8f9;
