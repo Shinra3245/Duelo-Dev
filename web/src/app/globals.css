@@ -1687,3 +1687,205 @@ body:has(.duel-room-shell) {
     transition-duration: 0.01ms;
   }
 }
+
+.player-access-card {
+  --access-surface: #101d30;
+  --access-line: rgb(148 163 184 / 0.2);
+  --access-text: #e2e8f0;
+  --access-muted: #a8b8cc;
+  scroll-margin-top: 1.5rem;
+  border-color: rgb(103 232 249 / 0.2) !important;
+  color: var(--access-text) !important;
+  background:
+    radial-gradient(ellipse at 100% 0, rgb(124 58 237 / 0.13), transparent 28rem),
+    radial-gradient(ellipse at 0 100%, rgb(8 145 178 / 0.1), transparent 24rem),
+    linear-gradient(145deg, #101d30, #0b1421) !important;
+  box-shadow:
+    0 30px 80px rgb(0 0 0 / 0.34),
+    inset 0 1px rgb(255 255 255 / 0.045) !important;
+}
+
+.player-access-eyebrow {
+  color: #67e8f9 !important;
+}
+
+.player-access-title,
+.player-access-subheading {
+  color: #f8fafc !important;
+}
+
+.player-access-copy,
+.player-access-help {
+  color: var(--access-muted) !important;
+}
+
+.player-access-label {
+  color: #dbe7f5 !important;
+}
+
+.player-access-tabs {
+  border: 1px solid var(--access-line);
+  background: #080f1d !important;
+}
+
+.player-access-mode-button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  color: #b6c6d8 !important;
+}
+
+.player-access-mode-button:hover {
+  color: #f8fafc !important;
+  background: #17263a !important;
+}
+
+.player-access-mode-button.is-active,
+.player-access-mode-button.is-active:hover {
+  border-color: #67e8f9;
+  color: #061522 !important;
+  background: #67e8f9 !important;
+  box-shadow: 0 8px 22px rgb(34 211 238 / 0.16);
+}
+
+.player-access-input {
+  min-height: 48px;
+  border-color: #40516a !important;
+  color: #f8fafc !important;
+  background: #080f1d !important;
+}
+
+.player-access-input::placeholder {
+  color: #91a4bb !important;
+  opacity: 1;
+}
+
+.player-access-input:focus {
+  border-color: #67e8f9 !important;
+  background: #0c1728 !important;
+}
+
+.player-access-note {
+  border-color: rgb(103 232 249 / 0.2) !important;
+  color: #c7e8f2 !important;
+  background: rgb(8 145 178 / 0.1) !important;
+}
+
+.player-access-alert {
+  border-color: rgb(251 113 133 / 0.45) !important;
+  color: #ffe4e6 !important;
+  background: rgb(76 5 25 / 0.55) !important;
+}
+
+.player-access-submit,
+.player-access-join-button {
+  min-height: 48px;
+  border: 1px solid #0e7490;
+  color: #f8fafc !important;
+  background: #0e7490 !important;
+  box-shadow: 0 12px 28px rgb(8 145 178 / 0.16);
+}
+
+.player-access-submit:hover:not(:disabled),
+.player-access-join-button:hover:not(:disabled) {
+  border-color: #155e75;
+  background: #155e75 !important;
+}
+
+.player-access-submit:disabled,
+.player-access-join-button:disabled,
+.player-access-points:disabled,
+.player-access-rounds:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.player-access-identity {
+  border-color: rgb(103 232 249 / 0.22) !important;
+  background: linear-gradient(120deg, rgb(8 145 178 / 0.12), rgb(124 58 237 / 0.1)) !important;
+}
+
+.player-access-gamertag {
+  color: #f8fafc !important;
+}
+
+.player-access-logout {
+  min-height: 44px;
+  border: 1px solid rgb(251 113 133 / 0.28);
+  color: #fecdd3 !important;
+}
+
+.player-access-logout:hover {
+  color: #fff1f2 !important;
+  background: rgb(159 18 57 / 0.45) !important;
+}
+
+.player-access-subsection {
+  border-color: var(--access-line) !important;
+}
+
+.player-access-points,
+.player-access-rounds,
+.player-access-convert-button {
+  min-height: 48px;
+  border: 1px solid rgb(148 163 184 / 0.24);
+}
+
+.player-access-points {
+  color: #d1fae5 !important;
+  background: #065f46 !important;
+}
+
+.player-access-points:hover:not(:disabled) {
+  background: #047857 !important;
+}
+
+.player-access-rounds {
+  color: #e0e7ff !important;
+  background: #3730a3 !important;
+}
+
+.player-access-rounds:hover:not(:disabled) {
+  background: #4338ca !important;
+}
+
+.player-access-convert-button {
+  color: #e0e7ff !important;
+  background: #1e1b4b !important;
+}
+
+.player-access-convert-button:hover:not(:disabled) {
+  background: #312e81 !important;
+}
+
+.player-access-card button:focus-visible,
+.player-access-card input:focus-visible {
+  outline: 3px solid #67e8f9;
+  outline-offset: 3px;
+}
+
+.player-access-room-code {
+  letter-spacing: 0.14em;
+}
+
+@media (max-width: 640px) {
+  .player-access-card {
+    padding: 1.25rem !important;
+  }
+
+  .player-access-identity {
+    align-items: flex-start;
+  }
+
+  .player-access-room-code,
+  .player-access-join-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-access-card button {
+    scroll-behavior: auto;
+    transition: none !important;
+    transform: none !important;
+  }
+}

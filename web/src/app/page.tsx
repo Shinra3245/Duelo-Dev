@@ -345,35 +345,46 @@ export default function Home() {
         <section
           id="player-access"
           data-landing-item
-          className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8"
+          className="player-access-card rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8"
         >
           <div className="mb-7">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
+            <p className="player-access-eyebrow text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
               Acceso de jugador
             </p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+            <h2 className="player-access-title mt-2 text-3xl font-black tracking-tight text-slate-950">
               Entrar al torneo
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <p className="player-access-copy mt-2 text-sm leading-6 text-slate-600">
               Usa un nombre visible para tus rivales y el código de sala del organizador.
             </p>
           </div>
 
           {loadError && (
-            <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <div
+              className="player-access-alert mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+              role="alert"
+            >
               {loadError}
             </div>
           )}
 
           {error && (
-            <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800">
+            <div
+              className="player-access-alert mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800"
+              role="alert"
+              aria-live="polite"
+            >
               {error}
             </div>
           )}
 
           {!user ? (
             <>
-              <div className="mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
+              <div
+                className="player-access-tabs mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1"
+                role="group"
+                aria-label="Tipo de acceso"
+              >
                 {(
                   [
                     ['register', 'Registrarse'],
@@ -384,13 +395,14 @@ export default function Home() {
                   <button
                     key={mode}
                     type="button"
+                    aria-pressed={accessMode === mode}
                     onClick={() => {
                       setAccessMode(mode);
                       setError('');
                     }}
-                    className={`rounded-xl px-2 py-2 text-xs font-bold transition ${
+                    className={`player-access-mode-button rounded-xl px-2 py-2 text-xs font-bold transition ${
                       accessMode === mode
-                        ? 'bg-slate-950 text-white shadow'
+                        ? 'is-active bg-slate-950 text-white shadow'
                         : 'text-slate-600 hover:bg-white'
                     } motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]`}
                   >
@@ -399,10 +411,13 @@ export default function Home() {
                 ))}
               </div>
 
-              <form onSubmit={handleAccess} className="space-y-5">
+              <form onSubmit={handleAccess} className="player-access-form space-y-5">
                 {accessMode !== 'guest' && (
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-800" htmlFor="email">
+                    <label
+                      className="player-access-label mb-2 block text-sm font-bold text-slate-800"
+                      htmlFor="email"
+                    >
                       Correo electrónico
                     </label>
                     <input
@@ -410,7 +425,7 @@ export default function Home() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      className="player-access-input w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                       placeholder="tu-correo@ejemplo.com"
                       autoComplete="email"
                       required
@@ -421,7 +436,7 @@ export default function Home() {
                 {accessMode !== 'login' && (
                   <div>
                     <label
-                      className="mb-2 block text-sm font-bold text-slate-800"
+                      className="player-access-label mb-2 block text-sm font-bold text-slate-800"
                       htmlFor="gamertag"
                     >
                       Gamertag
@@ -431,13 +446,13 @@ export default function Home() {
                       type="text"
                       value={gamertag}
                       onChange={(e) => setGamertag(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      className="player-access-input w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                       placeholder="Ej. ninja-dev"
                       required
                       pattern={'^[A-Za-z0-9\\-]{3,20}$'}
                       title="De 3 a 20 caracteres alfanuméricos o guiones"
                     />
-                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                    <p className="player-access-help mt-2 text-xs leading-5 text-slate-500">
                       Entre 3 y 20 caracteres. Usa letras, números o guiones.
                     </p>
                   </div>
@@ -446,7 +461,7 @@ export default function Home() {
                 {accessMode !== 'guest' && (
                   <div>
                     <label
-                      className="mb-2 block text-sm font-bold text-slate-800"
+                      className="player-access-label mb-2 block text-sm font-bold text-slate-800"
                       htmlFor="password"
                     >
                       Contraseña
@@ -456,7 +471,7 @@ export default function Home() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                      className="player-access-input w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                       placeholder="Mínimo 8 caracteres"
                       autoComplete={accessMode === 'register' ? 'new-password' : 'current-password'}
                       minLength={8}
@@ -465,7 +480,7 @@ export default function Home() {
                   </div>
                 )}
 
-                <p className="rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-xs leading-5 text-indigo-900">
+                <p className="player-access-note rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-xs leading-5 text-indigo-900">
                   {accessMode === 'register'
                     ? 'Para el torneo recomendamos registrarte: tu gamertag quedará vinculado a tu cuenta.'
                     : accessMode === 'login'
@@ -477,7 +492,7 @@ export default function Home() {
                   type="submit"
                   disabled={isLoggingIn}
                   aria-busy={isLoggingIn}
-                  className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.99]"
+                  className="player-access-submit w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.99]"
                 >
                   {isLoggingIn
                     ? 'Procesando...'
@@ -491,26 +506,28 @@ export default function Home() {
             </>
           ) : (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+              <div className="player-access-identity flex items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
+                  <p className="player-access-eyebrow text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
                     {user.role === 'guest' ? 'Invitado' : 'Cuenta registrada'}
                   </p>
-                  <p className="mt-1 break-all font-mono text-lg font-black leading-6 text-slate-950">
+                  <p className="player-access-gamertag mt-1 break-all font-mono text-lg font-black leading-6 text-slate-950">
                     {user.gamertag}
                   </p>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-100 hover:text-rose-800"
+                  className="player-access-logout shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-100 hover:text-rose-800"
                 >
                   Salir
                 </button>
               </div>
 
-              <div className="border-t border-slate-200 pt-5">
-                <h2 className="mb-3 text-xl font-black text-slate-950">Crear Sala</h2>
-                <p className="mb-4 text-sm leading-6 text-slate-600">
+              <div className="player-access-subsection border-t border-slate-200 pt-5">
+                <h2 className="player-access-subheading mb-3 text-xl font-black text-slate-950">
+                  Crear Sala
+                </h2>
+                <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
                   Disponible para el anfitrión del torneo. Elige el formato de la partida.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -518,7 +535,7 @@ export default function Home() {
                     onClick={() => handleCreateRoom('puntos')}
                     disabled={isCreatingRoom}
                     aria-busy={isCreatingRoom}
-                    className="rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                    className="player-access-points rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Puntos'}
                   </button>
@@ -526,7 +543,7 @@ export default function Home() {
                     onClick={() => handleCreateRoom('rondas')}
                     disabled={isCreatingRoom}
                     aria-busy={isCreatingRoom}
-                    className="rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                    className="player-access-rounds rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isCreatingRoom ? 'Creando...' : 'Rondas'}
                   </button>
@@ -534,15 +551,17 @@ export default function Home() {
               </div>
 
               {user.role === 'guest' && (
-                <div className="border-t border-slate-200 pt-5">
-                  <h2 className="mb-2 text-xl font-black text-slate-950">Conserva tu gamertag</h2>
-                  <p className="mb-4 text-sm leading-6 text-slate-600">
+                <div className="player-access-subsection border-t border-slate-200 pt-5">
+                  <h2 className="player-access-subheading mb-2 text-xl font-black text-slate-950">
+                    Conserva tu gamertag
+                  </h2>
+                  <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
                     Registra este invitado para usar el mismo nombre durante todo el torneo y
                     conservar su historial.
                   </p>
                   <form onSubmit={handleConvertGuest} className="space-y-4">
                     <label
-                      className="block text-sm font-bold text-slate-800"
+                      className="player-access-label block text-sm font-bold text-slate-800"
                       htmlFor="convert-email"
                     >
                       Correo electrónico
@@ -551,13 +570,13 @@ export default function Home() {
                         type="email"
                         value={conversionEmail}
                         onChange={(event) => setConversionEmail(event.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                        className="player-access-input mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                         autoComplete="email"
                         required
                       />
                     </label>
                     <label
-                      className="block text-sm font-bold text-slate-800"
+                      className="player-access-label block text-sm font-bold text-slate-800"
                       htmlFor="convert-password"
                     >
                       Contraseña
@@ -566,7 +585,7 @@ export default function Home() {
                         type="password"
                         value={conversionPassword}
                         onChange={(event) => setConversionPassword(event.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                        className="player-access-input mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
                         autoComplete="new-password"
                         minLength={8}
                         required
@@ -576,7 +595,7 @@ export default function Home() {
                       type="submit"
                       disabled={isConvertingGuest}
                       aria-busy={isConvertingGuest}
-                      className="w-full rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 font-bold text-indigo-800 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="player-access-convert-button w-full rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 font-bold text-indigo-800 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isConvertingGuest ? 'Guardando...' : 'Registrar mi cuenta'}
                     </button>
@@ -584,9 +603,11 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="border-t border-slate-200 pt-5">
-                <h2 className="mb-2 text-xl font-black text-slate-950">Unirse a sala</h2>
-                <p className="mb-4 text-sm leading-6 text-slate-600">
+              <div className="player-access-subsection border-t border-slate-200 pt-5">
+                <h2 className="player-access-subheading mb-2 text-xl font-black text-slate-950">
+                  Unirse a sala
+                </h2>
+                <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
                   Escribe el código de seis caracteres que te compartió el organizador.
                 </p>
                 <form onSubmit={handleJoinRoom} className="flex flex-col gap-3 sm:flex-row">
@@ -595,7 +616,7 @@ export default function Home() {
                     value={roomCode}
                     onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                     aria-label="Código de sala"
-                    className="min-w-0 flex-1 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-black uppercase tracking-[0.18em] text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white sm:text-left"
+                    className="player-access-input player-access-room-code min-w-0 flex-1 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-black uppercase tracking-[0.18em] text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white sm:text-left"
                     placeholder="CÓDIGO"
                     maxLength={6}
                     required
@@ -604,7 +625,7 @@ export default function Home() {
                     type="submit"
                     disabled={isJoiningRoom}
                     aria-busy={isJoiningRoom}
-                    className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                    className="player-access-join-button rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
                   >
                     {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
                   </button>
