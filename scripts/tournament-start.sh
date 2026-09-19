@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+. "${repo_root}/scripts/lib/env.sh"
 
 pids=()
 judge_started=false
@@ -41,29 +42,6 @@ handle_signal() {
 
 trap cleanup EXIT
 trap handle_signal INT TERM
-
-load_env_defaults() {
-  if [[ ! -f .env ]]; then
-    return 0
-  fi
-  local line key value
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line#${line%%[![:space:]]*}}"
-    line="${line%${line##*[![:space:]]}}"
-    [[ -z "$line" || "${line:0:1}" == '#' ]] && continue
-    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
-    key="${BASH_REMATCH[1]}"
-    value="${BASH_REMATCH[2]}"
-    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-      value="${value:1:${#value}-2}"
-    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
-      value="${value:1:${#value}-2}"
-    fi
-    if [[ -z "${!key+x}" ]]; then
-      export "$key=$value"
-    fi
-  done < .env
-}
 
 env_file_has_key() {
   local key="$1"
@@ -223,7 +201,11 @@ export EPHEMERAL_GUEST_SESSIONS="${EPHEMERAL_GUEST_SESSIONS:-1}"
 ensure_auth_secret
 export NEXT_PUBLIC_API_URL="http://${lan_host}:${API_PORT}/api/v1"
 export NEXT_PUBLIC_REALTIME_URL="ws://${lan_host}:${REALTIME_PORT}/match"
-export CORS_ORIGINS="*"
+export CORS_ORIGINS="${TOURNAMENT_CORS_ORIGINS:-http://${lan_host}:${WEB_PORT}}"
+if [[ ",${CORS_ORIGINS}," == *",*"* ]]; then
+  printf 'Error: CORS_ORIGINS no puede contener * cuando las sesiones usan cookies.\n' >&2
+  exit 1
+fi
 
 printf 'Iniciando DueloDev para torneo LAN\n'
 printf 'Web:      http://%s:%s\n' "$lan_host" "$WEB_PORT"
@@ -258,7 +240,7 @@ pids+=("$!")
 printf '%s\n' "$!" > "$state_dir/realtime.pid"
 wait_http_ready "http://127.0.0.1:${REALTIME_PORT}/readyz" realtime
 
-if false; then
+if [[ "${START_JUDGE_VM:-0}" == "1" || "${REQUIRE_JUDGE_VM:-0}" == "1" ]]; then
   if scripts/judge-vm-worker-start.sh; then
     judge_started=true
     : > "$state_dir/judge-started"
