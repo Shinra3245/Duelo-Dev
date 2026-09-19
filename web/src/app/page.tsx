@@ -231,20 +231,6 @@ export default function Home() {
     }
   };
 
-  if (loading) {
-    return (
-      <div
-        ref={landingRef as React.Ref<HTMLDivElement>}
-        className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200"
-      >
-        <div className="flex items-center gap-3 text-sm font-medium">
-          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-300" />
-          Preparando DueloDev...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <main
       ref={landingRef}
@@ -261,10 +247,7 @@ export default function Home() {
         className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 will-change-transform rounded-full bg-indigo-500/20 blur-3xl"
       />
       <div className="relative mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-stretch">
-        <section
-          data-landing-item
-          className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10"
-        >
+        <section className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10">
           <div data-landing-item className="landing-arena-frame">
             <div className="landing-arena-caption">
               <span>DUEL CORE // 01</span>
@@ -294,19 +277,13 @@ export default function Home() {
             >
               Modo torneo local
             </p>
-            <h1
-              data-landing-item
-              className="max-w-xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl"
-            >
+            <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
               Piensa rápido.
               <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
                 Programa mejor.
               </span>
             </h1>
-            <p
-              data-landing-item
-              className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg"
-            >
+            <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
               Resuelve problemas, recibe veredictos del juez y sigue el marcador de tu sala sin
               perder el ritmo del duelo.
             </p>
@@ -358,6 +335,7 @@ export default function Home() {
         <section
           id="player-access"
           data-landing-item
+          aria-busy={loading}
           className="player-access-card rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 sm:p-8"
         >
           <div className="mb-7">
@@ -391,7 +369,22 @@ export default function Home() {
             </div>
           )}
 
-          {!user ? (
+          {loading ? (
+            <div className="space-y-5" role="status" aria-live="polite">
+              <span className="sr-only">Verificando la sesión…</span>
+              <div aria-hidden="true" className="space-y-5 motion-safe:animate-pulse">
+                <div className="h-11 rounded-2xl border border-white/10 bg-white/[0.04]" />
+                {[0, 1, 2].map((field) => (
+                  <div key={field} className="space-y-2">
+                    <div className="h-3 w-28 rounded bg-white/10" />
+                    <div className="h-12 rounded-2xl border border-white/10 bg-white/[0.04]" />
+                  </div>
+                ))}
+                <div className="h-16 rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.04]" />
+                <div className="h-12 rounded-2xl bg-cyan-700/40" />
+              </div>
+            </div>
+          ) : !user ? (
             <>
               <div
                 className="player-access-tabs mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1"
