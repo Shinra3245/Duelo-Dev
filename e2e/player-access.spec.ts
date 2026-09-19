@@ -35,7 +35,7 @@ test('un jugador registrado puede salir y volver a entrar desde la landing', asy
   const suffix = Date.now().toString(36).slice(-8);
   const email = `e2e-${suffix}@example.test`;
   const gamertag = `reg-${suffix}`;
-  const password = 'E2ePassword-2026!';
+  const password = `E2e-${suffix}-Password!`;
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Registrarse', exact: true }).click();

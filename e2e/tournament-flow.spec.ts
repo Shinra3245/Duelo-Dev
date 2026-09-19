@@ -30,6 +30,7 @@ test.describe('flujo de torneo en navegador', () => {
       await rival.getByRole('button', { name: 'Unirse' }).click();
       await expect(rival.getByRole('heading', { name: 'Lobby' })).toBeVisible();
       await expect(host.getByText(rivalGamertag, { exact: true })).toBeVisible();
+      await expect(rival.getByText(hostGamertag, { exact: true })).toBeVisible();
 
       await host.getByRole('button', { name: 'Marcar como listo' }).click();
       await rival.getByRole('button', { name: 'Marcar como listo' }).click();
@@ -37,12 +38,35 @@ test.describe('flujo de torneo en navegador', () => {
       await host.getByRole('button', { name: 'Empezar partida' }).click();
 
       await expect(host.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
+      await expect(rival.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
+
+      const hostRivals = host.locator('section').filter({ hasText: 'Tableros y progreso' });
+      const rivalRivals = rival.locator('section').filter({ hasText: 'Tableros y progreso' });
+      await expect(hostRivals.getByText(rivalGamertag, { exact: true })).toBeVisible();
+      await expect(rivalRivals.getByText(hostGamertag, { exact: true })).toBeVisible();
+      await expect(hostRivals.getByText('Conectado', { exact: true })).toBeVisible();
+      await expect(rivalRivals.getByText('Conectado', { exact: true })).toBeVisible();
+      await expect(
+        hostRivals.getByText('Código oculto por permisos.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        rivalRivals.getByText('Código oculto por permisos.', { exact: true }),
+      ).toBeVisible();
+
+      const hostSolution =
+        'import sys\nvalores = list(map(int, sys.stdin.read().split()))\nprint(sum(valores[1:]))\n';
       await expect(host.getByLabel('Editor de solución Python')).toBeEnabled();
-      await host
-        .getByLabel('Editor de solución Python')
-        .fill(
-          'import sys\nvalores = list(map(int, sys.stdin.read().split()))\nprint(sum(valores[1:]))\n',
-        );
+      await host.getByLabel('Editor de solución Python').fill(hostSolution);
+      await expect(
+        rivalRivals.getByText('Código oculto por permisos.', { exact: true }),
+      ).toBeVisible();
+
+      await host.getByRole('button', { name: 'Revelar mi código' }).click();
+      const revealedHostCode = rival.getByLabel(`Código de ${hostGamertag}`);
+      await expect(revealedHostCode).toBeVisible();
+      await expect(revealedHostCode).toContainText('import sys');
+      await expect(revealedHostCode).toContainText('sum(valores[1:])');
+
       await host.getByRole('button', { name: 'Enviar Solución' }).click();
 
       await expect(host.getByText('Último veredicto: AC', { exact: true })).toBeVisible({
