@@ -430,6 +430,11 @@ export class PostgresRoomRepository implements RoomRepository {
     return res.rows[0] ? mapMatchRow(res.rows[0]) : null;
   }
 
+  async deleteMatch(id: string): Promise<boolean> {
+    const result = await this.pool.query('DELETE FROM matches WHERE id = $1 RETURNING id', [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async findMatchByRoomCode(roomCode: string): Promise<MatchEntity | null> {
     const res = await this.pool.query('SELECT * FROM matches WHERE UPPER(room_code) = UPPER($1)', [
       roomCode.trim(),

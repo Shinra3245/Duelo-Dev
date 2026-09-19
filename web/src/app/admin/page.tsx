@@ -67,6 +67,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [config, setConfig] = useState(defaultConfig);
@@ -219,6 +220,65 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteRoom = async (room: AdminRoomSummary) => {
+    const typedCode = window.prompt(
+      `Esta acción elimina la sala ${room.room_code} y sus datos de partida. Escribe el código para confirmar:`,
+    );
+    if (typedCode?.trim().toUpperCase() !== room.room_code) return;
+
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api.admin.deleteRoom(room.match_id);
+      await loadAdminData();
+      setNotice(`Sala ${result.room_code} eliminada. El evento de auditoría se conserva.`);
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudo eliminar la sala.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteAllActiveRooms = async () => {
+    const confirmation = window.prompt(
+      `Se cerrarán y eliminarán todas las salas activas, junto con sus envíos y código. La auditoría mínima se conservará. Escribe BORRAR ACTIVAS para continuar:`,
+    );
+    if (confirmation !== 'BORRAR ACTIVAS') return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api.admin.deleteAllActiveRooms();
+      await loadAdminData();
+      setNotice(`Se eliminaron ${result.deleted_count} salas activas.`);
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudieron eliminar las salas activas.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteHistory = async () => {
+    const confirmation = window.prompt(
+      'Esta acción elimina todos los registros finalizados y abandonados, además de sus envíos y código. La auditoría mínima se conserva. Escribe BORRAR HISTORIAL para continuar:',
+    );
+    if (confirmation !== 'BORRAR HISTORIAL') return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api.admin.deleteAllHistoricalRooms();
+      setWinnerSelections({});
+      await loadAdminData();
+      setNotice(`Se eliminaron ${result.deleted_count} registros históricos.`);
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudo eliminar el historial.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleCategory = (category: ActiveProblemCategory) => {
     setConfig((current) => {
       const categories = current.config.categories.includes(category)
@@ -325,6 +385,11 @@ export default function AdminPage() {
             {error}
           </p>
         )}
+        {notice && (
+          <p className="admin-notice" role="status">
+            {notice}
+          </p>
+        )}
 
         <section className="admin-grid admin-grid-top" aria-label="Resumen">
           <article className="admin-stat">
@@ -364,6 +429,37 @@ export default function AdminPage() {
           >
             {busy ? 'Procesando…' : `Cerrar todas las salas activas (${activeRooms.length})`}
           </button>
+        </section>
+
+        <section className="admin-panel admin-danger-panel" aria-labelledby="room-delete-title">
+          <div className="admin-section-heading">
+            <div>
+              <p className="admin-kicker">ELIMINACIÓN PERMANENTE</p>
+              <h2 id="room-delete-title">Borrar registros</h2>
+            </div>
+          </div>
+          <p className="admin-muted">
+            Las acciones eliminan salas, jugadores, envíos y código. Sólo queda el evento mínimo de
+            auditoría con el actor, la sala y el estado anterior.
+          </p>
+          <div className="admin-room-actions admin-delete-actions">
+            <button
+              className="admin-danger"
+              type="button"
+              onClick={() => void handleDeleteAllActiveRooms()}
+              disabled={busy}
+            >
+              Borrar todas las salas activas
+            </button>
+            <button
+              className="admin-danger"
+              type="button"
+              onClick={() => void handleDeleteHistory()}
+              disabled={busy}
+            >
+              Borrar partidas previas
+            </button>
+          </div>
         </section>
 
         <section className="admin-panel" aria-labelledby="room-policy-title">
@@ -499,7 +595,8 @@ export default function AdminPage() {
             </label>
           </div>
           <p className="admin-muted">
-            {visibleRooms.length} salas visibles · No se borran datos históricos
+            {visibleRooms.length} salas visibles · La eliminación permanente requiere escribir el
+            código.
           </p>
           <div className="admin-room-list">
             {visibleRooms.length === 0 && (
@@ -557,6 +654,14 @@ export default function AdminPage() {
                         Cerrar sala
                       </button>
                     )}
+                    <button
+                      className="admin-danger"
+                      type="button"
+                      onClick={() => void handleDeleteRoom(room)}
+                      disabled={busy}
+                    >
+                      Eliminar registro
+                    </button>
                   </div>
                 </div>
               </article>

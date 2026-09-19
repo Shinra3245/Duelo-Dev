@@ -2,9 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { createApp, type ApiApp } from '../src/app.js';
 import { hashPassword } from '../src/services/password.js';
-import { ADMIN_ALLOWED_EMAIL } from '../src/services/admin.js';
+import { ADMIN_ALLOWED_EMAIL, AdminService } from '../src/services/admin.js';
 import { ensureConfiguredAdmin } from '../src/services/admin.js';
-import { InMemoryUserRepository } from '../src/repositories/memory.js';
+import {
+  InMemoryEventRepository,
+  InMemoryRoomRepository,
+  InMemoryUserRepository,
+} from '../src/repositories/memory.js';
+import { AuditService } from '../src/services/audit.js';
 import { AUTH_COOKIE_NAMES } from '../src/plugins/cookies.js';
 import {
   ERROR_CODES,
@@ -307,5 +312,109 @@ describe('Panel administrativo protegido', () => {
       body: JSON.stringify({ registered_users_can_create_rooms: true }),
     });
     expect(await app.ctx.eventRepo!.countEvents('room_creation_policy_changed')).toBe(2);
+  });
+
+  it('elimina salas individuales y registra la acción antes y después del borrado', async () => {
+    const created = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const room = (await created.json()) as { match_id: string; room_code: string };
+
+    const forbidden = await fetch(`${baseUrl}/api/v1/admin/rooms/${room.match_id}`, {
+      method: 'DELETE',
+      headers: { Cookie: userCookie },
+    });
+    expect(forbidden.status).toBe(403);
+
+    const deleted = await fetch(`${baseUrl}/api/v1/admin/rooms/${room.match_id}`, {
+      method: 'DELETE',
+      headers: { Cookie: adminCookie },
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({
+      match_id: room.match_id,
+      room_code: room.room_code,
+      deleted: true,
+      audited: true,
+    });
+    expect(await app.ctx.roomRepo.findMatchById(room.match_id)).toBeNull();
+    expect(await app.ctx.roomRepo.findMatchByRoomCode(room.room_code)).toBeNull();
+    expect(await app.ctx.roomRepo.findPlayersByMatchId(room.match_id)).toEqual([]);
+    expect(await app.ctx.eventRepo!.countEvents('admin_match_deletion_requested')).toBe(1);
+    expect(await app.ctx.eventRepo!.countEvents('admin_match_deleted')).toBe(1);
+    const roomEvents = await app.ctx.eventRepo!.findEventsByAggregate('match', room.match_id);
+    expect(roomEvents.map((event) => event.event_name)).toContain('admin_room_closed');
+  });
+
+  it('borra lotes aislados de salas activas e historial terminal con auditoría', async () => {
+    const roomRepo = new InMemoryRoomRepository();
+    const userRepo = new InMemoryUserRepository();
+    const eventRepo = new InMemoryEventRepository();
+    const auditService = new AuditService(eventRepo);
+    const admin = await userRepo.create({
+      email: ADMIN_ALLOWED_EMAIL,
+      gamertag: 'batch-admin',
+      role: 'admin',
+    });
+    const activeMatch = await roomRepo.createMatch({
+      room_code: 'ACTIVE1',
+      mode: 'puntos',
+      status: 'lobby',
+      config: {
+        mode: 'puntos',
+        max_players: 2,
+        num_problems: 1,
+        categories: ['muy_facil'],
+        time_per_problem_s: 60,
+      },
+      host_id: admin.id,
+    });
+    const finishedMatch = await roomRepo.createMatch({
+      room_code: 'HISTORY',
+      mode: 'puntos',
+      status: 'finished',
+      config: {
+        mode: 'puntos',
+        max_players: 2,
+        num_problems: 1,
+        categories: ['muy_facil'],
+        time_per_problem_s: 60,
+      },
+      host_id: admin.id,
+    });
+    const adminService = new AdminService({ roomRepo, userRepo, auditService });
+
+    const active = await adminService.deleteAllActiveRooms(admin.id);
+    expect(active).toMatchObject({ match_ids: [activeMatch.id], deleted_count: 1, audited: true });
+    expect(await roomRepo.findMatchById(activeMatch.id)).toBeNull();
+
+    const history = await adminService.deleteAllHistoricalRooms(admin.id);
+    expect(history).toMatchObject({
+      match_ids: [finishedMatch.id],
+      deleted_count: 1,
+      audited: true,
+    });
+    expect(await roomRepo.findMatchById(finishedMatch.id)).toBeNull();
+    expect(await eventRepo.countEvents('admin_match_deleted')).toBe(2);
+  });
+
+  it('rechaza purgas masivas sin la frase de confirmación exacta', async () => {
+    const rejected = await fetch(`${baseUrl}/api/v1/admin/rooms/delete-history`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmation: 'BORRAR TODO' }),
+    });
+    expect(rejected.status).toBe(400);
   });
 });

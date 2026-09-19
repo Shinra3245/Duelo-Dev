@@ -24,6 +24,8 @@ import type {
   AdminRoomsResponse,
   AdminCloseRoomResponse,
   AdminCloseRoomsResponse,
+  AdminDeleteRoomResponse,
+  AdminDeleteRoomsResponse,
   RoomCreationPolicyResponse,
 } from '@duelodev/shared';
 
@@ -172,6 +174,18 @@ export const api = {
     closeAllRooms: () =>
       request<AdminCloseRoomsResponse>('/admin/rooms/close-all', {
         method: 'POST',
+      }),
+    deleteRoom: (matchId: string) =>
+      request<AdminDeleteRoomResponse>(`/admin/rooms/${matchId}`, { method: 'DELETE' }),
+    deleteAllActiveRooms: () =>
+      request<AdminDeleteRoomsResponse>('/admin/rooms/delete-active', {
+        method: 'POST',
+        body: JSON.stringify({ confirmation: 'BORRAR ACTIVAS' }),
+      }),
+    deleteAllHistoricalRooms: () =>
+      request<AdminDeleteRoomsResponse>('/admin/rooms/delete-history', {
+        method: 'POST',
+        body: JSON.stringify({ confirmation: 'BORRAR HISTORIAL' }),
       }),
     players: (query?: string) =>
       request<AdminPlayersResponse>(

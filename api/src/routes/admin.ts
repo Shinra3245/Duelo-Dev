@@ -5,6 +5,8 @@ import {
   isMatchStatus,
   type ActiveProblemCategory,
   type AdminManualResultRequest,
+  type AdminDeleteRoomResponse,
+  type AdminDeleteRoomsResponse,
   type AdminPlayersResponse,
   type AdminRankingResponse,
   type AdminRoomsResponse,
@@ -226,4 +228,38 @@ export async function handleAdminRoomCreationPolicy(
       admin.id,
     ),
   );
+}
+
+export async function handleAdminDeleteRoom(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+  matchId: string,
+): Promise<void> {
+  ensureMethod(req, res, 'DELETE');
+  const admin = await requireAdmin(req, ctx);
+  const body: AdminDeleteRoomResponse = await ctx.adminService.deleteRoom(matchId, admin.id);
+  sendJson(req, res, 200, body);
+}
+
+export async function handleAdminDeleteRooms(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+  scope: 'active' | 'history',
+): Promise<void> {
+  ensureMethod(req, res, 'POST');
+  const admin = await requireAdmin(req, ctx);
+  const body: unknown = await parseJsonBody(req);
+  const confirmation = scope === 'active' ? 'BORRAR ACTIVAS' : 'BORRAR HISTORIAL';
+  if (!isRecord(body) || body['confirmation'] !== confirmation) {
+    throw new HttpError(400, ERROR_CODES.VALIDATION_FAILED, ERROR_MESSAGES.VALIDATION_FAILED, {
+      errors: [{ field: 'confirmation', message: `Escribe exactamente: ${confirmation}` }],
+    });
+  }
+  const result: AdminDeleteRoomsResponse =
+    scope === 'active'
+      ? await ctx.adminService.deleteAllActiveRooms(admin.id)
+      : await ctx.adminService.deleteAllHistoricalRooms(admin.id);
+  sendJson(req, res, 200, result);
 }

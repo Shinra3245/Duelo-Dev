@@ -290,6 +290,16 @@ export class InMemoryRoomRepository implements RoomRepository {
     return match ? { ...match } : null;
   }
 
+  async deleteMatch(id: string): Promise<boolean> {
+    const match = this.matches.get(id);
+    if (!match) return false;
+    this.matches.delete(id);
+    this.roomCodeToId.delete(match.room_code);
+    this.players.delete(id);
+    this.snapshots.delete(id);
+    return true;
+  }
+
   async findMatchByRoomCode(roomCode: string): Promise<MatchEntity | null> {
     const id = this.roomCodeToId.get(roomCode.trim().toUpperCase());
     if (!id) return null;

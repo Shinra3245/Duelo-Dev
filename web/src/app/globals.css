@@ -1524,6 +1524,18 @@ body:has(.duel-room-shell) {
   min-width: 0;
 }
 
+.admin-delete-actions {
+  justify-content: flex-start;
+}
+
+.admin-notice {
+  border: 1px solid rgb(34 197 94 / 0.38);
+  border-radius: 0.8rem;
+  background: rgb(20 83 45 / 0.36);
+  padding: 0.8rem 1rem;
+  color: #dcfce7;
+}
+
 .admin-table-wrap {
   width: 100%;
   border: 1px solid rgb(100 116 139 / 0.2);

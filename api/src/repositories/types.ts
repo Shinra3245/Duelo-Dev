@@ -103,6 +103,7 @@ export interface RoomRepository {
   createMatch(input: CreateMatchInput): Promise<MatchEntity>;
   findMatchById(id: string): Promise<MatchEntity | null>;
   findMatchByRoomCode(roomCode: string): Promise<MatchEntity | null>;
+  deleteMatch?(id: string): Promise<boolean>;
   findAllMatches?(options?: {
     limit?: number;
     offset?: number;

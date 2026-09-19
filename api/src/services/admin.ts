@@ -317,6 +317,75 @@ export class AdminService {
     };
   }
 
+  async deleteRoom(
+    matchId: string,
+    adminUserId: string,
+  ): Promise<{ match_id: string; room_code: string; deleted: boolean; audited: boolean }> {
+    if (!this.auditService || !this.roomRepo.deleteMatch) {
+      throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+    }
+    const match = await this.roomRepo.findMatchById(matchId);
+    if (!match) {
+      throw new HttpError(404, ERROR_CODES.ROOM_NOT_FOUND, ERROR_MESSAGES.ROOM_NOT_FOUND);
+    }
+    const previousStatus = match.status;
+    if (ACTIVE_MATCH_STATUSES.includes(match.status)) {
+      await this.closeRoom(match.id, adminUserId);
+    }
+
+    const deletionPayload = {
+      admin_user_id: adminUserId,
+      room_code: match.room_code,
+      previous_status: previousStatus,
+    };
+    await this.auditService.record('match', match.id, 'admin_match_deletion_requested', {
+      ...deletionPayload,
+    });
+    const deleted = await this.roomRepo.deleteMatch(match.id);
+    if (deleted) {
+      await this.auditService.record('match', match.id, 'admin_match_deleted', deletionPayload);
+    }
+    return { match_id: match.id, room_code: match.room_code, deleted, audited: true };
+  }
+
+  async deleteAllActiveRooms(adminUserId: string): Promise<{
+    match_ids: string[];
+    deleted_count: number;
+    audited: boolean;
+  }> {
+    const matches = (await this.loadHistoricalMatches()).filter((match) =>
+      ACTIVE_MATCH_STATUSES.includes(match.status),
+    );
+    const deleted = [];
+    for (const match of matches) {
+      deleted.push(await this.deleteRoom(match.id, adminUserId));
+    }
+    return {
+      match_ids: deleted.filter((item) => item.deleted).map((item) => item.match_id),
+      deleted_count: deleted.filter((item) => item.deleted).length,
+      audited: deleted.every((item) => item.audited),
+    };
+  }
+
+  async deleteAllHistoricalRooms(adminUserId: string): Promise<{
+    match_ids: string[];
+    deleted_count: number;
+    audited: boolean;
+  }> {
+    const matches = (await this.loadHistoricalMatches()).filter(
+      (match) => match.status === 'finished' || match.status === 'abandoned',
+    );
+    const deleted = [];
+    for (const match of matches) {
+      deleted.push(await this.deleteRoom(match.id, adminUserId));
+    }
+    return {
+      match_ids: deleted.filter((item) => item.deleted).map((item) => item.match_id),
+      deleted_count: deleted.filter((item) => item.deleted).length,
+      audited: deleted.every((item) => item.audited),
+    };
+  }
+
   private async requireRoomListing(options: {
     limit: number;
     offset: number;

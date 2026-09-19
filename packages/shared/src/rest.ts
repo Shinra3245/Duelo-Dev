@@ -282,6 +282,19 @@ export interface AdminCloseRoomsResponse {
   audited: boolean;
 }
 
+export interface AdminDeleteRoomResponse {
+  match_id: string;
+  room_code: string;
+  deleted: boolean;
+  audited: boolean;
+}
+
+export interface AdminDeleteRoomsResponse {
+  match_ids: string[];
+  deleted_count: number;
+  audited: boolean;
+}
+
 export interface RoomCreationPolicyResponse {
   registered_users_can_create_rooms: boolean;
 }

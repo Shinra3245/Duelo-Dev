@@ -34,6 +34,8 @@ import {
   handleAdminResult,
   handleAdminRooms,
   handleAdminRoomCreationPolicy,
+  handleAdminDeleteRoom,
+  handleAdminDeleteRooms,
 } from './admin.js';
 
 export function sendJson(
@@ -134,6 +136,16 @@ export async function dispatchRoute(
       return;
     }
 
+    if (pathname === '/api/v1/admin/rooms/delete-active') {
+      await handleAdminDeleteRooms(req, res, ctx, 'active');
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/rooms/delete-history') {
+      await handleAdminDeleteRooms(req, res, ctx, 'history');
+      return;
+    }
+
     if (pathname === '/api/v1/admin/rooms/create') {
       await handleAdminCreateRoom(req, res, ctx);
       return;
@@ -163,6 +175,12 @@ export async function dispatchRoute(
     const adminCloseRoomMatch = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)\/close$/);
     if (adminCloseRoomMatch) {
       await handleAdminCloseRoom(req, res, ctx, adminCloseRoomMatch[1]!);
+      return;
+    }
+
+    const adminDeleteRoomMatch = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)$/);
+    if (adminDeleteRoomMatch && req.method === 'DELETE') {
+      await handleAdminDeleteRoom(req, res, ctx, adminDeleteRoomMatch[1]!);
       return;
     }
 
