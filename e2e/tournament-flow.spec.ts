@@ -39,6 +39,34 @@ test.describe('flujo de torneo en navegador', () => {
 
       await expect(host.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
       await expect(rival.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
+      await expect(host.locator('.duel-room-status')).toHaveText('En curso');
+
+      const desktopColumns = await host
+        .locator('.duel-room-live-grid > div')
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+          }),
+        );
+      expect(desktopColumns).toHaveLength(2);
+      expect(
+        desktopColumns[0]!.left < desktopColumns[1]!.right &&
+          desktopColumns[0]!.right > desktopColumns[1]!.left &&
+          desktopColumns[0]!.top < desktopColumns[1]!.bottom &&
+          desktopColumns[0]!.bottom > desktopColumns[1]!.top,
+      ).toBe(false);
+
+      await host.setViewportSize({ width: 390, height: 844 });
+      await expect(host.locator('.duel-standings-mobile')).toBeVisible();
+      const mobileStanding = host.locator('.duel-standings-mobile-card').first();
+      await expect(mobileStanding.getByText('Puntos', { exact: true })).toBeVisible();
+      await expect(mobileStanding.getByText('Casos', { exact: true })).toBeVisible();
+      await expect(mobileStanding.getByText('Tiempo', { exact: true })).toBeVisible();
+      expect(
+        await host.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await host.setViewportSize({ width: 1280, height: 720 });
 
       const hostRivals = host.locator('section').filter({ hasText: 'Tableros y progreso' });
       const rivalRivals = rival.locator('section').filter({ hasText: 'Tableros y progreso' });

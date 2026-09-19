@@ -446,9 +446,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const timeLabel = secondsRemaining === null ? 'Sin reloj activo' : formatClock(secondsRemaining);
 
   return (
-    <div className="min-h-screen bg-slate-950 px-3 py-4 text-slate-900 sm:px-6 sm:py-8">
-      <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-100 shadow-2xl shadow-black/30">
-        <header className="bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 px-5 py-5 text-white sm:px-8">
+    <div className="duel-room-shell min-h-screen bg-slate-950 px-3 py-4 text-slate-900 sm:px-6 sm:py-8">
+      <div className="duel-room-frame mx-auto w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-100 shadow-2xl shadow-black/30">
+        <header className="duel-room-header bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 px-5 py-5 text-white sm:px-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
@@ -459,10 +459,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold sm:justify-end sm:text-sm">
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 capitalize text-slate-100">
-                {room.status}
+              <span className="duel-room-status rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-slate-100">
+                {roomStatusLabel(room.status)}
               </span>
-              <span className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-slate-100">
+              <span
+                className="duel-room-connection flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-slate-100"
+                aria-live="polite"
+              >
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-emerald-300' : 'bg-rose-300'}`}
                 />
@@ -472,16 +475,16 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           </div>
         </header>
 
-        <div className="p-4 sm:p-8">
+        <div className="duel-room-content p-4 sm:p-8">
           {actionError && (
-            <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800">
+            <div className="duel-room-alert mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800">
               {actionError}
             </div>
           )}
 
           {isLobby && (
             <div className="space-y-6">
-              <div className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-indigo-50 p-5 text-slate-900 shadow-sm sm:p-7">
+              <div className="duel-lobby-hero rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-indigo-50 p-5 text-slate-900 shadow-sm sm:p-7">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
@@ -521,7 +524,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                   )}
                 </div>
               </div>
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="duel-room-panel rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-black text-slate-950">Jugadores conectados</h3>
@@ -597,7 +600,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
           {isPlaying && (
             <div className="space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="duel-live-heading flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
                     Duelo en vivo
@@ -617,7 +620,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
               {matchState && (
                 <div
-                  className={`rounded-3xl border p-5 shadow-sm sm:p-6 ${
+                  aria-live="polite"
+                  className={`duel-match-clock rounded-3xl border p-5 shadow-sm sm:p-6 ${
                     secondsRemaining !== null && secondsRemaining <= 30 && room.status === 'running'
                       ? 'border-amber-300 bg-amber-50 text-amber-900'
                       : 'border-blue-200 bg-blue-50 text-blue-900'
@@ -648,10 +652,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               )}
 
               {matchState ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="duel-room-live-grid grid grid-cols-1 gap-4 lg:grid-cols-2">
                   {/* Panel Izquierdo: Problema y Estado */}
                   <div className="space-y-4">
-                    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <div className="duel-problem-panel duel-room-panel rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <h3 className="text-xl font-black text-slate-950">
                           Ronda {(matchState.problem_index ?? 0) + 1} / {room.config.num_problems}
@@ -798,6 +802,17 @@ function formatClock(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+function roomStatusLabel(status: RoomDetailsResponse['status']) {
+  const labels: Record<RoomDetailsResponse['status'], string> = {
+    lobby: 'Lobby',
+    running: 'En curso',
+    settling: 'Cerrando ronda',
+    finished: 'Finalizada',
+    abandoned: 'Cerrada',
+  };
+  return labels[status];
+}
+
 function FinalStandings({
   scores,
   players,
@@ -919,35 +934,61 @@ function StandingsTable({
   const mutedClass = dark ? 'text-slate-400' : 'text-slate-500';
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-current/10">
-      <table className="w-full min-w-[520px] border-collapse text-left text-sm">
-        <thead className={`text-xs uppercase tracking-[0.12em] ${headClass}`}>
-          <tr className="border-b border-current/10">
-            <th className="px-4 py-3 font-bold">Pos.</th>
-            <th className="px-4 py-3 font-bold">Jugador</th>
-            <th className="px-4 py-3 text-right font-bold">Puntos</th>
-            <th className="px-4 py-3 text-right font-bold">Casos</th>
-            <th className="px-4 py-3 text-right font-bold">Tiempo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {scores.map((score, index) => (
-            <tr key={score.user_id} className={`border-b last:border-0 ${rowClass}`}>
-              <td className="px-4 py-3 font-black">{index + 1}</td>
-              <td className="max-w-[220px] px-4 py-3">
-                <span className="block break-all font-mono font-bold">
-                  {playerNames.get(score.user_id) ?? score.gamertag ?? score.user_id}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-right text-base font-black">{score.score}</td>
-              <td className={`px-4 py-3 text-right ${mutedClass}`}>{score.cases_total}</td>
-              <td className={`px-4 py-3 text-right tabular-nums ${mutedClass}`}>
-                {formatScoreTime(score.time_total_ms)}
-              </td>
+    <div className={`duel-standings ${dark ? 'duel-standings-dark' : ''}`}>
+      <ol className="duel-standings-mobile" aria-label="Clasificación de jugadores">
+        {scores.map((score, index) => (
+          <li className="duel-standings-mobile-card" key={score.user_id}>
+            <div className="duel-standings-mobile-player">
+              <span className="duel-standings-mobile-position">{index + 1}</span>
+              <strong>{playerNames.get(score.user_id) ?? score.gamertag ?? score.user_id}</strong>
+            </div>
+            <dl className="duel-standings-mobile-stats">
+              <div>
+                <dt>Puntos</dt>
+                <dd>{score.score}</dd>
+              </div>
+              <div>
+                <dt>Casos</dt>
+                <dd>{score.cases_total}</dd>
+              </div>
+              <div>
+                <dt>Tiempo</dt>
+                <dd>{formatScoreTime(score.time_total_ms)}</dd>
+              </div>
+            </dl>
+          </li>
+        ))}
+      </ol>
+      <div className="duel-standings-table-wrap">
+        <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+          <thead className={`text-xs uppercase tracking-[0.12em] ${headClass}`}>
+            <tr className="border-b border-current/10">
+              <th className="px-4 py-3 font-bold">Pos.</th>
+              <th className="px-4 py-3 font-bold">Jugador</th>
+              <th className="px-4 py-3 text-right font-bold">Puntos</th>
+              <th className="px-4 py-3 text-right font-bold">Casos</th>
+              <th className="px-4 py-3 text-right font-bold">Tiempo</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {scores.map((score, index) => (
+              <tr key={score.user_id} className={`border-b last:border-0 ${rowClass}`}>
+                <td className="px-4 py-3 font-black">{index + 1}</td>
+                <td className="max-w-[220px] px-4 py-3">
+                  <span className="block break-all font-mono font-bold">
+                    {playerNames.get(score.user_id) ?? score.gamertag ?? score.user_id}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right text-base font-black">{score.score}</td>
+                <td className={`px-4 py-3 text-right ${mutedClass}`}>{score.cases_total}</td>
+                <td className={`px-4 py-3 text-right tabular-nums ${mutedClass}`}>
+                  {formatScoreTime(score.time_total_ms)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -972,7 +1013,7 @@ function PythonEditor({
   const lineCount = Math.max(1, value.split('\n').length);
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
+    <div className="duel-python-editor overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs">
         <span className="font-mono font-bold text-slate-200">solution.py</span>
         <span className="rounded-full bg-cyan-300/10 px-2 py-1 font-bold uppercase tracking-[0.14em] text-cyan-200">
@@ -1056,7 +1097,7 @@ function RivalBoards({
   const ownReveal = matchState.reveal_flags[currentUserId] ?? false;
 
   return (
-    <section className="rounded-3xl border border-slate-800 bg-slate-900 p-4 text-slate-100 shadow-lg sm:p-5">
+    <section className="duel-rival-boards rounded-3xl border border-slate-800 bg-slate-900 p-4 text-slate-100 shadow-lg sm:p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-300">Rivales</p>

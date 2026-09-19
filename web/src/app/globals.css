@@ -546,6 +546,455 @@ textarea:focus-visible {
   }
 }
 
+.duel-room-shell {
+  background:
+    radial-gradient(ellipse at 12% 4%, rgb(8 145 178 / 0.14), transparent 28rem),
+    radial-gradient(ellipse at 92% 18%, rgb(124 58 237 / 0.14), transparent 32rem), #050b14;
+}
+
+body:has(.duel-room-shell) {
+  background: #050b14;
+}
+
+.duel-room-frame {
+  border-color: rgb(103 232 249 / 0.16);
+  background: #0b1421;
+  box-shadow:
+    0 34px 100px rgb(0 0 0 / 0.42),
+    inset 0 1px rgb(255 255 255 / 0.045);
+}
+
+.duel-room-header {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 82% 115%, rgb(34 211 238 / 0.22), transparent 38%),
+    radial-gradient(ellipse at 94% 0, rgb(168 85 247 / 0.23), transparent 32%),
+    linear-gradient(110deg, #07111f 0%, #101a37 54%, #10152a 100%);
+}
+
+.duel-room-header::after {
+  position: absolute;
+  top: -4rem;
+  right: 8%;
+  z-index: -1;
+  width: 18rem;
+  height: 18rem;
+  border: 1px solid rgb(103 232 249 / 0.16);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2.2rem rgb(103 232 249 / 0.025),
+    0 0 0 4.5rem rgb(168 85 247 / 0.025),
+    inset 0 0 2rem rgb(103 232 249 / 0.08);
+  content: '';
+  pointer-events: none;
+}
+
+.duel-room-header > div,
+.duel-room-header h1,
+.duel-room-header p,
+.duel-room-header span {
+  position: relative;
+  z-index: 1;
+}
+
+.duel-room-header h1 {
+  text-shadow: 0 0 28px rgb(103 232 249 / 0.16);
+}
+
+.duel-room-content {
+  color: #e2e8f0;
+  background: radial-gradient(circle at 10% 0, rgb(34 211 238 / 0.035), transparent 24rem), #0b1421;
+}
+
+.duel-room-status,
+.duel-room-connection {
+  min-height: 2.35rem;
+  backdrop-filter: blur(12px);
+}
+
+.duel-room-connection {
+  border-color: rgb(103 232 249 / 0.2) !important;
+}
+
+.duel-room-connection > span:first-child {
+  box-shadow: 0 0 0 0.25rem rgb(52 211 153 / 0.1);
+}
+
+.duel-room-alert {
+  border-color: rgb(251 113 133 / 0.35);
+  color: #ffe4e6;
+  background: rgb(76 5 25 / 0.48);
+}
+
+.duel-room-panel,
+.duel-lobby-hero {
+  border-color: rgb(148 163 184 / 0.16);
+  color: #e2e8f0;
+  background: linear-gradient(145deg, rgb(16 29 47 / 0.96), rgb(11 20 34 / 0.98));
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.035),
+    0 16px 40px rgb(0 0 0 / 0.12);
+}
+
+.duel-lobby-hero {
+  border-color: rgb(103 232 249 / 0.22);
+  background:
+    radial-gradient(circle at 92% 0, rgb(34 211 238 / 0.12), transparent 35%),
+    linear-gradient(145deg, #111d34, #0c192a);
+}
+
+.duel-room-content h2,
+.duel-room-content h3,
+.duel-room-content h4 {
+  color: #f8fafc;
+}
+
+.duel-room-content .text-slate-950 {
+  color: #f8fafc !important;
+}
+
+.duel-room-content .text-slate-900 {
+  color: #e2e8f0 !important;
+}
+
+.duel-room-content .text-slate-800 {
+  color: #d6e1ed !important;
+}
+
+.duel-room-content .text-slate-700 {
+  color: #c4d2e1 !important;
+}
+
+.duel-room-content .text-slate-600,
+.duel-room-content .text-slate-500 {
+  color: #98abc0 !important;
+}
+
+.duel-room-content .border-slate-200,
+.duel-room-content .border-slate-100 {
+  border-color: rgb(148 163 184 / 0.17) !important;
+}
+
+.duel-room-content .bg-white {
+  background-color: #101d2e !important;
+}
+
+.duel-room-content .bg-slate-50,
+.duel-room-content .bg-slate-100 {
+  background-color: #0b1727 !important;
+}
+
+.duel-room-content .bg-white\/80 {
+  background-color: rgb(15 29 48 / 0.88) !important;
+}
+
+.duel-room-content .bg-indigo-50,
+.duel-room-content .bg-cyan-50,
+.duel-room-content .bg-emerald-50,
+.duel-room-content .bg-amber-50,
+.duel-room-content .bg-rose-50 {
+  background-color: rgb(15 29 48 / 0.9) !important;
+}
+
+.duel-room-content .bg-emerald-100 {
+  background-color: rgb(6 78 59 / 0.54) !important;
+}
+
+.duel-room-content .bg-amber-100 {
+  background-color: rgb(120 53 15 / 0.5) !important;
+}
+
+.duel-room-content .bg-indigo-100 {
+  background-color: rgb(49 46 129 / 0.48) !important;
+}
+
+.duel-room-content .text-indigo-600,
+.duel-room-content .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+
+.duel-room-content .text-indigo-950 {
+  color: #e0e7ff !important;
+}
+
+.duel-room-content .text-emerald-700,
+.duel-room-content .text-emerald-800 {
+  color: #a7f3d0 !important;
+}
+
+.duel-room-content .text-amber-800,
+.duel-room-content .text-amber-900 {
+  color: #fde68a !important;
+}
+
+.duel-room-content .text-rose-800 {
+  color: #fecdd3 !important;
+}
+
+.duel-room-content .border-indigo-100,
+.duel-room-content .border-indigo-200,
+.duel-room-content .border-cyan-200,
+.duel-room-content .border-emerald-200,
+.duel-room-content .border-amber-200,
+.duel-room-content .border-rose-200 {
+  border-color: rgb(148 163 184 / 0.19) !important;
+}
+
+.duel-match-clock {
+  border-color: rgb(103 232 249 / 0.23) !important;
+  color: #e0f2fe !important;
+  background:
+    radial-gradient(circle at 88% 0, rgb(34 211 238 / 0.16), transparent 32%),
+    linear-gradient(110deg, #10253a, #111a32) !important;
+}
+
+.duel-match-clock p:first-child {
+  color: #a5f3fc;
+}
+
+.duel-match-clock p.text-sm {
+  color: #b8c8d9;
+}
+
+.duel-live-heading h2 {
+  color: #f8fafc;
+}
+
+.duel-live-heading > span {
+  color: #a5b4fc;
+}
+
+.duel-room-live-grid {
+  grid-template-columns: minmax(0, 1.08fr) minmax(20rem, 0.92fr);
+  align-items: start;
+}
+
+.duel-problem-panel > div > h4 {
+  margin-top: 0.9rem;
+  color: #f8fafc;
+  font-size: clamp(1.45rem, 2.5vw, 2rem);
+}
+
+.duel-problem-panel .whitespace-pre-wrap {
+  border-color: rgb(148 163 184 / 0.14);
+  color: #d3dfec;
+  background: #0b1727;
+}
+
+.duel-problem-panel .rounded-2xl.border-slate-200 {
+  background: #101d2e;
+}
+
+.duel-python-editor {
+  border-color: rgb(103 232 249 / 0.24);
+  box-shadow:
+    0 20px 45px rgb(0 0 0 / 0.24),
+    inset 0 1px rgb(255 255 255 / 0.035);
+}
+
+.duel-python-editor > div:first-child {
+  min-height: 3rem;
+  border-color: rgb(148 163 184 / 0.14);
+  background: #111e30;
+}
+
+.duel-python-editor > div:first-child > span:first-child {
+  color: #e0eaf5;
+}
+
+.duel-python-editor > div:nth-child(2) {
+  height: min(34rem, 58vh);
+  min-height: 22rem;
+}
+
+.duel-python-editor pre,
+.duel-python-editor textarea {
+  font-size: 0.9rem;
+  line-height: 1.75rem;
+  tab-size: 4;
+}
+
+.duel-python-editor textarea {
+  caret-color: #67e8f9;
+}
+
+.duel-rival-boards {
+  border-color: rgb(103 232 249 / 0.2);
+  background:
+    radial-gradient(circle at 100% 0, rgb(168 85 247 / 0.12), transparent 34%),
+    linear-gradient(145deg, #101d30, #0b1422);
+}
+
+.duel-rival-boards > div:last-child > div {
+  border-color: rgb(148 163 184 / 0.16);
+  background: rgb(6 14 25 / 0.7);
+}
+
+.duel-rival-boards pre {
+  max-height: 16rem;
+  border: 1px solid rgb(148 163 184 / 0.13);
+  background: #07111f;
+  font-size: 0.78rem;
+  line-height: 1.55rem;
+}
+
+.duel-room-content button {
+  min-height: 2.75rem;
+}
+
+.duel-room-content button:focus-visible,
+.duel-room-content a:focus-visible,
+.duel-room-content input:focus-visible,
+.duel-room-content textarea:focus-visible {
+  outline: 3px solid rgb(103 232 249 / 0.72);
+  outline-offset: 3px;
+}
+
+.duel-standings-mobile {
+  display: none;
+}
+
+.duel-standings-mobile-card {
+  border: 1px solid rgb(148 163 184 / 0.18);
+  border-radius: 0.9rem;
+  background: rgb(6 14 25 / 0.68);
+  padding: 0.75rem;
+  color: #e2e8f0;
+}
+
+.duel-standings-mobile-player {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.duel-standings-mobile-player strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.77rem;
+}
+
+.duel-standings-mobile-position {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.55rem;
+  color: #a5f3fc;
+  background: rgb(8 145 178 / 0.18);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.duel-standings-mobile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.7rem 0 0;
+  border-top: 1px solid rgb(148 163 184 / 0.14);
+  padding-top: 0.6rem;
+}
+
+.duel-standings-mobile-stats dt {
+  color: #9fb2c8;
+  font-size: 0.66rem;
+}
+
+.duel-standings-mobile-stats dd {
+  margin: 0.15rem 0 0;
+  color: #e0f2fe;
+  font-size: 0.82rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .duel-room-live-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .duel-python-editor > div:nth-child(2) {
+    height: min(32rem, 62vh);
+  }
+}
+
+@media (max-width: 640px) {
+  .duel-room-shell {
+    padding: 0.5rem;
+  }
+
+  .duel-room-frame {
+    border-radius: 1.25rem;
+  }
+
+  .duel-room-header {
+    padding: 1.1rem;
+  }
+
+  .duel-room-header h1 {
+    font-size: 1.8rem;
+    letter-spacing: 0.1em;
+  }
+
+  .duel-room-header::after {
+    right: -7rem;
+  }
+
+  .duel-room-content {
+    padding: 0.9rem;
+  }
+
+  .duel-standings-mobile {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .duel-standings-table-wrap {
+    display: none;
+  }
+
+  .duel-live-heading h2 {
+    font-size: 1.65rem;
+  }
+
+  .duel-match-clock > div {
+    align-items: flex-start;
+  }
+
+  .duel-match-clock p.text-4xl {
+    font-size: 2.5rem;
+  }
+
+  .duel-python-editor > div:nth-child(2) {
+    height: 54vh;
+    min-height: 18rem;
+  }
+
+  .duel-python-editor pre,
+  .duel-python-editor textarea {
+    padding: 1rem;
+    font-size: 0.82rem;
+    line-height: 1.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duel-room-content button,
+  .duel-room-content a {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
+
 ::selection {
   color: #082f49;
   background: #67e8f9;
