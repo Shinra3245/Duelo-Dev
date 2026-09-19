@@ -25,6 +25,13 @@ for value_name in SAMPLES WARMUP WORKERS; do
   fi
 done
 
+if [[ "$REMOTE_DIR" != /* || "$REMOTE_DIR" == *..* || "$REMOTE_DIR" == *[!a-zA-Z0-9_./-]* ]]; then
+  printf 'Error: JUDGE_VM_PERF_REMOTE_DIR debe ser una ruta absoluta segura.\n' >&2
+  exit 1
+fi
+
+remote_dir_quoted="$(printf '%q' "$REMOTE_DIR")"
+
 ssh_base=(
   ssh
   -o BatchMode=yes
@@ -62,7 +69,7 @@ for attempt in $(seq 1 120); do
   sleep 1
 done
 
-"${ssh_base[@]}" "rm -rf '$REMOTE_DIR/judge' '$REMOTE_DIR/cases'; mkdir -p '$REMOTE_DIR/judge' '$REMOTE_DIR/cases'"
+"${ssh_base[@]}" "rm -rf -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases; mkdir -p -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases"
 scp -P "$VM_PORT" \
   judge/__init__.py judge/case_store.py judge/compiler.py judge/docker_compiler.py \
   judge/evaluation.py judge/languages.py judge/limits.py judge/docker_session.py \
@@ -70,10 +77,10 @@ scp -P "$VM_PORT" \
   judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
-tar -C problems -czf - cases | "${ssh_base[@]}" "tar -xzf - -C '$REMOTE_DIR/cases'"
+tar -C problems -czf - cases | "${ssh_base[@]}" "tar -xzf - -C ${remote_dir_quoted}/cases"
 
 "${ssh_base[@]}" \
-  "REMOTE_DIR='$REMOTE_DIR' LANGUAGE='$LANGUAGE' SAMPLES='$SAMPLES' WARMUP='$WARMUP' WORKERS='$WORKERS' bash -s" <<'REMOTE_SCRIPT'
+  "REMOTE_DIR=${remote_dir_quoted} LANGUAGE=${LANGUAGE} SAMPLES=${SAMPLES} WARMUP=${WARMUP} WORKERS=${WORKERS} bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 if [[ "${LANGUAGE}" == python ]]; then
