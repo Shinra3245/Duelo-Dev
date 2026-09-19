@@ -37,6 +37,25 @@ test.describe('panel administrativo en navegador', () => {
     await expect(roomCard).toBeVisible();
   });
 
+  test('configura una sala de tres jugadores desde el panel', async ({ page }) => {
+    await loginAsAdmin(page);
+    const room = await createRoom(page, 3);
+    expect(room.config.max_players).toBe(3);
+
+    const roomCard = page.locator('article.admin-room-card').filter({ hasText: room.room_code });
+    await expect(roomCard).toContainText('lobby');
+
+    const closeResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/v1/admin/rooms/${room.match_id}/close`) &&
+        response.request().method() === 'POST',
+    );
+    page.once('dialog', (dialog) => void dialog.accept());
+    await roomCard.getByRole('button', { name: 'Cerrar sala' }).click();
+    expect((await closeResponse).ok()).toBeTruthy();
+    await expect(roomCard).toContainText('abandoned');
+  });
+
   test('cierra todas las salas activas cuando se habilita explícitamente', async ({ page }) => {
     test.skip(
       !closeAllEnabled,
@@ -72,7 +91,14 @@ async function loginAsAdmin(page: Page) {
   await expect(page.getByRole('heading', { name: 'Panel administrativo' })).toBeVisible();
 }
 
-async function createRoom(page: Page): Promise<{ match_id: string; room_code: string }> {
+async function createRoom(
+  page: Page,
+  maxPlayers = 2,
+): Promise<{ match_id: string; room_code: string; config: { max_players: number } }> {
+  if (maxPlayers !== 2) {
+    await page.getByLabel('Jugadores').selectOption(String(maxPlayers));
+  }
+
   const createResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/v1/admin/rooms/create') &&
@@ -81,7 +107,13 @@ async function createRoom(page: Page): Promise<{ match_id: string; room_code: st
   await page.getByRole('button', { name: 'Crear sala' }).click();
   const response = await createResponse;
   expect(response.ok()).toBeTruthy();
-  const body = (await response.json()) as { match_id: string; room_code: string };
-  await expect(page.getByText(body.room_code, { exact: true })).toBeVisible();
+  const body = (await response.json()) as {
+    match_id: string;
+    room_code: string;
+    config: { max_players: number };
+  };
+  await expect(
+    page.locator('article.admin-room-card').filter({ hasText: body.room_code }),
+  ).toBeVisible();
   return body;
 }

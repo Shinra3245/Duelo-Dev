@@ -30,3 +30,29 @@ test('el panel administrativo mantiene el acceso privado', async ({ page }) => {
   await expect(page.getByLabel('Correo')).toBeVisible();
   await expect(page.getByLabel('Contraseña')).toBeVisible();
 });
+
+test('un jugador registrado puede salir y volver a entrar desde la landing', async ({ page }) => {
+  const suffix = Date.now().toString(36).slice(-8);
+  const email = `e2e-${suffix}@example.test`;
+  const gamertag = `reg-${suffix}`;
+  const password = 'E2ePassword-2026!';
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Registrarse', exact: true }).click();
+  await page.getByLabel('Correo electrónico').fill(email);
+  await page.getByLabel('Gamertag').fill(gamertag);
+  await page.getByLabel('Contraseña').fill(password);
+  await page.getByRole('button', { name: 'Crear cuenta y entrar' }).click();
+
+  await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
+  await expect(page.getByText('Cuenta registrada', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Salir' }).click();
+  await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
+  await page.getByLabel('Correo electrónico').fill(email);
+  await page.getByLabel('Contraseña').fill(password);
+  await page.getByRole('button', { name: 'Entrar con mi cuenta' }).click();
+
+  await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
+  await expect(page.getByText('Cuenta registrada', { exact: true })).toBeVisible();
+});
