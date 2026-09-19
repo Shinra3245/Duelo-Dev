@@ -74,6 +74,7 @@ export interface MatchEntity {
   winner_id: string | null;
   finish_reason: MatchFinishReason | null;
   started_at: string | null;
+  instructions_ends_at?: string | null;
   ends_at: string | null;
   finished_at: string | null;
   created_at: string;

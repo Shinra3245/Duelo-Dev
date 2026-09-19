@@ -18,6 +18,7 @@ import { RedisMatchControlPublisher } from './queue/control.js';
 import { parseCorsOrigins } from './plugins/cors.js';
 import { runMigrations } from './services/migrations.js';
 import { ensureConfiguredAdmin } from './services/admin.js';
+import { MATCH_INSTRUCTIONS_DURATION_MS } from '@duelodev/shared';
 
 export * from './types.js';
 export * from './schemas/index.js';
@@ -43,6 +44,7 @@ export interface ProductionApiAppConfig {
   seedPilotProblems?: boolean;
   runMigrations?: boolean;
   corsOrigins?: string[];
+  roomInstructionsDurationMs?: number;
 }
 
 /**
@@ -95,6 +97,7 @@ export async function createProductionApp(
     refreshTokenRepo,
     roomRepo,
     roomCreationPolicyRepo,
+    roomInstructionsDurationMs: config.roomInstructionsDurationMs ?? MATCH_INSTRUCTIONS_DURATION_MS,
     problemRepo,
     submissionRepo,
     eventRepo,

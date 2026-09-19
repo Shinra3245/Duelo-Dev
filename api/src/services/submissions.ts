@@ -107,6 +107,18 @@ export class SubmissionService {
       }
     }
 
+    const matchBeforeCooldown = await this.roomRepo.findMatchById(req.match_id);
+    if (
+      matchBeforeCooldown?.instructions_ends_at &&
+      Date.parse(matchBeforeCooldown.instructions_ends_at) > now
+    ) {
+      throw new HttpError(
+        409,
+        ERROR_CODES.MATCH_INSTRUCTIONS_ACTIVE,
+        ERROR_MESSAGES.MATCH_INSTRUCTIONS_ACTIVE,
+      );
+    }
+
     // 2. Control de cooldown por jugador en la partida (10 s) y reserva atómica (doc 04 §2)
     const cooldownKey = `${req.match_id}:${userId}`;
     const lastSubmitted = this.cooldowns.get(cooldownKey);
@@ -139,6 +151,13 @@ export class SubmissionService {
 
       if (match.status !== 'running') {
         throw new HttpError(409, ERROR_CODES.CONFLICT, 'La partida no está en curso.');
+      }
+      if (match.instructions_ends_at && Date.parse(match.instructions_ends_at) > now) {
+        throw new HttpError(
+          409,
+          ERROR_CODES.MATCH_INSTRUCTIONS_ACTIVE,
+          ERROR_MESSAGES.MATCH_INSTRUCTIONS_ACTIVE,
+        );
       }
 
       // 4. Verificar que el usuario sea un jugador elegible de la partida

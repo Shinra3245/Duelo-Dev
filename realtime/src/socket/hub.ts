@@ -73,6 +73,7 @@ export class MatchHub {
   private readonly roundTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Timers de fin de partida global (modo Rondas) indexados por matchId. */
   private readonly matchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly initializedMatches = new Set<string>();
 
   constructor(options: MatchHubOptions) {
     this.matchStore = options.matchStore;
@@ -597,7 +598,7 @@ export class MatchHub {
 
   /**
    * Inicia una partida en tiempo real:
-   * - Obtiene la sesión de matchStore. Si no existe o status !== 'lobby', retorna.
+   * - Inicia desde lobby o desde el timestamp persistido por el API para la cuenta de instrucciones.
    * - Guarda session.problem_ids = [...problemIds].
    * - Obtiene mode = getGameMode(session.mode).
    * - Construye ctx = buildMatchContext({ session, problemIds, now: Date.now() }).
@@ -610,18 +611,27 @@ export class MatchHub {
    */
   async startMatch(matchId: string, problemIds: string[]): Promise<void> {
     const session = await this.matchStore.getMatch(matchId);
-    if (!session || session.status !== 'lobby') {
+    const isPersistedStart =
+      session?.status === 'running' && session.instructions_ends_at !== undefined;
+    if (!session || (session.status !== 'lobby' && !isPersistedStart)) {
       return;
     }
+    if (this.initializedMatches.has(matchId)) return;
+    this.initializedMatches.add(matchId);
 
     session.problem_ids = [...problemIds];
-    const now = Date.now();
+    const now = session.instructions_ends_at ?? Date.now();
     const mode = getGameMode(session.mode);
     const ctx = buildMatchContext({ session, problemIds, now });
     const actions = mode.onMatchStart(ctx);
 
     applyModeActions(session, actions);
-    await this.matchStore.saveMatch(session);
+    try {
+      await this.matchStore.saveMatch(session);
+    } catch (error) {
+      this.initializedMatches.delete(matchId);
+      throw error;
+    }
 
     // Difunde MATCH_STARTED (problem_order se incluye sólo en modo 'puntos', jamás en 'rondas')
     const matchStartedPayload: MatchStartedPayload = {
@@ -968,6 +978,9 @@ export class MatchHub {
       problem_id: problemId,
       problem_index: problemIndex,
       ends_at: endsAt,
+      ...(session.instructions_ends_at !== undefined
+        ? { instructions_ends_at: session.instructions_ends_at }
+        : {}),
       round_status: session.round_status || null,
       scores: session.scores,
       reveal_flags: revealFlags,

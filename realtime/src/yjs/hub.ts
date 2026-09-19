@@ -67,7 +67,7 @@ export class YjsHub {
    * 2. Consulta el estado de la partida en el MatchStore.
    * 3. Evalúa la autorización (doc 04 §79-88):
    *    - Escritura: únicamente el dueño (`auth.userId === targetUserId`).
-   *    - Lectura: miembros con código revelado (`is_revealed: true`) o partida finalizada.
+   *    - Lectura: cualquier miembro para representar el código con desenfoque visual.
    * 4. Si se autoriza, une al cliente como observador del documento.
    */
   async handleConnection(
@@ -98,16 +98,11 @@ export class YjsHub {
       return { authorized: false, reason: 'Jugador objetivo no pertenece a la partida.' };
     }
 
-    const isFinished = session.status === 'finished' || session.status === 'abandoned';
-    const isRevealed = targetPlayer.is_revealed;
-
     const decision = authorizeYjsAccess({
       auth,
       matchId,
       targetUserId,
       isMember,
-      isRevealed,
-      isFinished,
     });
 
     if (!decision.allowed) {
@@ -206,10 +201,9 @@ export class YjsHub {
     const doc = this.activeDocuments.get(this.docKey(client.matchId, client.targetUserId));
     if (!doc) return { applied: false, reason: 'Documento Yjs no encontrado.' };
 
-    const isFinished = session.status === 'finished' || session.status === 'abandoned';
     return doc.applyUpdate(update, generation, undefined, client.id, (observer) => {
       if (observer.userId === client.targetUserId) return true;
-      return session.players.has(observer.userId) && (targetPlayer.is_revealed || isFinished);
+      return session.players.has(observer.userId);
     });
   }
 
@@ -245,10 +239,9 @@ export class YjsHub {
       return { applied: false, reason: 'Documento Yjs no encontrado.' };
     }
 
-    const isFinished = session.status === 'finished' || session.status === 'abandoned';
     return doc.applyTextUpdate(sourceCode, generation, client.id, (observer) => {
       if (observer.userId === client.targetUserId) return true;
-      return session.players.has(observer.userId) && (targetPlayer.is_revealed || isFinished);
+      return session.players.has(observer.userId);
     });
   }
 

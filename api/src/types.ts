@@ -70,6 +70,8 @@ export interface ApiAppOptions {
   /** Repositorio de salas y partidas. Si no se especifica, se crea uno en memoria. */
   roomRepo?: RoomRepository;
   roomCreationPolicyRepo?: RoomCreationPolicyRepository;
+  /** Duración inicial de lectura del reto; 0 conserva el modo sin espera en pruebas. */
+  roomInstructionsDurationMs?: number;
   /** Repositorio de envíos. Si no se especifica, se crea uno en memoria. */
   submissionRepo?: SubmissionRepository;
   /** Repositorio de problemas. Si no se especifica, se crea uno en memoria. */
@@ -90,7 +92,7 @@ export interface ApiAppOptions {
   auditService?: AuditService;
   /** Servicio de operaciones protegidas del panel administrativo. */
   adminService?: AdminService;
-  /** Publicador interno para reflejar cierres administrativos en Realtime. */
+  /** Publicador interno para reflejar inicios y cierres de partidas en Realtime. */
   matchControlPublisher?: MatchControlPublisher;
   /** Publicador de avisos de resultados en judge:results. Si no se especifica, se crea uno en memoria. */
   resultPublisher?: ResultPublisher;

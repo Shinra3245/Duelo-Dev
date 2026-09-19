@@ -11,7 +11,7 @@ export interface MatchControlSubscriber {
   subscribe(listener: MatchControlListener): () => void;
 }
 
-/** Suscriptor Redis de cambios administrativos de partidas. */
+/** Suscriptor Redis de ciclo de vida de partidas. */
 export class RedisMatchControlSubscriber implements MatchControlSubscriber {
   private readonly redis: Redis;
   private readonly channel: string;

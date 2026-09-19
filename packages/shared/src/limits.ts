@@ -29,6 +29,9 @@ export const PIDS_LIMIT = 64;
 export const OUTPUT_LIMIT_BYTES = 1024 * 1024;
 export const SOURCE_CODE_MAX_BYTES = 64 * 1024;
 
+/** Tiempo de lectura sincronizado antes de habilitar el editor de una partida. */
+export const MATCH_INSTRUCTIONS_DURATION_MS = 30_000;
+
 /** Timeouts de compilación en milisegundos. Python no compila. */
 export const COMPILE_TIMEOUT_MS: Record<Language, number> = {
   python: 0,

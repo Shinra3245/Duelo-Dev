@@ -104,6 +104,10 @@ export class PostgresMatchStore implements MatchStore {
       ? new Date(matchRow.started_at as string | Date).toISOString()
       : undefined;
     const startedAtMs = startedAt ? new Date(startedAt).getTime() : undefined;
+    const instructionsEndsAt = matchRow.instructions_ends_at
+      ? new Date(matchRow.instructions_ends_at as string | Date).getTime()
+      : undefined;
+    const playStartedAtMs = instructionsEndsAt ?? startedAtMs;
     const problemIds = status === 'lobby' ? [] : await this.findProblemIdsForConfig(config);
 
     const session: RealtimeMatchSession = {
@@ -119,7 +123,10 @@ export class PostgresMatchStore implements MatchStore {
       players,
       scores,
       created_at: new Date(matchRow.created_at as string | Date).toISOString(),
-      ...(startedAt ? { started_at: startedAt } : {}),
+      ...(playStartedAtMs !== undefined
+        ? { started_at: new Date(playStartedAtMs).toISOString() }
+        : {}),
+      ...(instructionsEndsAt !== undefined ? { instructions_ends_at: instructionsEndsAt } : {}),
       ...(matchRow.finished_at
         ? { finished_at: new Date(matchRow.finished_at as string | Date).toISOString() }
         : {}),
@@ -127,12 +134,14 @@ export class PostgresMatchStore implements MatchStore {
         ? { winner_ids: matchRow.winner_ids as string[] }
         : {}),
       ...(problemIds.length > 0 ? { problem_ids: problemIds } : {}),
-      ...(startedAtMs !== undefined && status !== 'lobby' ? { round_opened_at: startedAtMs } : {}),
-      ...(startedAtMs !== undefined && status !== 'lobby' && config.mode === 'puntos'
-        ? { round_ends_at: startedAtMs + config.time_per_problem_s * 1000 }
+      ...(playStartedAtMs !== undefined && status !== 'lobby'
+        ? { round_opened_at: playStartedAtMs }
         : {}),
-      ...(startedAtMs !== undefined && status !== 'lobby' && config.mode === 'rondas'
-        ? { match_ends_at: startedAtMs + config.match_duration_s * 1000 }
+      ...(playStartedAtMs !== undefined && status !== 'lobby' && config.mode === 'puntos'
+        ? { round_ends_at: playStartedAtMs + config.time_per_problem_s * 1000 }
+        : {}),
+      ...(playStartedAtMs !== undefined && status !== 'lobby' && config.mode === 'rondas'
+        ? { match_ends_at: playStartedAtMs + config.match_duration_s * 1000 }
         : {}),
     };
 

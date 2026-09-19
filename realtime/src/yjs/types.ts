@@ -4,7 +4,7 @@
  * Cada jugador activo en una partida posee su propio documento Yjs,
  * accesible en `/yjs/{match_id}/{user_id}` con control de acceso:
  * - Escritura: únicamente el dueño autenticado.
- * - Lectura: rivales únicamente si `is_revealed: true` o tras finalizar.
+ * - Lectura: miembros de la partida; la interfaz controla el desenfoque visual.
  * - Generaciones: cada ronda avanza la generación; updates de generaciones
  *   anteriores son rechazados.
  * - Límite de tamaño: 256 KiB (`MAX_YDOC_BYTES`) contra agotamiento de memoria.

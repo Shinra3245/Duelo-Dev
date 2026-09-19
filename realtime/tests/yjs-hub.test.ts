@@ -147,7 +147,7 @@ describe('YjsHub', () => {
       expect(client.closeCode).toBe(4004);
     });
 
-    it('cierra la conexión si un rival intenta ver código no revelado (4003)', async () => {
+    it('autoriza a un rival como lector aunque su código se presente desenfocado', async () => {
       const session = createSampleSession('match-1');
       await store.saveMatch(session);
 
@@ -155,9 +155,9 @@ describe('YjsHub', () => {
       const rivalAuth: YjsAuthContext = { userId: 'user-2', gamertag: 'coder2', role: 'user' };
 
       const res = await hub.handleConnection('/yjs/match-1/user-1', rivalClient, rivalAuth);
-      expect(res.authorized).toBe(false);
-      expect(rivalClient.closed).toBe(true);
-      expect(rivalClient.closeCode).toBe(4003);
+      expect(res.authorized).toBe(true);
+      expect(res.document).toBeDefined();
+      expect(rivalClient.closed).toBe(false);
     });
 
     it('autoriza exitosamente al dueño del documento', async () => {
@@ -192,9 +192,8 @@ describe('YjsHub', () => {
       expect(res.document).toBeDefined();
     });
 
-    it('envía snapshot inicial y difunde texto sólo mientras el código está revelado', async () => {
+    it('sincroniza código en vivo a miembros aunque la interfaz aplique desenfoque', async () => {
       const session = createSampleSession('match-1');
-      session.players.get('user-1')!.is_revealed = true;
       await store.saveMatch(session);
 
       const ownerClient = createMockYjsClient('c1', 'user-1', 'match-1', 'user-1');
@@ -231,7 +230,11 @@ describe('YjsHub', () => {
       const receivedBeforeHiddenUpdate = rivalClient.sentText.length;
       const hiddenUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(2)', 1);
       expect(hiddenUpdate.applied).toBe(true);
-      expect(rivalClient.sentText).toHaveLength(receivedBeforeHiddenUpdate);
+      expect(rivalClient.sentText).toHaveLength(receivedBeforeHiddenUpdate + 1);
+      expect(JSON.parse(rivalClient.sentText.at(-1) ?? '{}')).toMatchObject({
+        type: 'update',
+        source_code: 'print(2)',
+      });
     });
   });
 

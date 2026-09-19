@@ -79,6 +79,7 @@ export interface CreateMatchInput {
   winner_id?: string | null;
   finish_reason?: MatchEntity['finish_reason'];
   started_at?: string | null;
+  instructions_ends_at?: string | null;
   ends_at?: string | null;
   finished_at?: string | null;
   created_at?: string;
@@ -116,6 +117,7 @@ export interface RoomRepository {
         MatchEntity,
         | 'status'
         | 'started_at'
+        | 'instructions_ends_at'
         | 'ends_at'
         | 'finished_at'
         | 'winner_id'

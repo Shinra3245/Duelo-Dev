@@ -34,6 +34,9 @@ function cloneSession(session: RealtimeMatchSession): RealtimeMatchSession {
     scores: session.scores.map((score) => ({ ...score })),
     created_at: session.created_at,
     ...(session.started_at !== undefined ? { started_at: session.started_at } : {}),
+    ...(session.instructions_ends_at !== undefined
+      ? { instructions_ends_at: session.instructions_ends_at }
+      : {}),
     ...(session.finished_at !== undefined ? { finished_at: session.finished_at } : {}),
     ...(session.winner_ids !== undefined ? { winner_ids: [...session.winner_ids] } : {}),
     ...(session.problem_ids !== undefined ? { problem_ids: [...session.problem_ids] } : {}),

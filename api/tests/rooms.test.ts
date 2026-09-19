@@ -598,4 +598,56 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
       expect(data.error.code).toBe(ERROR_CODES.VALIDATION_FAILED);
     });
   });
+
+  it('persiste una ventana sincronizable de instrucciones al iniciar la partida', async () => {
+    const controlEvents: unknown[] = [];
+    const countdownApp = createApp({
+      authSecret: 'countdown-room-test-secret-32-characters',
+      rateLimitConfig: { enabled: false },
+      roomInstructionsDurationMs: 30_000,
+      matchControlPublisher: {
+        async publish(notification) {
+          controlEvents.push(notification);
+        },
+      },
+    });
+    try {
+      await countdownApp.start(0, '127.0.0.1');
+      const host = await countdownApp.ctx.userRepo.create({
+        email: 'countdown-host@example.com',
+        gamertag: 'countdown-host',
+        role: 'user',
+      });
+      const player = await countdownApp.ctx.userRepo.create({
+        email: 'countdown-player@example.com',
+        gamertag: 'countdown-player',
+        role: 'user',
+      });
+      const created = await countdownApp.ctx.roomService.createRoom(host.id, {
+        config: { ...validPuntosConfig, max_players: 2 },
+      });
+      await countdownApp.ctx.roomService.joinRoom(
+        created.room_code,
+        { gamertag: player.gamertag },
+        player.id,
+      );
+
+      await countdownApp.ctx.roomService.startRoom(created.room_code, host.id);
+      const match = await countdownApp.ctx.roomRepo.findMatchById(created.match_id);
+      expect(match?.instructions_ends_at).toBeDefined();
+      expect(Date.parse(match!.instructions_ends_at!) - Date.parse(match!.started_at!)).toBe(
+        30_000,
+      );
+      expect(Date.parse(match!.instructions_ends_at!)).toBeGreaterThan(Date.now());
+      expect(controlEvents).toContainEqual(
+        expect.objectContaining({
+          type: 'match_started',
+          match_id: created.match_id,
+          state_version: match!.state_version,
+        }),
+      );
+    } finally {
+      await countdownApp.close();
+    }
+  });
 });

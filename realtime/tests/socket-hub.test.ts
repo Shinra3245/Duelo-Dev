@@ -600,6 +600,32 @@ describe('MatchHub', () => {
       expect(updated?.round_ends_at).toBeGreaterThan(0);
     });
 
+    it('inicia el reloj de juego desde el fin sincronizado de instrucciones ya persistido', async () => {
+      const session = createSampleSession('match-instructions');
+      const instructionsEndsAt = Date.now() + 30_000;
+      session.status = 'running';
+      session.current_round_id = session.match_id;
+      session.started_at = new Date(instructionsEndsAt).toISOString();
+      session.instructions_ends_at = instructionsEndsAt;
+      await store.saveMatch(session);
+
+      const player = createMockClient('sock-player', 'user-1', 'coder1');
+      hub.registerClient(player);
+      await hub.handleJoinMatch(player, { match_id: session.match_id });
+      player.emittedEvents.length = 0;
+
+      await hub.startMatch(session.match_id, ['problem-1', 'problem-2', 'problem-3']);
+
+      const problemBegin = player.emittedEvents.find((event) => event.event === S2C.PROBLEM_BEGIN);
+      expect(problemBegin?.payload).toMatchObject({
+        problem_id: 'problem-1',
+        ends_at: instructionsEndsAt + 300_000,
+      });
+      expect((await store.getMatch(session.match_id))?.started_at).toBe(
+        new Date(instructionsEndsAt).toISOString(),
+      );
+    });
+
     it('startMatch en modo Rondas difunde MATCH_STARTED sin problem_order y envía PROBLEM_BEGIN a cada jugador', async () => {
       const session = createSampleSession('match-rondas');
       session.status = 'lobby';

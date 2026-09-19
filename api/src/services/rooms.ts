@@ -25,6 +25,7 @@ import type {
 } from '../repositories/types.js';
 import type { AuthService } from './auth.js';
 import type { AuditService } from './audit.js';
+import type { MatchControlPublisher } from '../queue/control.js';
 
 const ROOM_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
@@ -45,6 +46,8 @@ export interface RoomServiceOptions {
   roomCreationPolicyRepo?: RoomCreationPolicyRepository;
   userRepo: UserRepository;
   authService: AuthService;
+  instructionsDurationMs?: number;
+  matchControlPublisher?: MatchControlPublisher | undefined;
   auditService?: AuditService | undefined;
 }
 
@@ -56,6 +59,8 @@ export class RoomService {
   private readonly roomCreationPolicyRepo: RoomCreationPolicyRepository | undefined;
   private readonly userRepo: UserRepository;
   private readonly authService: AuthService;
+  private readonly instructionsDurationMs: number;
+  private readonly matchControlPublisher: MatchControlPublisher | undefined;
   private readonly auditService?: AuditService | undefined;
 
   constructor(options: RoomServiceOptions) {
@@ -63,6 +68,8 @@ export class RoomService {
     this.roomCreationPolicyRepo = options.roomCreationPolicyRepo;
     this.userRepo = options.userRepo;
     this.authService = options.authService;
+    this.instructionsDurationMs = options.instructionsDurationMs ?? 0;
+    this.matchControlPublisher = options.matchControlPublisher;
     this.auditService = options.auditService;
   }
 
@@ -324,6 +331,7 @@ export class RoomService {
 
     // Idempotencia: si ya está iniciada, responder 200 con started: true
     if (match.status === 'running') {
+      await this.publishMatchStarted(match.id, match.state_version);
       return {
         match_id: match.id,
         started: true,
@@ -344,9 +352,14 @@ export class RoomService {
       );
     }
 
+    const startedAt = Date.now();
     await this.roomRepo.updateMatch(match.id, {
       status: 'running',
-      started_at: new Date().toISOString(),
+      started_at: new Date(startedAt).toISOString(),
+      instructions_ends_at:
+        this.instructionsDurationMs > 0
+          ? new Date(startedAt + this.instructionsDurationMs).toISOString()
+          : null,
       state_version: match.state_version + 1,
     });
 
@@ -354,11 +367,23 @@ export class RoomService {
       await this.auditService.recordMatchStarted(match.id, match.host_id, players.length);
     }
 
+    await this.publishMatchStarted(match.id, match.state_version + 1);
+
     return {
       match_id: match.id,
       started: true,
       status: 'running',
     };
+  }
+
+  private async publishMatchStarted(matchId: string, stateVersion: number): Promise<void> {
+    await this.matchControlPublisher?.publish({
+      schema_version: 1,
+      type: 'match_started',
+      match_id: matchId,
+      state_version: stateVersion,
+      issued_at_ms: Date.now(),
+    });
   }
 
   /**

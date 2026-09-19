@@ -22,12 +22,12 @@ export const MATCH_CONTROL_CHANNEL = 'match:control';
 export const MATCH_CONTROL_SCHEMA_VERSION = 1;
 
 /**
- * Aviso interno para sincronizar cambios administrativos de una partida entre API y Realtime.
+ * Aviso interno para sincronizar el ciclo de vida de una partida entre API y Realtime.
  * No contiene credenciales, código fuente ni datos de los jugadores.
  */
 export interface MatchControlNotification {
   schema_version: number;
-  type: 'match_closed';
+  type: 'match_closed' | 'match_started';
   match_id: string;
   state_version: number;
   issued_at_ms: number;
@@ -38,7 +38,7 @@ export function isMatchControlNotification(value: unknown): value is MatchContro
   const notification = value as Record<string, unknown>;
   return (
     notification.schema_version === MATCH_CONTROL_SCHEMA_VERSION &&
-    notification.type === 'match_closed' &&
+    (notification.type === 'match_closed' || notification.type === 'match_started') &&
     typeof notification.match_id === 'string' &&
     notification.match_id.length > 0 &&
     typeof notification.state_version === 'number' &&

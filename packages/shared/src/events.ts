@@ -324,6 +324,8 @@ export interface MatchSyncPayload extends StateStamped {
   problem_index: number;
   /** Instante absoluto de fin en epoch ms. El reloj del cliente se deriva de aquí. */
   ends_at: number | null;
+  /** Fin absoluto de la fase inicial de instrucciones, si aplica. */
+  instructions_ends_at?: number | null;
   round_status: RoundStatus | null;
   scores: PlayerScore[];
   reveal_flags: Record<string, boolean>;
@@ -633,6 +635,11 @@ export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
     p.problem_index < 0 ||
     (p.ends_at !== null &&
       (typeof p.ends_at !== 'number' || !Number.isFinite(p.ends_at) || p.ends_at <= 0)) ||
+    (p.instructions_ends_at !== undefined &&
+      p.instructions_ends_at !== null &&
+      (typeof p.instructions_ends_at !== 'number' ||
+        !Number.isFinite(p.instructions_ends_at) ||
+        p.instructions_ends_at <= 0)) ||
     (p.round_status !== null && !isRoundStatus(p.round_status)) ||
     !Array.isArray(p.scores) ||
     !p.scores.every(isPlayerScore) ||

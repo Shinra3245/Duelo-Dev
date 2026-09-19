@@ -3,8 +3,7 @@
  *
  * El path lógico es `/yjs/{match_id}/{user_id}`.
  * - Escritura: únicamente el dueño autenticado (`auth.userId === targetUserId`).
- * - Lectura por terceros: requiere membresía en la partida Y (`is_revealed === true` o partida finalizada).
- * - Terceros sin revelado ni partida finalizada reciben rechazo (403).
+ * - Lectura por terceros: requiere membresía en la partida; la interfaz aplica desenfoque visual.
  * - Usuarios que no son miembros de la partida reciben rechazo total (403).
  */
 
@@ -32,15 +31,13 @@ export interface AuthorizeYjsAccessParams {
   matchId: string;
   targetUserId: string;
   isMember: boolean;
-  isRevealed: boolean;
-  isFinished: boolean;
 }
 
 /**
  * Evalúa los permisos de acceso para una conexión al documento Yjs de un jugador.
  */
 export function authorizeYjsAccess(params: AuthorizeYjsAccessParams): YjsAccessDecision {
-  const { auth, targetUserId, isMember, isRevealed, isFinished } = params;
+  const { auth, targetUserId, isMember } = params;
 
   // 1. Debe ser miembro registrado de la partida
   if (!isMember) {
@@ -61,20 +58,10 @@ export function authorizeYjsAccess(params: AuthorizeYjsAccessParams): YjsAccessD
     };
   }
 
-  // 3. Rival o espectador miembro: solo lectura si está revelado o si la partida finalizó
-  if (isRevealed || isFinished) {
-    return {
-      allowed: true,
-      canRead: true,
-      canWrite: false, // Rivales nunca pueden escribir en el documento de otro
-    };
-  }
-
-  // 4. Rival sin revelado y partida activa: denegado para proteger confidencialidad del código
+  // 3. Un miembro siempre puede leer para mostrar el código con desenfoque visual.
   return {
-    allowed: false,
-    canRead: false,
+    allowed: true,
+    canRead: true,
     canWrite: false,
-    reason: 'El código del rival no ha sido revelado.',
   };
 }

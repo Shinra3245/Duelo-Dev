@@ -45,10 +45,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [finishedMatch, setFinishedMatch] = useState<MatchFinishedPayload | null>(null);
   const [matchSummary, setMatchSummary] = useState<MatchSummaryResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
+  const [isChallengeOpen, setIsChallengeOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const sourceCodeRef = useRef(sourceCode);
   const lastPublishedSourceRef = useRef(sourceCode);
   const codeSyncClientsRef = useRef<Map<string, CodeSyncClient>>(new Map());
+  const challengeButtonRef = useRef<HTMLButtonElement>(null);
 
   // App load
   useEffect(() => {
@@ -110,6 +113,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.MATCH_SYNC, (payload: unknown) => {
           const typedPayload = payload as MatchSyncPayload;
+          setServerOffsetMs(typedPayload.server_time - Date.now());
+          setNow(Date.now());
           if (typedPayload.status !== 'lobby') {
             matchSyncRequested = true;
           }
@@ -260,13 +265,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       ? [
           user.id,
           ...room.players
-            .filter(
-              (player) =>
-                player.user_id !== user.id &&
-                (room.status === 'finished' ||
-                  room.status === 'abandoned' ||
-                  matchState.reveal_flags[player.user_id] === true),
-            )
+            .filter((player) => player.user_id !== user.id)
             .map((player) => player.user_id),
         ]
           .sort()
@@ -322,17 +321,35 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
   useEffect(() => {
     if (matchState?.problem_id) {
+      setProblem(null);
       api.problems.get(matchState.problem_id).then(setProblem).catch(console.error);
     }
   }, [matchState?.problem_id]);
 
   useEffect(() => {
-    if (!matchState?.ends_at || room?.status === 'finished' || room?.status === 'abandoned') return;
+    if (!isChallengeOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsChallengeOpen(false);
+        challengeButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isChallengeOpen]);
+
+  useEffect(() => {
+    if (
+      (!matchState?.ends_at && !matchState?.instructions_ends_at) ||
+      room?.status === 'finished' ||
+      room?.status === 'abandoned'
+    )
+      return;
 
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [matchState?.ends_at, room?.status]);
+  }, [matchState?.ends_at, matchState?.instructions_ends_at, room?.status]);
 
   const handleSubmitCode = async () => {
     if (!room || !matchState || !matchState.problem_id || !matchState.round_id) return;
@@ -436,13 +453,21 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     Boolean(matchState?.problem_id && matchState.round_id) &&
     Boolean(sourceCode.trim()) &&
     !isSubmitting &&
-    !isAwaitingVerdict;
+    !isAwaitingVerdict &&
+    !(matchState?.instructions_ends_at && now + serverOffsetMs < matchState.instructions_ends_at);
   const displayedScores: PlayerScore[] = [
     ...(finishedMatch?.final_scores ?? matchSummary?.final_scores ?? matchState?.scores ?? []),
   ].sort(comparePlayerScores);
+  const serverNow = now + serverOffsetMs;
+  const instructionsEndsAt = matchState?.instructions_ends_at ?? null;
+  const instructionsRemaining =
+    instructionsEndsAt === null
+      ? 0
+      : Math.max(0, Math.ceil((instructionsEndsAt - serverNow) / 1000));
+  const isInstructionsPhase = room.status === 'running' && instructionsRemaining > 0;
   const endsAtMs = matchState?.ends_at ? new Date(matchState.ends_at).getTime() : null;
   const secondsRemaining =
-    endsAtMs === null ? null : Math.max(0, Math.ceil((endsAtMs - now) / 1000));
+    endsAtMs === null ? null : Math.max(0, Math.ceil((endsAtMs - serverNow) / 1000));
   const timeLabel = secondsRemaining === null ? 'Sin reloj activo' : formatClock(secondsRemaining);
 
   return (
@@ -599,119 +624,161 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           )}
 
           {isPlaying && (
-            <div className="space-y-4">
-              <div className="duel-live-heading flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">
-                    Duelo en vivo
-                  </p>
-                  <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-950">
-                    {room.status === 'abandoned'
-                      ? 'Sala cerrada'
-                      : room.status === 'finished'
-                        ? 'Resultados finales'
-                        : 'Partida en curso'}
-                  </h2>
-                </div>
-                <span className="text-sm font-medium text-slate-500">
-                  {room.config.mode === 'puntos' ? 'Modo Puntos' : 'Modo Rondas'}
-                </span>
-              </div>
-
-              {matchState && (
-                <div
-                  aria-live="polite"
-                  className={`duel-match-clock rounded-3xl border p-5 shadow-sm sm:p-6 ${
-                    secondsRemaining !== null && secondsRemaining <= 30 && room.status === 'running'
-                      ? 'border-amber-300 bg-amber-50 text-amber-900'
-                      : 'border-blue-200 bg-blue-50 text-blue-900'
-                  }`}
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em]">
-                        Tiempo restante
-                      </p>
-                      <p className="mt-1 text-4xl font-black tabular-nums tracking-tight">
-                        {timeLabel}
-                      </p>
-                    </div>
-                    <p className="max-w-xl text-sm font-medium leading-6">
-                      {room.status === 'settling'
-                        ? 'El tiempo terminó; esperando resultados pendientes del juez.'
-                        : room.status === 'running'
-                          ? 'El envío debe recibirse antes de que termine el reloj.'
-                          : 'La partida ya no acepta nuevos envíos.'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {(room.status === 'finished' || room.status === 'abandoned') && (
-                <FinalStandings scores={displayedScores} players={room.players} />
-              )}
-
+            <div className="duel-game-shell space-y-4">
               {matchState ? (
-                <div className="duel-room-live-grid grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  {/* Panel Izquierdo: Problema y Estado */}
-                  <div className="space-y-4">
-                    <div className="duel-problem-panel duel-room-panel rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <h3 className="text-xl font-black text-slate-950">
-                          Ronda {(matchState.problem_index ?? 0) + 1} / {room.config.num_problems}
-                        </h3>
-                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
-                          Python 3
-                        </span>
-                      </div>
-                      {problem ? (
-                        <div>
-                          <h4 className="mb-3 text-2xl font-black tracking-tight text-slate-950">
-                            {problem.title}
-                          </h4>
-                          <div className="mb-5 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700 sm:text-base">
-                            {problem.description}
-                          </div>
-
-                          <div className="space-y-2">
-                            {problem.examples.map((ex, i) => (
-                              <div
-                                key={i}
-                                className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700"
-                              >
-                                <div className="mb-1 overflow-x-auto rounded-xl bg-slate-100 p-3 font-mono text-xs leading-6">
-                                  <strong>Entrada:</strong> {ex.input}
-                                </div>
-                                <div className="overflow-x-auto rounded-xl bg-slate-100 p-3 font-mono text-xs leading-6">
-                                  <strong>Salida:</strong> {ex.output}
-                                </div>
-                                {ex.explanation && (
-                                  <div className="mt-2 text-xs leading-5 text-slate-500">
-                                    {ex.explanation}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="rounded-2xl bg-slate-50 p-4 text-sm font-medium text-slate-500">
-                          Cargando problema...
+                isInstructionsPhase ? (
+                  <section className="duel-instructions-card" aria-labelledby="instructions-title">
+                    <div className="duel-instructions-heading">
+                      <div>
+                        <p className="duel-game-eyebrow">
+                          Ronda {(matchState.problem_index ?? 0) + 1}
                         </p>
-                      )}
+                        <h2 id="instructions-title">Prepárate para programar</h2>
+                        <p>
+                          Lee el reto. El tiempo de juego inicia al terminar la cuenta regresiva.
+                        </p>
+                      </div>
+                      <div
+                        className="duel-instructions-countdown"
+                        aria-label={`Inicio en ${instructionsRemaining} segundos`}
+                      >
+                        <span>INICIO EN</span>
+                        <strong aria-live="off">
+                          00:{String(instructionsRemaining).padStart(2, '0')}
+                        </strong>
+                        <span>Python 3</span>
+                      </div>
+                    </div>
+                    <ProblemStatement
+                      problem={problem}
+                      problemIndex={matchState.problem_index ?? 0}
+                      totalProblems={room.config.num_problems}
+                    />
+                  </section>
+                ) : (
+                  <div className="duel-new-match-view">
+                    <div className="duel-game-toolbar" aria-label="Estado de la partida">
+                      <div className="duel-toolbar-metric">
+                        <span>Tiempo</span>
+                        <strong aria-live="off">{timeLabel}</strong>
+                      </div>
+                      <div className="duel-toolbar-metric">
+                        <span>Ronda</span>
+                        <strong>
+                          {(matchState.problem_index ?? 0) + 1}
+                          <small> / {room.config.num_problems}</small>
+                        </strong>
+                      </div>
+                      <button
+                        ref={challengeButtonRef}
+                        type="button"
+                        className="duel-challenge-trigger"
+                        aria-label="Abrir el reto"
+                        aria-haspopup="dialog"
+                        aria-expanded={isChallengeOpen}
+                        aria-controls="duel-challenge-dialog"
+                        onClick={() => setIsChallengeOpen((open) => !open)}
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M12 17v.01M9.1 9a3 3 0 1 1 5.2 2c-1.3 1.1-2.3 1.6-2.3 3"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                          />
+                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                        </svg>
+                        <span>Ver reto</span>
+                      </button>
                     </div>
 
-                    {room.status !== 'finished' && room.status !== 'abandoned' && (
-                      <LiveStandings scores={displayedScores} players={room.players} />
+                    {isChallengeOpen && (
+                      <section
+                        id="duel-challenge-dialog"
+                        role="dialog"
+                        aria-labelledby="challenge-title"
+                        className="duel-challenge-popover"
+                      >
+                        <div className="duel-challenge-popover-heading">
+                          <div>
+                            <p className="duel-game-eyebrow">
+                              Python 3 · Ronda {(matchState.problem_index ?? 0) + 1}
+                            </p>
+                            <h2 id="challenge-title">Reto actual</h2>
+                          </div>
+                          <button
+                            type="button"
+                            className="duel-challenge-close"
+                            aria-label="Cerrar el reto"
+                            onClick={() => {
+                              setIsChallengeOpen(false);
+                              challengeButtonRef.current?.focus();
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <ProblemStatement
+                          problem={problem}
+                          problemIndex={matchState.problem_index ?? 0}
+                          totalProblems={room.config.num_problems}
+                        />
+                      </section>
                     )}
 
-                    {matchSummary && (
-                      <VisibleCodeSnapshots
-                        summary={matchSummary}
-                        players={room.players}
-                        currentUserId={user.id}
-                      />
+                    {(room.status === 'finished' || room.status === 'abandoned') && (
+                      <FinalStandings scores={displayedScores} players={room.players} />
                     )}
+
+                    <div
+                      className={`duel-code-board-grid ${room.players.length === 2 ? 'duel-two-boards' : ''}`}
+                    >
+                      <PythonEditor
+                        value={sourceCode}
+                        onChange={setSourceCode}
+                        disabled={isSubmitting || room.status !== 'running'}
+                        playerName={user.gamertag}
+                        isRevealed={matchState.reveal_flags[user.id] ?? false}
+                        onToggleReveal={handleToggleReveal}
+                      />
+                      {room.players
+                        .filter((player) => player.user_id !== user.id)
+                        .map((player, index) => (
+                          <RivalCodeBoard
+                            key={player.user_id}
+                            player={player}
+                            status={matchState.players[player.user_id] ?? 'disconnected'}
+                            score={matchState.scores.find(
+                              (item) => item.user_id === player.user_id,
+                            )}
+                            sourceCode={rivalCode[player.user_id]}
+                            isRevealed={matchState.reveal_flags[player.user_id] ?? false}
+                            isCompact={index > 0}
+                          />
+                        ))}
+                    </div>
+
+                    <div className="duel-game-actions">
+                      <button
+                        onClick={handleSubmitCode}
+                        disabled={!canSubmit}
+                        className="duel-submit-button"
+                      >
+                        {room.status === 'finished' || room.status === 'abandoned'
+                          ? room.status === 'abandoned'
+                            ? 'Sala cerrada'
+                            : 'Partida finalizada'
+                          : isSubmitting
+                            ? 'Enviando...'
+                            : isAwaitingVerdict
+                              ? 'Esperando veredicto...'
+                              : 'Enviar solución'}
+                      </button>
+                      <p id="python-editor-help">
+                        Python 3 · El reto permanece accesible desde «Ver reto»; abrirlo no pausa el
+                        reloj.
+                      </p>
+                    </div>
 
                     {verdict && (
                       <div
@@ -733,59 +800,30 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         )}
                       </div>
                     )}
-
                     {isAwaitingVerdict && (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
                         <h3 className="mb-1 font-black">Envío recibido</h3>
                         <p className="text-sm leading-6">
                           El juez está evaluando tu solución. El resultado aparecerá aquí cuando
-                          termine la ejecución.
+                          termine.
                         </p>
                       </div>
                     )}
+                    {room.status !== 'finished' && room.status !== 'abandoned' && (
+                      <LiveStandings scores={displayedScores} players={room.players} />
+                    )}
+                    {matchSummary && (
+                      <VisibleCodeSnapshots
+                        summary={matchSummary}
+                        players={room.players}
+                        currentUserId={user.id}
+                      />
+                    )}
                   </div>
-
-                  {/* Panel Derecho: Editor */}
-                  <div className="space-y-4">
-                    <PythonEditor
-                      value={sourceCode}
-                      onChange={setSourceCode}
-                      disabled={isSubmitting || room.status !== 'running'}
-                    />
-
-                    <RivalBoards
-                      room={room}
-                      matchState={matchState}
-                      currentUserId={user.id}
-                      rivalCode={rivalCode}
-                      onToggleReveal={handleToggleReveal}
-                    />
-
-                    <button
-                      onClick={handleSubmitCode}
-                      disabled={!canSubmit}
-                      className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                    >
-                      {room.status === 'finished' || room.status === 'abandoned'
-                        ? room.status === 'abandoned'
-                          ? 'Sala cerrada'
-                          : 'Partida finalizada'
-                        : isSubmitting
-                          ? 'Enviando...'
-                          : isAwaitingVerdict
-                            ? 'Esperando veredicto...'
-                            : 'Enviar Solución'}
-                    </button>
-
-                    <p id="python-editor-help" className="text-xs leading-5 text-slate-500">
-                      Lenguaje habilitado en el MVP: Python 3. Evita enviar varias veces el mismo
-                      código mientras el juez procesa tu solución.
-                    </p>
-                  </div>
-                </div>
+                )
               ) : (
                 <p className="rounded-2xl bg-white p-5 text-sm font-medium text-slate-500">
-                  Sincronizando estado...
+                  Sincronizando partida con el servidor...
                 </p>
               )}
             </div>
@@ -800,6 +838,50 @@ function formatClock(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function ProblemStatement({
+  problem,
+  problemIndex,
+  totalProblems,
+}: {
+  problem: ProblemPublicResponse | null;
+  problemIndex: number;
+  totalProblems: number;
+}) {
+  if (!problem) {
+    return <p className="duel-problem-loading">Cargando el reto compartido…</p>;
+  }
+
+  return (
+    <div className="duel-problem-content">
+      <div className="duel-problem-meta">
+        <span>
+          Ronda {problemIndex + 1} / {totalProblems}
+        </span>
+        <span>Python 3</span>
+      </div>
+      <h3>{problem.title}</h3>
+      <p className="duel-problem-description">{problem.description}</p>
+      {problem.examples.length > 0 && (
+        <div className="duel-problem-examples">
+          {problem.examples.map((example, index) => (
+            <article key={`${index}-${example.input}`}>
+              <div>
+                <span>Entrada</span>
+                <pre>{example.input || '∅'}</pre>
+              </div>
+              <div>
+                <span>Salida</span>
+                <pre>{example.output || '∅'}</pre>
+              </div>
+              {example.explanation && <p>{example.explanation}</p>}
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function roomStatusLabel(status: RoomDetailsResponse['status']) {
@@ -1002,10 +1084,16 @@ function PythonEditor({
   value,
   onChange,
   disabled,
+  playerName,
+  isRevealed,
+  onToggleReveal,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  playerName: string;
+  isRevealed: boolean;
+  onToggleReveal: () => void;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
@@ -1013,12 +1101,22 @@ function PythonEditor({
   const lineCount = Math.max(1, value.split('\n').length);
 
   return (
-    <div className="duel-python-editor overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs">
-        <span className="font-mono font-bold text-slate-200">solution.py</span>
-        <span className="rounded-full bg-cyan-300/10 px-2 py-1 font-bold uppercase tracking-[0.14em] text-cyan-200">
-          Python 3 · IDE
-        </span>
+    <article className="duel-code-board duel-own-code-board duel-python-editor overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
+      <div className="duel-code-board-header flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs">
+        <div className="min-w-0">
+          <span className="duel-code-player-name block truncate font-mono font-black text-slate-100">
+            {playerName} <span>(Tú)</span>
+          </span>
+          <span className="font-mono text-slate-400">solution.py</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full bg-cyan-300/10 px-2 py-1 font-bold uppercase tracking-[0.14em] text-cyan-200">
+            Python 3
+          </span>
+          <button type="button" onClick={onToggleReveal} className="duel-code-visibility-button">
+            {isRevealed ? 'Ocultar mi código' : 'Mostrar mi código'}
+          </button>
+        </div>
       </div>
       <div className="relative flex h-[28rem] min-h-0">
         <div
@@ -1075,104 +1173,54 @@ function PythonEditor({
           />
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
-function RivalBoards({
-  room,
-  matchState,
-  currentUserId,
-  rivalCode,
-  onToggleReveal,
+function RivalCodeBoard({
+  player,
+  status,
+  score,
+  sourceCode,
+  isRevealed,
+  isCompact,
 }: {
-  room: RoomDetailsResponse;
-  matchState: MatchSyncPayload;
-  currentUserId: string;
-  rivalCode: Record<string, string>;
-  onToggleReveal: () => void;
+  player: RoomPlayerSummary;
+  status: MatchSyncPayload['players'][string];
+  score: PlayerScore | undefined;
+  sourceCode: string | undefined;
+  isRevealed: boolean;
+  isCompact: boolean;
 }) {
-  const scoreMap = new Map(matchState.scores.map((score) => [score.user_id, score]));
-  const rivals = room.players.filter((player) => player.user_id !== currentUserId);
-  const ownReveal = matchState.reveal_flags[currentUserId] ?? false;
-
   return (
-    <section className="duel-rival-boards rounded-3xl border border-slate-800 bg-slate-900 p-4 text-slate-100 shadow-lg sm:p-5">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-300">Rivales</p>
-          <h3 className="mt-1 text-lg font-black">Tableros y progreso</h3>
-          <p className="mt-1 text-xs leading-5 text-slate-400">
-            El estado se sincroniza en vivo. El código aparece en el resumen cuando su dueño lo
-            revela.
-          </p>
+    <article
+      className={`duel-code-board duel-rival-code-board ${isCompact ? 'duel-code-board-compact' : ''}`}
+    >
+      <header className="duel-code-board-header">
+        <div className="min-w-0">
+          <h3 className="duel-code-player-name truncate">{player.gamertag}</h3>
+          <span className="duel-code-player-status">
+            {status === 'connected' ? 'En línea' : 'Desconectado'}
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={onToggleReveal}
-          className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-400/20"
-        >
-          {ownReveal ? 'Ocultar mi código' : 'Revelar mi código'}
-        </button>
+        <span className="duel-code-score">
+          {score?.score ?? 0}
+          <small> pts</small>
+        </span>
+      </header>
+      <div className="duel-rival-code-frame">
+        {sourceCode === undefined ? (
+          <p className="duel-code-sync-status">Sincronizando código…</p>
+        ) : (
+          <pre
+            aria-label={`Código en vivo de ${player.gamertag}${isRevealed ? '' : ', desenfocado'}`}
+            className={`duel-rival-code ${isRevealed ? '' : 'duel-code-blurred'}`}
+            dangerouslySetInnerHTML={{ __html: highlightPython(sourceCode) || ' ' }}
+          />
+        )}
+        {!isRevealed && <span className="duel-code-blur-badge">Código desenfocado</span>}
       </div>
-      <div className="grid gap-3">
-        {rivals.length === 0 && <p className="text-sm text-slate-400">Esperando rivales…</p>}
-        {rivals.map((player) => {
-          const score = scoreMap.get(player.user_id);
-          const isRevealed = matchState.reveal_flags[player.user_id] ?? false;
-          const canViewCode =
-            isRevealed || room.status === 'finished' || room.status === 'abandoned';
-          const liveCode = rivalCode[player.user_id];
-          const status = matchState.players[player.user_id] ?? 'disconnected';
-          return (
-            <div
-              className="rounded-2xl border border-slate-700 bg-slate-950/70 p-3"
-              key={player.user_id}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate font-mono text-sm font-bold text-slate-100">
-                  {player.gamertag}
-                </span>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${status === 'connected' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-400/15 text-amber-200'}`}
-                >
-                  {status === 'connected' ? 'Conectado' : status}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <span>
-                  <b className="block text-base text-cyan-200">{score?.score ?? 0}</b>Puntos
-                </span>
-                <span>
-                  <b className="block text-base text-cyan-200">{score?.cases_total ?? 0}</b>Casos
-                </span>
-                <span>
-                  <b className="block text-base text-cyan-200">
-                    {(score?.current_problem_idx ?? 0) + 1}
-                  </b>
-                  Problema
-                </span>
-              </div>
-              <div className="mt-3 border-t border-slate-800 pt-3">
-                {canViewCode ? (
-                  liveCode === undefined ? (
-                    <p className="text-xs text-slate-400">Sincronizando código…</p>
-                  ) : (
-                    <pre
-                      aria-label={`Código de ${player.gamertag}`}
-                      className="max-h-48 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-xs leading-5 text-slate-100"
-                      dangerouslySetInnerHTML={{ __html: highlightPython(liveCode) || ' ' }}
-                    />
-                  )
-                ) : (
-                  <p className="text-xs text-slate-400">Código oculto por permisos.</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </article>
   );
 }
 

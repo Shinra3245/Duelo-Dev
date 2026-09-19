@@ -5,7 +5,7 @@ import {
   type MatchControlNotification,
 } from '@duelodev/shared';
 
-/** Publicador de cambios de ciclo de vida entre API y Realtime. */
+/** Publicador de cambios de ciclo de vida de partidas entre API y Realtime. */
 export interface MatchControlPublisher {
   publish(notification: MatchControlNotification): Promise<void>;
 }

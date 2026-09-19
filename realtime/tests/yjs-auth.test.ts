@@ -40,8 +40,6 @@ describe('Yjs Auth & Routing', () => {
         matchId: 'match-1',
         targetUserId: 'user-1',
         isMember: false,
-        isRevealed: false,
-        isFinished: false,
       });
 
       expect(decision.allowed).toBe(false);
@@ -55,8 +53,6 @@ describe('Yjs Auth & Routing', () => {
         matchId: 'match-1',
         targetUserId: 'user-1',
         isMember: true,
-        isRevealed: false,
-        isFinished: false,
       });
 
       expect(decision.allowed).toBe(true);
@@ -64,45 +60,12 @@ describe('Yjs Auth & Routing', () => {
       expect(decision.canWrite).toBe(true);
     });
 
-    it('deniega acceso a rival si el código no está revelado y la partida está en curso', () => {
+    it('concede lectura a rivales miembros aunque el código se presente desenfocado', () => {
       const decision = authorizeYjsAccess({
         auth: authRival,
         matchId: 'match-1',
         targetUserId: 'user-1',
         isMember: true,
-        isRevealed: false,
-        isFinished: false,
-      });
-
-      expect(decision.allowed).toBe(false);
-      expect(decision.canRead).toBe(false);
-      expect(decision.canWrite).toBe(false);
-      expect(decision.reason).toContain('no ha sido revelado');
-    });
-
-    it('concede solo lectura a rival si el código está revelado (is_revealed: true)', () => {
-      const decision = authorizeYjsAccess({
-        auth: authRival,
-        matchId: 'match-1',
-        targetUserId: 'user-1',
-        isMember: true,
-        isRevealed: true,
-        isFinished: false,
-      });
-
-      expect(decision.allowed).toBe(true);
-      expect(decision.canRead).toBe(true);
-      expect(decision.canWrite).toBe(false); // Rivales nunca escriben
-    });
-
-    it('concede solo lectura a rival si la partida ha finalizado', () => {
-      const decision = authorizeYjsAccess({
-        auth: authRival,
-        matchId: 'match-1',
-        targetUserId: 'user-1',
-        isMember: true,
-        isRevealed: false,
-        isFinished: true,
       });
 
       expect(decision.allowed).toBe(true);

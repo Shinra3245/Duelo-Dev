@@ -126,6 +126,10 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       roomCreationPolicyRepo,
       userRepo,
       authService,
+      instructionsDurationMs: options.roomInstructionsDurationMs ?? 0,
+      ...(options.matchControlPublisher
+        ? { matchControlPublisher: options.matchControlPublisher }
+        : {}),
       auditService,
     });
   const submissionService =

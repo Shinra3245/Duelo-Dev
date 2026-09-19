@@ -68,7 +68,9 @@ test('un jugador invitado puede entrar y conservar su gamertag', async ({ page }
   await page.getByRole('button', { name: 'Jugar como Invitado' }).click();
 
   await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Crear Sala' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Crear Sala' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Unirse a sala' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Puntos', exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Código de sala' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Salir' }).click();
@@ -104,6 +106,9 @@ test('un jugador registrado puede salir y volver a entrar desde la landing', asy
 
   await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
   await expect(page.getByText('Cuenta registrada', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Crear Sala' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Puntos', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rondas', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Salir' }).click();
   await page.getByRole('button', { name: 'Ingresar', exact: true }).click();

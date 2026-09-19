@@ -274,6 +274,7 @@ export class InMemoryRoomRepository implements RoomRepository {
       winner_id: input.winner_id ?? null,
       finish_reason: input.finish_reason ?? null,
       started_at: input.started_at ?? null,
+      instructions_ends_at: input.instructions_ends_at ?? null,
       ends_at: input.ends_at ?? null,
       finished_at: input.finished_at ?? null,
       created_at: input.created_at ?? now,
@@ -330,6 +331,7 @@ export class InMemoryRoomRepository implements RoomRepository {
         MatchEntity,
         | 'status'
         | 'started_at'
+        | 'instructions_ends_at'
         | 'ends_at'
         | 'finished_at'
         | 'winner_id'
@@ -347,6 +349,9 @@ export class InMemoryRoomRepository implements RoomRepository {
       ...existing,
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.started_at !== undefined ? { started_at: input.started_at } : {}),
+      ...(input.instructions_ends_at !== undefined
+        ? { instructions_ends_at: input.instructions_ends_at }
+        : {}),
       ...(input.ends_at !== undefined ? { ends_at: input.ends_at } : {}),
       ...(input.finished_at !== undefined ? { finished_at: input.finished_at } : {}),
       ...(input.winner_id !== undefined ? { winner_id: input.winner_id } : {}),

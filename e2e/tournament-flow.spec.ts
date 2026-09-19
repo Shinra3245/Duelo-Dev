@@ -37,25 +37,32 @@ test.describe('flujo de torneo en navegador', () => {
       await expect(host.getByText('Listo', { exact: true }).first()).toBeVisible();
       await host.getByRole('button', { name: 'Empezar partida' }).click();
 
-      await expect(host.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
-      await expect(rival.getByRole('heading', { name: 'Partida en curso' })).toBeVisible();
+      await expect(host.getByRole('heading', { name: 'Prepárate para programar' })).toBeVisible();
+      await expect(rival.getByRole('heading', { name: 'Prepárate para programar' })).toBeVisible();
+      await expect(host.locator('.duel-problem-content')).toBeVisible();
+      await expect(rival.locator('.duel-problem-content')).toBeVisible();
       await expect(host.locator('.duel-room-status')).toHaveText('En curso');
+      const countdownStart = await host
+        .locator('.duel-instructions-countdown strong')
+        .textContent();
+      expect(countdownStart).toMatch(/^00:([0-2]\d|30)$/);
 
-      const desktopColumns = await host
-        .locator('.duel-room-live-grid > div')
-        .evaluateAll((elements) =>
-          elements.map((element) => {
-            const rect = element.getBoundingClientRect();
-            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-          }),
-        );
-      expect(desktopColumns).toHaveLength(2);
-      expect(
-        desktopColumns[0]!.left < desktopColumns[1]!.right &&
-          desktopColumns[0]!.right > desktopColumns[1]!.left &&
-          desktopColumns[0]!.top < desktopColumns[1]!.bottom &&
-          desktopColumns[0]!.bottom > desktopColumns[1]!.top,
-      ).toBe(false);
+      await expect(host.getByLabel('Editor de solución Python')).toBeEnabled({ timeout: 45_000 });
+      await expect(rival.getByLabel('Editor de solución Python')).toBeEnabled({ timeout: 45_000 });
+      const hostBoards = host.locator('.duel-code-board-grid .duel-code-board');
+      const rivalBoards = rival.locator('.duel-code-board-grid .duel-code-board');
+      await expect(hostBoards).toHaveCount(2);
+      await expect(rivalBoards).toHaveCount(2);
+      await expect(hostBoards.nth(0).locator('.duel-code-player-name')).toContainText(hostGamertag);
+      await expect(hostBoards.nth(1).locator('.duel-code-player-name')).toContainText(
+        rivalGamertag,
+      );
+      await expect(rivalBoards.nth(0).locator('.duel-code-player-name')).toContainText(
+        rivalGamertag,
+      );
+      await expect(rivalBoards.nth(1).locator('.duel-code-player-name')).toContainText(
+        hostGamertag,
+      );
 
       await host.setViewportSize({ width: 390, height: 844 });
       await expect(host.locator('.duel-standings-mobile')).toBeVisible();
@@ -68,39 +75,43 @@ test.describe('flujo de torneo en navegador', () => {
       ).toBe(true);
       await host.setViewportSize({ width: 1280, height: 720 });
 
-      const hostRivals = host.locator('section').filter({ hasText: 'Tableros y progreso' });
-      const rivalRivals = rival.locator('section').filter({ hasText: 'Tableros y progreso' });
-      await expect(hostRivals.getByText(rivalGamertag, { exact: true })).toBeVisible();
-      await expect(rivalRivals.getByText(hostGamertag, { exact: true })).toBeVisible();
-      await expect(hostRivals.getByText('Conectado', { exact: true })).toBeVisible();
-      await expect(rivalRivals.getByText('Conectado', { exact: true })).toBeVisible();
-      await expect(
-        hostRivals.getByText('Código oculto por permisos.', { exact: true }),
-      ).toBeVisible();
-      await expect(
-        rivalRivals.getByText('Código oculto por permisos.', { exact: true }),
-      ).toBeVisible();
+      await host.getByRole('button', { name: 'Abrir el reto' }).click();
+      const challengeDialog = host.getByRole('dialog', { name: 'Reto actual' });
+      await expect(challengeDialog).toBeVisible();
+      const timeBeforeChallenge = await host
+        .locator('.duel-toolbar-metric strong')
+        .first()
+        .textContent();
+      await host.waitForTimeout(1_200);
+      const timeWhileChallengeOpen = await host
+        .locator('.duel-toolbar-metric strong')
+        .first()
+        .textContent();
+      expect(timeWhileChallengeOpen).not.toBe(timeBeforeChallenge);
+      await host.getByRole('button', { name: 'Cerrar el reto' }).click();
+      await expect(challengeDialog).toBeHidden();
 
       const hostSolution =
         'import sys\nvalores = list(map(int, sys.stdin.read().split()))\nprint(sum(valores[1:]))\n';
       await expect(host.getByLabel('Editor de solución Python')).toBeEnabled();
       await host.getByLabel('Editor de solución Python').fill(hostSolution);
-      await expect(
-        rivalRivals.getByText('Código oculto por permisos.', { exact: true }),
-      ).toBeVisible();
+      const blurredHostCode = rival.locator('.duel-rival-code-board .duel-rival-code');
+      await expect(blurredHostCode).toContainText('import sys');
+      await expect(blurredHostCode).toHaveClass(/duel-code-blurred/);
 
-      await host.getByRole('button', { name: 'Revelar mi código' }).click();
-      const revealedHostCode = rival.getByLabel(`Código de ${hostGamertag}`);
+      await host.getByRole('button', { name: 'Mostrar mi código' }).click();
+      const revealedHostCode = rival.locator('.duel-rival-code-board .duel-rival-code');
       await expect(revealedHostCode).toBeVisible();
       await expect(revealedHostCode).toContainText('import sys');
       await expect(revealedHostCode).toContainText('sum(valores[1:])');
+      await expect(revealedHostCode).not.toHaveClass(/duel-code-blurred/);
 
-      await host.getByRole('button', { name: 'Enviar Solución' }).click();
+      await host.getByRole('button', { name: 'Enviar solución' }).click();
 
       await expect(host.getByText('Último veredicto: AC', { exact: true })).toBeVisible({
         timeout: 90_000,
       });
-      await expect(host.getByRole('heading', { name: 'Resultados finales' })).toBeVisible({
+      await expect(host.getByRole('heading', { name: 'Tabla final' })).toBeVisible({
         timeout: 30_000,
       });
       const disabledButtonContrast = await host

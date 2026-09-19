@@ -37,4 +37,37 @@ describe('sincronización de control administrativo', () => {
 
     expect(closeMatchFromAdmin).toHaveBeenCalledWith('match-1', 4);
   });
+
+  it('conecta el aviso de inicio persistido con la orquestación de partida', async () => {
+    let listener: MatchControlListener | undefined;
+    const matchStore = {
+      async getMatch() {
+        return { problem_ids: ['problem-1', 'problem-2'] };
+      },
+    };
+    const subscriber = {
+      subscribe(next: MatchControlListener) {
+        listener = next;
+        return () => {
+          listener = undefined;
+        };
+      },
+    };
+    const server = createRealtimeServer({
+      matchStore: matchStore as never,
+      matchControlSubscriber: subscriber,
+    });
+    close = () => void server.close();
+    const startMatch = vi.spyOn(server.matchHub, 'startMatch').mockResolvedValue();
+
+    await listener?.({
+      schema_version: 1,
+      type: 'match_started',
+      match_id: 'match-1',
+      state_version: 4,
+      issued_at_ms: Date.now(),
+    });
+
+    expect(startMatch).toHaveBeenCalledWith('match-1', ['problem-1', 'problem-2']);
+  });
 });

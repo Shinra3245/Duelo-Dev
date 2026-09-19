@@ -37,6 +37,7 @@ describe('contratos de cola del juez y Redis Streams', () => {
     };
 
     expect(isMatchControlNotification(notification)).toBe(true);
+    expect(isMatchControlNotification({ ...notification, type: 'match_started' })).toBe(true);
     expect(isMatchControlNotification({ ...notification, state_version: 0 })).toBe(false);
     expect(isMatchControlNotification({ ...notification, type: 'unknown' })).toBe(false);
     expect(isMatchControlNotification({ ...notification, match_id: '' })).toBe(false);

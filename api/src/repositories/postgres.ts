@@ -99,6 +99,9 @@ function mapMatchRow(row: Record<string, unknown>): MatchEntity {
     started_at: row['started_at']
       ? new Date(row['started_at'] as string | Date).toISOString()
       : null,
+    instructions_ends_at: row['instructions_ends_at']
+      ? new Date(row['instructions_ends_at'] as string | Date).toISOString()
+      : null,
     ends_at: row['ends_at'] ? new Date(row['ends_at'] as string | Date).toISOString() : null,
     finished_at: row['finished_at']
       ? new Date(row['finished_at'] as string | Date).toISOString()
@@ -399,10 +402,10 @@ export class PostgresRoomRepository implements RoomRepository {
     const res = await this.pool.query(
       `INSERT INTO matches (
         id, room_code, mode, status, config, host_id, state_version, admission_seq,
-        winner_ids, winner_id, finish_reason, started_at, ends_at, finished_at, created_at
+        winner_ids, winner_id, finish_reason, started_at, instructions_ends_at, ends_at, finished_at, created_at
       ) VALUES (
         $1, UPPER($2), $3, $4, $5::jsonb, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14, COALESCE($15, clock_timestamp())
+        $9, $10, $11, $12, $13, $14, $15, COALESCE($16, clock_timestamp())
       ) RETURNING *`,
       [
         id,
@@ -417,6 +420,7 @@ export class PostgresRoomRepository implements RoomRepository {
         input.winner_id ?? null,
         input.finish_reason ?? null,
         input.started_at ? new Date(input.started_at) : null,
+        input.instructions_ends_at ? new Date(input.instructions_ends_at) : null,
         input.ends_at ? new Date(input.ends_at) : null,
         input.finished_at ? new Date(input.finished_at) : null,
         input.created_at ? new Date(input.created_at) : null,
@@ -473,6 +477,7 @@ export class PostgresRoomRepository implements RoomRepository {
         MatchEntity,
         | 'status'
         | 'started_at'
+        | 'instructions_ends_at'
         | 'ends_at'
         | 'finished_at'
         | 'winner_id'
@@ -494,6 +499,10 @@ export class PostgresRoomRepository implements RoomRepository {
     if (input.started_at !== undefined) {
       fields.push(`started_at = $${idx++}`);
       values.push(input.started_at ? new Date(input.started_at) : null);
+    }
+    if (input.instructions_ends_at !== undefined) {
+      fields.push(`instructions_ends_at = $${idx++}`);
+      values.push(input.instructions_ends_at ? new Date(input.instructions_ends_at) : null);
     }
     if (input.ends_at !== undefined) {
       fields.push(`ends_at = $${idx++}`);

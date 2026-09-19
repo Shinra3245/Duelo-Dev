@@ -51,6 +51,7 @@ export interface RealtimeMatchSession {
   scores: PlayerScore[];
   created_at: string;
   started_at?: string | undefined;
+  instructions_ends_at?: number | undefined;
   finished_at?: string | undefined;
   winner_ids?: string[] | undefined;
   problem_ids?: string[] | undefined;

@@ -142,6 +142,7 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       redisUrl: TEST_REDIS_URL,
       authSecret: TEST_AUTH_SECRET,
       seedPilotProblems: true,
+      roomInstructionsDurationMs: 0,
     });
 
     const { port: apiPort } = await apiApp.start(0, '127.0.0.1');

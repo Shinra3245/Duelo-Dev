@@ -343,6 +343,62 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
       expect(data.error.code).toBe(ERROR_CODES.NOT_A_PLAYER);
     });
 
+    it('rechaza envíos durante la ventana de instrucciones sin consumir el cooldown', async () => {
+      const host = await registerUser('sub-instructions-host@test.com', 'SubInstructionsHost');
+      const rival = await registerUser('sub-instructions-rival@test.com', 'SubInstructionsRival');
+      const createRes = await fetch(`${baseUrl}/api/v1/rooms`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: host.cookieHeader,
+        },
+        body: JSON.stringify({ config: validPuntosConfig }),
+      });
+      const room = (await createRes.json()) as RoomCreatedResponse;
+      await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/join`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: rival.cookieHeader,
+        },
+        body: JSON.stringify({ gamertag: 'SubInstructionsRival' }),
+      });
+      await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/start`, {
+        method: 'POST',
+        headers: { Cookie: host.cookieHeader },
+      });
+      await app.ctx.roomRepo.updateMatch(room.match_id, {
+        instructions_ends_at: new Date(Date.now() + 30_000).toISOString(),
+      });
+
+      const payload = {
+        match_id: room.match_id,
+        round_id: testRoundId,
+        problem_id: testProblemId,
+        language: 'python',
+        source_code: 'print("ready")',
+      };
+      const early = await fetch(`${baseUrl}/api/v1/submissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: host.cookieHeader },
+        body: JSON.stringify(payload),
+      });
+      expect(early.status).toBe(409);
+      expect(((await early.json()) as ApiError).error.code).toBe(
+        ERROR_CODES.MATCH_INSTRUCTIONS_ACTIVE,
+      );
+
+      await app.ctx.roomRepo.updateMatch(room.match_id, {
+        instructions_ends_at: new Date(Date.now() - 1_000).toISOString(),
+      });
+      const onTime = await fetch(`${baseUrl}/api/v1/submissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: host.cookieHeader },
+        body: JSON.stringify(payload),
+      });
+      expect(onTime.status).toBe(202);
+    });
+
     it('admite el envío exitosamente con 202 Accepted, secuencia atómica e idempotencia', async () => {
       const host = await registerUser('sub-ok-host@test.com', 'SubOkHost');
       const guest = await registerUser('sub-ok-guest@test.com', 'SubOkGuest');

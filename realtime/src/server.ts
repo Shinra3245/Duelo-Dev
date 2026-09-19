@@ -87,7 +87,14 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
 
   const unsubscribeMatchControl = options.matchControlSubscriber?.subscribe(
     async (notification) => {
-      await matchHub.closeMatchFromAdmin(notification.match_id, notification.state_version);
+      if (notification.type === 'match_closed') {
+        await matchHub.closeMatchFromAdmin(notification.match_id, notification.state_version);
+        return;
+      }
+      const match = await matchStore.getMatch(notification.match_id);
+      if (match) {
+        await matchHub.startMatch(notification.match_id, match.problem_ids ?? []);
+      }
     },
   );
 
