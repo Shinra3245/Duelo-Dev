@@ -677,6 +677,72 @@ describe('MatchHub', () => {
       expect(begin2Payload.index).toBe(0);
     });
 
+    it('mantiene el mismo reto inicial y avanza solo al jugador que resuelve en modo Rondas', async () => {
+      const matchId = 'match-rondas-independent-progress';
+      const session = createSampleSession(matchId);
+      session.status = 'lobby';
+      session.mode = 'rondas';
+      session.config = {
+        mode: 'rondas',
+        num_problems: 3,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 300,
+        target: 3,
+      };
+      await store.saveMatch(session);
+
+      const client1 = createMockClient('sock-1', 'user-1', 'coder1');
+      const client2 = createMockClient('sock-2', 'user-2', 'coder2');
+      hub.registerClient(client1);
+      hub.registerClient(client2);
+      await hub.handleJoinMatch(client1, { match_id: matchId });
+      await hub.handleJoinMatch(client2, { match_id: matchId });
+
+      await hub.startMatch(matchId, ['p1', 'p2', 'p3']);
+
+      const opening1 = client1.emittedEvents.find((event) => event.event === S2C.PROBLEM_BEGIN)
+        ?.payload as ProblemBeginPayload;
+      const opening2 = client2.emittedEvents.find((event) => event.event === S2C.PROBLEM_BEGIN)
+        ?.payload as ProblemBeginPayload;
+      expect(opening1.problem_id).toBe('p1');
+      expect(opening2.problem_id).toBe(opening1.problem_id);
+      expect(opening1.index).toBe(0);
+      expect(opening2.index).toBe(0);
+      expect(opening1.round_id).not.toBe(opening2.round_id);
+
+      client1.emittedEvents.length = 0;
+      client2.emittedEvents.length = 0;
+
+      await hub.processSubmissionVerdict(matchId, {
+        submission_id: 'sub-rondas-first-ac',
+        user_id: 'user-1',
+        round_id: playerRoundId(matchId, 'user-1', 0),
+        problem_id: 'p1',
+        admission_seq: 1,
+        received_at: 1000,
+        verdict: 'AC',
+        passed_cases: 10,
+        total_cases: 10,
+        exec_time_ms: 100,
+      });
+
+      const nextForPlayer1 = client1.emittedEvents.find(
+        (event) => event.event === S2C.PROBLEM_BEGIN,
+      )?.payload as ProblemBeginPayload;
+      const nextForPlayer2 = client2.emittedEvents.find(
+        (event) => event.event === S2C.PROBLEM_BEGIN,
+      );
+      expect(nextForPlayer1.problem_id).toBe('p2');
+      expect(nextForPlayer1.index).toBe(1);
+      expect(nextForPlayer1.round_id).toBe(playerRoundId(matchId, 'user-1', 1));
+      expect(nextForPlayer2).toBeUndefined();
+
+      const updatedSession = await store.getMatch(matchId);
+      expect(updatedSession?.players.get('user-1')?.current_problem_idx).toBe(1);
+      expect(updatedSession?.players.get('user-2')?.current_problem_idx).toBe(0);
+    });
+
     it('processSubmissionVerdict en modo Puntos: AC adjudica punto, avanza ronda y difunde PROBLEM_BEGIN', async () => {
       const session = createSampleSession('match-puntos-verdict');
       session.status = 'lobby';
