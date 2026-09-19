@@ -47,6 +47,7 @@ export default function Home() {
 
   // Room state
   const [roomCode, setRoomCode] = useState('');
+  const [registeredUsersCanCreateRooms, setRegisteredUsersCanCreateRooms] = useState(true);
 
   // Loading states
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -107,6 +108,10 @@ export default function Home() {
   );
 
   useEffect(() => {
+    void api.rooms
+      .policy()
+      .then((policy) => setRegisteredUsersCanCreateRooms(policy.registered_users_can_create_rooms))
+      .catch(() => undefined);
     api.auth
       .me()
       .then((res) => setUser(res.user))
@@ -523,32 +528,45 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="player-access-subsection border-t border-slate-200 pt-5">
-                <h2 className="player-access-subheading mb-3 text-xl font-black text-slate-950">
-                  Crear Sala
-                </h2>
-                <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
-                  Disponible para el anfitrión del torneo. Elige el formato de la partida.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleCreateRoom('puntos')}
-                    disabled={isCreatingRoom}
-                    aria-busy={isCreatingRoom}
-                    className="player-access-points rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
-                  >
-                    {isCreatingRoom ? 'Creando...' : 'Puntos'}
-                  </button>
-                  <button
-                    onClick={() => handleCreateRoom('rondas')}
-                    disabled={isCreatingRoom}
-                    aria-busy={isCreatingRoom}
-                    className="player-access-rounds rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
-                  >
-                    {isCreatingRoom ? 'Creando...' : 'Rondas'}
-                  </button>
+              {user.role !== 'guest' && (
+                <div className="player-access-subsection border-t border-slate-200 pt-5">
+                  <h2 className="player-access-subheading mb-3 text-xl font-black text-slate-950">
+                    Crear Sala
+                  </h2>
+                  <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
+                    {registeredUsersCanCreateRooms || user.role === 'admin'
+                      ? 'Disponible para el anfitrión del torneo. Elige el formato de la partida.'
+                      : 'Por el momento no puedes crear partidas, solo unirte con el codigo'}
+                  </p>
+                  {registeredUsersCanCreateRooms || user.role === 'admin' ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => handleCreateRoom('puntos')}
+                        disabled={isCreatingRoom}
+                        aria-busy={isCreatingRoom}
+                        className="player-access-points rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                      >
+                        {isCreatingRoom ? 'Creando...' : 'Puntos'}
+                      </button>
+                      <button
+                        onClick={() => handleCreateRoom('rondas')}
+                        disabled={isCreatingRoom}
+                        aria-busy={isCreatingRoom}
+                        className="player-access-rounds rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                      >
+                        {isCreatingRoom ? 'Creando...' : 'Rondas'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
+              )}
+
+              {user.role === 'guest' && (
+                <p className="player-access-note rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                  Como invitado puedes unirte con un código. Para crear una partida, registra una
+                  cuenta.
+                </p>
+              )}
 
               {user.role === 'guest' && (
                 <div className="player-access-subsection border-t border-slate-200 pt-5">

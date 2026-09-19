@@ -9,6 +9,7 @@ import {
   PostgresProblemRepository,
   PostgresRefreshTokenRepository,
   PostgresRoomRepository,
+  PostgresRoomCreationPolicyRepository,
   PostgresSubmissionRepository,
   PostgresUserRepository,
 } from './repositories/postgres.js';
@@ -73,6 +74,7 @@ export async function createProductionApp(
   const userRepo = new PostgresUserRepository(pool);
   const refreshTokenRepo = new PostgresRefreshTokenRepository(pool);
   const roomRepo = new PostgresRoomRepository(pool);
+  const roomCreationPolicyRepo = new PostgresRoomCreationPolicyRepository(pool);
   const problemRepo = new PostgresProblemRepository(pool);
   const submissionRepo = new PostgresSubmissionRepository(pool);
   const eventRepo = new PostgresEventRepository(pool);
@@ -92,6 +94,7 @@ export async function createProductionApp(
     userRepo,
     refreshTokenRepo,
     roomRepo,
+    roomCreationPolicyRepo,
     problemRepo,
     submissionRepo,
     eventRepo,

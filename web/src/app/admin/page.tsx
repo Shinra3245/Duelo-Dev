@@ -72,20 +72,23 @@ export default function AdminPage() {
   const [config, setConfig] = useState(defaultConfig);
   const [winnerSelections, setWinnerSelections] = useState<Record<string, string[]>>({});
   const [roomStatusFilter, setRoomStatusFilter] = useState<RoomStatusFilter>('all');
+  const [registeredUsersCanCreateRooms, setRegisteredUsersCanCreateRooms] = useState(true);
 
   const activeRooms = rooms.filter(isActiveRoom);
   const visibleRooms =
     roomStatusFilter === 'all' ? rooms : rooms.filter((room) => room.status === roomStatusFilter);
 
   const loadAdminData = async () => {
-    const [roomsResponse, rankingResponse, playersResponse] = await Promise.all([
+    const [roomsResponse, rankingResponse, playersResponse, roomPolicy] = await Promise.all([
       api.admin.rooms(),
       api.admin.ranking(),
       api.admin.players(),
+      api.admin.roomPolicy(),
     ]);
     setRooms(roomsResponse.rooms);
     setRanking(rankingResponse.ranking);
     setPlayers(playersResponse.players);
+    setRegisteredUsersCanCreateRooms(roomPolicy.registered_users_can_create_rooms);
   };
 
   useEffect(() => {
@@ -198,6 +201,19 @@ export default function AdminPage() {
       await loadAdminData();
     } catch (requestError: unknown) {
       setError(getErrorMessage(requestError, 'No se pudieron cerrar las salas activas.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRoomCreationPolicy = async (enabled: boolean) => {
+    setBusy(true);
+    setError('');
+    try {
+      const policy = await api.admin.setRoomCreationEnabled(enabled);
+      setRegisteredUsersCanCreateRooms(policy.registered_users_can_create_rooms);
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'No se pudo guardar la política de creación.'));
     } finally {
       setBusy(false);
     }
@@ -347,6 +363,31 @@ export default function AdminPage() {
             disabled={busy || activeRooms.length === 0}
           >
             {busy ? 'Procesando…' : `Cerrar todas las salas activas (${activeRooms.length})`}
+          </button>
+        </section>
+
+        <section className="admin-panel" aria-labelledby="room-policy-title">
+          <div className="admin-section-heading">
+            <div>
+              <p className="admin-kicker">ACCESO DE JUGADORES</p>
+              <h2 id="room-policy-title">Creación de partidas</h2>
+            </div>
+            <span className="admin-badge">
+              {registeredUsersCanCreateRooms ? 'Habilitada' : 'Deshabilitada'}
+            </span>
+          </div>
+          <p className="admin-muted">
+            Los invitados sólo pueden unirse. Al deshabilitar esta opción, las cuentas registradas
+            todavía podrán entrar con un código de sala.
+          </p>
+          <button
+            className={registeredUsersCanCreateRooms ? 'admin-danger' : 'admin-secondary'}
+            type="button"
+            onClick={() => void handleRoomCreationPolicy(!registeredUsersCanCreateRooms)}
+            disabled={busy}
+            aria-pressed={registeredUsersCanCreateRooms}
+          >
+            {registeredUsersCanCreateRooms ? 'Deshabilitar creación' : 'Habilitar creación'}
           </button>
         </section>
 

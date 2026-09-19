@@ -10,6 +10,7 @@ import {
   InMemoryProblemRepository,
   InMemoryRefreshTokenRepository,
   InMemoryRoomRepository,
+  InMemoryRoomCreationPolicyRepository,
   InMemorySubmissionRepository,
   InMemoryUserRepository,
 } from './repositories/memory.js';
@@ -65,6 +66,8 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const userRepo = options.userRepo ?? new InMemoryUserRepository();
   const refreshTokenRepo = options.refreshTokenRepo ?? new InMemoryRefreshTokenRepository();
   const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
+  const roomCreationPolicyRepo =
+    options.roomCreationPolicyRepo ?? new InMemoryRoomCreationPolicyRepository();
   const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository();
   const problemRepo = options.problemRepo ?? new InMemoryProblemRepository();
   const eventRepo = options.eventRepo ?? new InMemoryEventRepository();
@@ -74,6 +77,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     options.adminService ??
     new AdminService({
       roomRepo,
+      roomCreationPolicyRepo,
       userRepo,
       auditService,
       ...(options.matchControlPublisher
@@ -119,6 +123,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     options.roomService ??
     new RoomService({
       roomRepo,
+      roomCreationPolicyRepo,
       userRepo,
       authService,
       auditService,
@@ -162,6 +167,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     userRepo,
     refreshTokenRepo,
     roomRepo,
+    roomCreationPolicyRepo,
     submissionRepo,
     problemRepo,
     eventRepo,

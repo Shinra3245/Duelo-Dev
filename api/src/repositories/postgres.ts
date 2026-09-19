@@ -28,10 +28,31 @@ import type {
   RejectedMessageEntity,
   RejectedMessageRepository,
   RoomRepository,
+  RoomCreationPolicyRepository,
   SubmissionRepository,
   UpdateUserInput,
   UserRepository,
 } from './types.js';
+
+export class PostgresRoomCreationPolicyRepository implements RoomCreationPolicyRepository {
+  constructor(private readonly pool: PgPool) {}
+
+  async getRegisteredUsersCanCreateRooms(): Promise<boolean> {
+    const result = await this.pool.query(
+      "SELECT enabled FROM application_settings WHERE setting_key = 'registered_room_creation'",
+    );
+    return result.rows[0]?.['enabled'] === true;
+  }
+
+  async setRegisteredUsersCanCreateRooms(enabled: boolean): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO application_settings (setting_key, enabled, updated_at)
+       VALUES ('registered_room_creation', $1, clock_timestamp())
+       ON CONFLICT (setting_key) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
+      [enabled],
+    );
+  }
+}
 
 function mapUserRow(row: Record<string, unknown>): UserEntity {
   return {

@@ -10,7 +10,11 @@ import {
   type UserEntity,
 } from '@duelodev/shared';
 import { HttpError } from '../plugins/body-parser.js';
-import type { RoomRepository, UserRepository } from '../repositories/types.js';
+import type {
+  RoomCreationPolicyRepository,
+  RoomRepository,
+  UserRepository,
+} from '../repositories/types.js';
 import type { AuditService } from './audit.js';
 import { hashPassword } from './password.js';
 import type { MatchControlPublisher } from '../queue/control.js';
@@ -22,6 +26,7 @@ const ACTIVE_MATCH_STATUSES: MatchStatus[] = ['lobby', 'running', 'settling'];
 
 export interface AdminServiceOptions {
   roomRepo: RoomRepository;
+  roomCreationPolicyRepo?: RoomCreationPolicyRepository;
   userRepo: UserRepository;
   auditService?: AuditService;
   matchControlPublisher?: MatchControlPublisher;
@@ -66,12 +71,14 @@ function toAdminPlayer(
 
 export class AdminService {
   private readonly roomRepo: RoomRepository;
+  private readonly roomCreationPolicyRepo: RoomCreationPolicyRepository | undefined;
   private readonly userRepo: UserRepository;
   private readonly auditService: AuditService | undefined;
   private readonly matchControlPublisher: MatchControlPublisher | undefined;
 
   constructor(options: AdminServiceOptions) {
     this.roomRepo = options.roomRepo;
+    this.roomCreationPolicyRepo = options.roomCreationPolicyRepo;
     this.userRepo = options.userRepo;
     this.auditService = options.auditService;
     this.matchControlPublisher = options.matchControlPublisher;
@@ -85,6 +92,31 @@ export class AdminService {
         ? await this.requireRoomListing({ limit, offset })
         : await this.requireRoomListing({ limit, offset, status: options.status });
     return Promise.all(matches.map((match) => this.toRoomSummary(match)));
+  }
+
+  async getRoomCreationPolicy(): Promise<{ registered_users_can_create_rooms: boolean }> {
+    return {
+      registered_users_can_create_rooms:
+        (await this.roomCreationPolicyRepo?.getRegisteredUsersCanCreateRooms()) ?? true,
+    };
+  }
+
+  async setRegisteredUsersCanCreateRooms(
+    enabled: boolean,
+    adminUserId: string,
+  ): Promise<{ registered_users_can_create_rooms: boolean }> {
+    if (!this.roomCreationPolicyRepo) {
+      throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+    }
+    const previous = await this.roomCreationPolicyRepo.getRegisteredUsersCanCreateRooms();
+    await this.roomCreationPolicyRepo.setRegisteredUsersCanCreateRooms(enabled);
+    if (previous !== enabled) {
+      await this.auditService?.record('user', adminUserId, 'room_creation_policy_changed', {
+        enabled,
+        previous,
+      });
+    }
+    return { registered_users_can_create_rooms: enabled };
   }
 
   async listPlayers(

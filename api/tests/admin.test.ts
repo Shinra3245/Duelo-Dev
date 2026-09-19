@@ -246,4 +246,66 @@ describe('Panel administrativo protegido', () => {
       true,
     );
   });
+
+  it('administra la política de creación y deja disponibles las uniones', async () => {
+    const policy = await fetch(`${baseUrl}/api/v1/admin/room-policy`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(policy.status).toBe(200);
+    expect((await policy.json()).registered_users_can_create_rooms).toBe(true);
+
+    const created = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const room = (await created.json()) as { room_code: string };
+
+    const changed = await fetch(`${baseUrl}/api/v1/admin/room-policy`, {
+      method: 'PUT',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ registered_users_can_create_rooms: false }),
+    });
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).registered_users_can_create_rooms).toBe(false);
+
+    const forbiddenCreate = await fetch(`${baseUrl}/api/v1/rooms`, {
+      method: 'POST',
+      headers: { Cookie: userCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(forbiddenCreate.status).toBe(403);
+    expect((await forbiddenCreate.json()).error.code).toBe(ERROR_CODES.ROOM_CREATION_DISABLED);
+
+    const allowedJoin = await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/join`, {
+      method: 'POST',
+      headers: { Cookie: userCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamertag: 'player-admin-test' }),
+    });
+    expect(allowedJoin.status).toBe(200);
+
+    await fetch(`${baseUrl}/api/v1/admin/room-policy`, {
+      method: 'PUT',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ registered_users_can_create_rooms: true }),
+    });
+    expect(await app.ctx.eventRepo!.countEvents('room_creation_policy_changed')).toBe(2);
+  });
 });

@@ -151,6 +151,11 @@ export interface RoomRepository {
   allocateNextAdmissionSeq?(matchId: string): Promise<number>;
 }
 
+export interface RoomCreationPolicyRepository {
+  getRegisteredUsersCanCreateRooms(): Promise<boolean>;
+  setRegisteredUsersCanCreateRooms(enabled: boolean): Promise<void>;
+}
+
 export interface CreateMatchCodeSnapshotInput {
   id?: string;
   match_id: string;

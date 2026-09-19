@@ -282,6 +282,10 @@ export interface AdminCloseRoomsResponse {
   audited: boolean;
 }
 
+export interface RoomCreationPolicyResponse {
+  registered_users_can_create_rooms: boolean;
+}
+
 // ────────────────────── Guardias de invariantes REST ──────────────────────
 
 export function isCreateSubmissionRequest(value: unknown): value is CreateSubmissionRequest {

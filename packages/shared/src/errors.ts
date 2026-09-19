@@ -22,6 +22,8 @@ export const ERROR_CODES = {
   ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
   ROOM_FULL: 'ROOM_FULL',
   ROOM_ALREADY_STARTED: 'ROOM_ALREADY_STARTED',
+  ROOM_CREATION_DISABLED: 'ROOM_CREATION_DISABLED',
+  GUEST_ROOM_CREATION_FORBIDDEN: 'GUEST_ROOM_CREATION_FORBIDDEN',
   NOT_A_PLAYER: 'NOT_A_PLAYER',
   GAMERTAG_TAKEN: 'GAMERTAG_TAKEN',
 
@@ -57,6 +59,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   ROOM_NOT_FOUND: 'Esa sala no existe o ya terminó.',
   ROOM_FULL: 'La sala está llena.',
   ROOM_ALREADY_STARTED: 'La partida ya empezó.',
+  ROOM_CREATION_DISABLED: 'Por el momento no puedes crear partidas, solo unirte con el codigo',
+  GUEST_ROOM_CREATION_FORBIDDEN: 'Las cuentas invitadas sólo pueden unirse a salas.',
   NOT_A_PLAYER: 'No eres jugador de esta partida.',
   GAMERTAG_TAKEN: 'Ese gamertag ya está en uso en la sala.',
   SUBMIT_COOLDOWN: 'Espera unos segundos antes de volver a enviar.',

@@ -5,6 +5,7 @@ import type {
   ProblemRepository,
   RefreshTokenRepository,
   RoomRepository,
+  RoomCreationPolicyRepository,
   SubmissionRepository,
   UserRepository,
 } from './repositories/types.js';
@@ -68,6 +69,7 @@ export interface ApiAppOptions {
   refreshTokenRepo?: RefreshTokenRepository;
   /** Repositorio de salas y partidas. Si no se especifica, se crea uno en memoria. */
   roomRepo?: RoomRepository;
+  roomCreationPolicyRepo?: RoomCreationPolicyRepository;
   /** Repositorio de envíos. Si no se especifica, se crea uno en memoria. */
   submissionRepo?: SubmissionRepository;
   /** Repositorio de problemas. Si no se especifica, se crea uno en memoria. */
@@ -122,6 +124,7 @@ export interface ApiContext {
   userRepo: UserRepository;
   refreshTokenRepo: RefreshTokenRepository;
   roomRepo: RoomRepository;
+  roomCreationPolicyRepo: RoomCreationPolicyRepository;
   submissionRepo: SubmissionRepository;
   problemRepo: ProblemRepository;
   eventRepo?: EventRepository;

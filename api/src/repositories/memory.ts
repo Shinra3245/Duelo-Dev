@@ -27,11 +27,24 @@ import type {
   RejectedMessageEntity,
   RejectedMessageRepository,
   RoomRepository,
+  RoomCreationPolicyRepository,
   SubmissionRepository,
   SubmissionWithLeaseEntity,
   UpdateUserInput,
   UserRepository,
 } from './types.js';
+
+export class InMemoryRoomCreationPolicyRepository implements RoomCreationPolicyRepository {
+  private enabled = true;
+
+  async getRegisteredUsersCanCreateRooms(): Promise<boolean> {
+    return this.enabled;
+  }
+
+  async setRegisteredUsersCanCreateRooms(enabled: boolean): Promise<void> {
+    this.enabled = enabled;
+  }
+}
 
 /**
  * Repositorio de usuarios en memoria para pruebas e inicialización sin base de datos viva.

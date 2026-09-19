@@ -49,6 +49,21 @@ export async function handleCreateRoom(
   sendJson(req, res, 201, result);
 }
 
+export async function handleRoomCreationPolicy(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+): Promise<void> {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    throw new HttpError(405, ERROR_CODES.VALIDATION_FAILED, 'Método no permitido. Use GET.');
+  }
+  sendJson(req, res, 200, {
+    registered_users_can_create_rooms:
+      await ctx.roomCreationPolicyRepo.getRegisteredUsersCanCreateRooms(),
+  });
+}
+
 /**
  * Manejador de POST /api/v1/rooms/:code/join (doc 04 §2).
  */

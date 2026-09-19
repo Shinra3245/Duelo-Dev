@@ -94,6 +94,71 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
   };
 
   describe('POST /api/v1/rooms (Creación de sala)', () => {
+    it('limita a los invitados a unirse y respeta la política de creación registrada', async () => {
+      const host = await registerUser('policy-host@example.com', 'policy-host');
+      const roomResponse = await fetch(`${baseUrl}/api/v1/rooms`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${host.accessToken}`,
+        },
+        body: JSON.stringify({ config: validPuntosConfig }),
+      });
+      expect(roomResponse.status).toBe(201);
+      const room = (await roomResponse.json()) as RoomCreatedResponse;
+
+      const guestResponse = await fetch(`${baseUrl}/api/v1/auth/guest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gamertag: 'policy-guest' }),
+      });
+      expect(guestResponse.status).toBe(201);
+      const guest = extractCookies(guestResponse)[AUTH_COOKIE_NAMES.ACCESS_TOKEN];
+      expect(guest).toBeTruthy();
+
+      const guestCreate = await fetch(`${baseUrl}/api/v1/rooms`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${guest}`,
+        },
+        body: JSON.stringify({ config: validPuntosConfig }),
+      });
+      expect(guestCreate.status).toBe(403);
+      expect((await guestCreate.json()).error.code).toBe(ERROR_CODES.GUEST_ROOM_CREATION_FORBIDDEN);
+
+      const guestJoin = await fetch(`${baseUrl}/api/v1/rooms/${room.room_code}/join`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${guest}`,
+        },
+        body: JSON.stringify({ gamertag: 'policy-guest' }),
+      });
+      expect(guestJoin.status).toBe(200);
+
+      const player = await registerUser('policy-player@example.com', 'policy-player');
+      await app.ctx.roomCreationPolicyRepo.setRegisteredUsersCanCreateRooms(false);
+      try {
+        const disabledCreate = await fetch(`${baseUrl}/api/v1/rooms`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Authorization: `Bearer ${player.accessToken}`,
+          },
+          body: JSON.stringify({ config: validPuntosConfig }),
+        });
+        expect(disabledCreate.status).toBe(403);
+        const error = (await disabledCreate.json()) as ApiError;
+        expect(error.error.code).toBe(ERROR_CODES.ROOM_CREATION_DISABLED);
+        expect(error.error.message).toBe(
+          'Por el momento no puedes crear partidas, solo unirte con el codigo',
+        );
+      } finally {
+        await app.ctx.roomCreationPolicyRepo.setRegisteredUsersCanCreateRooms(true);
+      }
+    });
+
     it('crea una sala exitosamente para un usuario registrado', async () => {
       const host = await registerUser('host1@example.com', 'host-coder');
 
@@ -145,7 +210,7 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
       expect(data.error.code).toBe(ERROR_CODES.UNAUTHENTICATED);
     });
 
-    it('crea una sala exitosamente para un usuario invitado autenticado', async () => {
+    it('rechaza crear una sala para un usuario invitado autenticado', async () => {
       const guest = await app.ctx.authService.createGuest('guest-host');
 
       const res = await fetch(`${baseUrl}/api/v1/rooms`, {
@@ -157,13 +222,9 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
         body: JSON.stringify({ config: validPuntosConfig }),
       });
 
-      expect(res.status).toBe(201);
-      const data = (await res.json()) as RoomCreatedResponse;
-      expect(data.config.mode).toBe('puntos');
-      expect(typeof data.room_code).toBe('string');
-
-      const details = await app.ctx.roomRepo.findMatchByRoomCode(data.room_code);
-      expect(details?.host_id).toBe(guest.user.id);
+      expect(res.status).toBe(403);
+      const error = (await res.json()) as ApiError;
+      expect(error.error.code).toBe(ERROR_CODES.GUEST_ROOM_CREATION_FORBIDDEN);
     });
 
     it('rechaza crear sala con configuración inválida o award_on_timeout prohibido', async () => {

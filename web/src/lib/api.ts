@@ -24,6 +24,7 @@ import type {
   AdminRoomsResponse,
   AdminCloseRoomResponse,
   AdminCloseRoomsResponse,
+  RoomCreationPolicyResponse,
 } from '@duelodev/shared';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
@@ -118,6 +119,7 @@ export const api = {
     logout: () => request<LogoutResponse>('/auth/logout', { method: 'POST' }),
   },
   rooms: {
+    policy: () => request<RoomCreationPolicyResponse>('/rooms/policy'),
     create: (data: CreateRoomRequest, idempotencyKey?: string) =>
       request<RoomCreatedResponse>('/rooms', {
         method: 'POST',
@@ -148,6 +150,12 @@ export const api = {
     summary: (id: string) => request<MatchSummaryResponse>(`/matches/${id}/summary`),
   },
   admin: {
+    roomPolicy: () => request<RoomCreationPolicyResponse>('/admin/room-policy'),
+    setRoomCreationEnabled: (enabled: boolean) =>
+      request<RoomCreationPolicyResponse>('/admin/room-policy', {
+        method: 'PUT',
+        body: JSON.stringify({ registered_users_can_create_rooms: enabled }),
+      }),
     rooms: (status?: string) =>
       request<AdminRoomsResponse>(
         `/admin/rooms${status ? `?status=${encodeURIComponent(status)}` : ''}`,

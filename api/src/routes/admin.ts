@@ -201,3 +201,29 @@ export async function handleAdminCloseAllRooms(
   const result = await ctx.adminService.closeAllRooms(admin.id);
   sendJson(req, res, 200, result);
 }
+
+export async function handleAdminRoomCreationPolicy(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+): Promise<void> {
+  const admin = await requireAdmin(req, ctx);
+  if (req.method === 'GET') {
+    sendJson(req, res, 200, await ctx.adminService.getRoomCreationPolicy());
+    return;
+  }
+  ensureMethod(req, res, 'PUT');
+  const body: unknown = await parseJsonBody(req);
+  if (!isRecord(body) || typeof body['registered_users_can_create_rooms'] !== 'boolean') {
+    throw new HttpError(400, ERROR_CODES.VALIDATION_FAILED, ERROR_MESSAGES.VALIDATION_FAILED);
+  }
+  sendJson(
+    req,
+    res,
+    200,
+    await ctx.adminService.setRegisteredUsersCanCreateRooms(
+      body['registered_users_can_create_rooms'],
+      admin.id,
+    ),
+  );
+}

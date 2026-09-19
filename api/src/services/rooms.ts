@@ -18,7 +18,11 @@ import {
 } from '@duelodev/shared';
 
 import { HttpError } from '../plugins/body-parser.js';
-import type { RoomRepository, UserRepository } from '../repositories/types.js';
+import type {
+  RoomCreationPolicyRepository,
+  RoomRepository,
+  UserRepository,
+} from '../repositories/types.js';
 import type { AuthService } from './auth.js';
 import type { AuditService } from './audit.js';
 
@@ -38,6 +42,7 @@ export function generateRoomCode(length = 6): string {
 
 export interface RoomServiceOptions {
   roomRepo: RoomRepository;
+  roomCreationPolicyRepo?: RoomCreationPolicyRepository;
   userRepo: UserRepository;
   authService: AuthService;
   auditService?: AuditService | undefined;
@@ -48,12 +53,14 @@ export interface RoomServiceOptions {
  */
 export class RoomService {
   private readonly roomRepo: RoomRepository;
+  private readonly roomCreationPolicyRepo: RoomCreationPolicyRepository | undefined;
   private readonly userRepo: UserRepository;
   private readonly authService: AuthService;
   private readonly auditService?: AuditService | undefined;
 
   constructor(options: RoomServiceOptions) {
     this.roomRepo = options.roomRepo;
+    this.roomCreationPolicyRepo = options.roomCreationPolicyRepo;
     this.userRepo = options.userRepo;
     this.authService = options.authService;
     this.auditService = options.auditService;
@@ -70,6 +77,25 @@ export class RoomService {
     const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new HttpError(401, ERROR_CODES.UNAUTHENTICATED, ERROR_MESSAGES.UNAUTHENTICATED);
+    }
+
+    if (user.role === 'guest') {
+      throw new HttpError(
+        403,
+        ERROR_CODES.GUEST_ROOM_CREATION_FORBIDDEN,
+        ERROR_MESSAGES.GUEST_ROOM_CREATION_FORBIDDEN,
+      );
+    }
+    if (
+      user.role !== 'admin' &&
+      this.roomCreationPolicyRepo &&
+      !(await this.roomCreationPolicyRepo.getRegisteredUsersCanCreateRooms())
+    ) {
+      throw new HttpError(
+        403,
+        ERROR_CODES.ROOM_CREATION_DISABLED,
+        ERROR_MESSAGES.ROOM_CREATION_DISABLED,
+      );
     }
 
     // Generar código de sala único

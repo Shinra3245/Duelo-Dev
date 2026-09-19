@@ -17,6 +17,7 @@ import {
   handleGetRoomDetails,
   handleJoinRoom,
   handleStartRoom,
+  handleRoomCreationPolicy,
 } from './rooms.js';
 import {
   handleCreateSubmission,
@@ -32,6 +33,7 @@ import {
   handleAdminRanking,
   handleAdminResult,
   handleAdminRooms,
+  handleAdminRoomCreationPolicy,
 } from './admin.js';
 
 export function sendJson(
@@ -117,8 +119,18 @@ export async function dispatchRoute(
       return;
     }
 
+    if (pathname === '/api/v1/rooms/policy') {
+      await handleRoomCreationPolicy(req, res, ctx);
+      return;
+    }
+
     if (pathname === '/api/v1/admin/rooms') {
       await handleAdminRooms(req, res, ctx);
+      return;
+    }
+
+    if (pathname === '/api/v1/admin/room-policy') {
+      await handleAdminRoomCreationPolicy(req, res, ctx);
       return;
     }
 
