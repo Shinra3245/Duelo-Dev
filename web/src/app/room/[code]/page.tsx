@@ -6,7 +6,7 @@ import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
-import { S2C, C2S, comparePlayerScores } from '@duelodev/shared';
+import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
 import type {
   RoomDetailsResponse,
   RoomPlayerSummary,
@@ -858,6 +858,9 @@ function ProblemStatement({
       <div className="duel-problem-meta">
         <span>
           Ronda {problemIndex + 1} / {totalProblems}
+        </span>
+        <span className="duel-problem-category">
+          Dificultad: {PROBLEM_CATEGORY_LABELS[problem.category]}
         </span>
         <span>Python 3</span>
       </div>

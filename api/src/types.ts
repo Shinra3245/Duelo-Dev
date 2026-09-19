@@ -76,6 +76,8 @@ export interface ApiAppOptions {
   submissionRepo?: SubmissionRepository;
   /** Repositorio de problemas. Si no se especifica, se crea uno en memoria. */
   problemRepo?: ProblemRepository;
+  /** Rechaza salas cuya selección de dificultades no cubre todos sus problemas configurados. */
+  validateRoomProblemAvailability?: boolean;
   /** Repositorio de eventos de auditoría y producto. Si no se especifica, se crea uno en memoria. */
   eventRepo?: EventRepository;
   /** Cola de ejecución del juez. Si no se especifica, se crea una en memoria. */

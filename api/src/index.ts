@@ -97,6 +97,7 @@ export async function createProductionApp(
     refreshTokenRepo,
     roomRepo,
     roomCreationPolicyRepo,
+    validateRoomProblemAvailability: true,
     roomInstructionsDurationMs: config.roomInstructionsDurationMs ?? MATCH_INSTRUCTIONS_DURATION_MS,
     problemRepo,
     submissionRepo,

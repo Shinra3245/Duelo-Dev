@@ -32,6 +32,48 @@ class FakePgPool {
 }
 
 describe('PostgresMatchStore', () => {
+  it('solo asigna retos de las dificultades seleccionadas, sin completar con otras', async () => {
+    const calls: Array<{ sql: string; values: unknown[] }> = [];
+    const pool = {
+      async query(sql: string, values: unknown[] = []) {
+        calls.push({ sql, values });
+        if (sql.includes('SELECT * FROM matches')) {
+          return {
+            rows: [
+              {
+                id: 'match-difficulty',
+                room_code: 'DIFF1',
+                mode: 'puntos',
+                status: 'running',
+                config: {
+                  mode: 'puntos',
+                  num_problems: 3,
+                  categories: ['facil'],
+                  max_players: 2,
+                  time_per_problem_s: 60,
+                },
+                state_version: 2,
+                created_at: new Date('2026-09-19T20:00:00.000Z'),
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM match_players')) return { rows: [] };
+        if (sql.includes('FROM problems')) return { rows: [{ id: 'easy-1' }, { id: 'easy-2' }] };
+        return { rows: [] };
+      },
+    };
+    const store = new PostgresMatchStore(pool as unknown as PgPool);
+
+    const session = await store.getMatch('match-difficulty');
+
+    expect(session?.problem_ids).toEqual(['easy-1', 'easy-2']);
+    const problemQueries = calls.filter(({ sql }) => sql.includes('FROM problems'));
+    expect(problemQueries).toHaveLength(1);
+    expect(problemQueries[0]?.sql).toContain('WHERE category = ANY');
+    expect(problemQueries[0]?.values).toEqual([['facil'], 3]);
+  });
+
   it('inicia el reloj después de la ventana persistida de instrucciones', async () => {
     const instructionsEndsAt = new Date('2026-09-19T20:00:30.000Z');
     const startedAt = new Date('2026-09-19T20:00:00.000Z');

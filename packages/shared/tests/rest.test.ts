@@ -205,6 +205,7 @@ describe('contratos REST de /api/v1', () => {
   it('estructura de problema público sin revelar casos ocultos', () => {
     const problemRes: ProblemPublicResponse = {
       problem_id: 'prob-suma',
+      category: 'facil',
       title: 'Suma de dos números',
       description: 'Dado dos enteros en una línea, imprime su suma.',
       time_limit_ms: 2000,

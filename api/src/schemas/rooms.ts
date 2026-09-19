@@ -1,6 +1,6 @@
 import {
+  ACTIVE_PROBLEM_CATEGORIES,
   isMatchConfig,
-  PROBLEM_CATEGORIES,
   type CreateRoomRequest,
   type JoinRoomRequest,
 } from '@duelodev/shared';
@@ -10,6 +10,8 @@ import {
   type ValidationErrorDetail,
   type ValidationResult,
 } from './common.js';
+
+const ACTIVE_CATEGORY_SET: ReadonlySet<string> = new Set(ACTIVE_PROBLEM_CATEGORIES);
 
 /** Esquema formal JSON Schema para CreateRoomRequest. */
 export const createRoomRequestSchema = {
@@ -26,7 +28,7 @@ export const createRoomRequestSchema = {
         max_players: { type: 'integer', minimum: 2 },
         categories: {
           type: 'array',
-          items: { type: 'string', enum: PROBLEM_CATEGORIES },
+          items: { type: 'string', enum: ACTIVE_PROBLEM_CATEGORIES },
           minItems: 1,
         },
         // Puntos
@@ -88,6 +90,14 @@ export function validateCreateRoomRequest(input: unknown): ValidationResult<Crea
       code: 'INVALID_CONFIG',
     });
     return { ok: false, errors };
+  }
+
+  if (!config.categories.every((category) => ACTIVE_CATEGORY_SET.has(category))) {
+    errors.push({
+      field: 'config.categories',
+      message: 'Solo se pueden seleccionar las dificultades Inicial, Fácil y Medio.',
+      code: 'INACTIVE_DIFFICULTY',
+    });
   }
 
   if (errors.length > 0) {

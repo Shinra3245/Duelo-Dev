@@ -124,6 +124,10 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
     new RoomService({
       roomRepo,
       roomCreationPolicyRepo,
+      problemRepo,
+      ...(options.validateRoomProblemAvailability !== undefined
+        ? { validateProblemAvailability: options.validateRoomProblemAvailability }
+        : {}),
       userRepo,
       authService,
       instructionsDurationMs: options.roomInstructionsDurationMs ?? 0,

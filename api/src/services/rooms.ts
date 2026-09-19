@@ -10,6 +10,7 @@ import {
   type MatchCodeSnapshot,
   type MatchFinishReason,
   type MatchSummaryResponse,
+  type ProblemCategory,
   type PlayerScore,
   type RoomCreatedResponse,
   type RoomDetailsResponse,
@@ -20,6 +21,7 @@ import {
 import { HttpError } from '../plugins/body-parser.js';
 import type {
   RoomCreationPolicyRepository,
+  ProblemRepository,
   RoomRepository,
   UserRepository,
 } from '../repositories/types.js';
@@ -44,6 +46,8 @@ export function generateRoomCode(length = 6): string {
 export interface RoomServiceOptions {
   roomRepo: RoomRepository;
   roomCreationPolicyRepo?: RoomCreationPolicyRepository;
+  problemRepo?: ProblemRepository;
+  validateProblemAvailability?: boolean;
   userRepo: UserRepository;
   authService: AuthService;
   instructionsDurationMs?: number;
@@ -57,6 +61,8 @@ export interface RoomServiceOptions {
 export class RoomService {
   private readonly roomRepo: RoomRepository;
   private readonly roomCreationPolicyRepo: RoomCreationPolicyRepository | undefined;
+  private readonly problemRepo: ProblemRepository | undefined;
+  private readonly validateProblemAvailability: boolean;
   private readonly userRepo: UserRepository;
   private readonly authService: AuthService;
   private readonly instructionsDurationMs: number;
@@ -66,6 +72,8 @@ export class RoomService {
   constructor(options: RoomServiceOptions) {
     this.roomRepo = options.roomRepo;
     this.roomCreationPolicyRepo = options.roomCreationPolicyRepo;
+    this.problemRepo = options.problemRepo;
+    this.validateProblemAvailability = options.validateProblemAvailability ?? false;
     this.userRepo = options.userRepo;
     this.authService = options.authService;
     this.instructionsDurationMs = options.instructionsDurationMs ?? 0;
@@ -103,6 +111,29 @@ export class RoomService {
         ERROR_CODES.ROOM_CREATION_DISABLED,
         ERROR_MESSAGES.ROOM_CREATION_DISABLED,
       );
+    }
+
+    if (this.validateProblemAvailability) {
+      if (!this.problemRepo) {
+        throw new HttpError(500, ERROR_CODES.INTERNAL, ERROR_MESSAGES.INTERNAL);
+      }
+      const problemCounts = await this.problemRepo.countProblemsByCategories(req.config.categories);
+      const available = req.config.categories.reduce(
+        (total, category: ProblemCategory) => total + (problemCounts[category] ?? 0),
+        0,
+      );
+      if (available < req.config.num_problems) {
+        throw new HttpError(
+          400,
+          ERROR_CODES.VALIDATION_FAILED,
+          `Las dificultades seleccionadas tienen ${available} retos disponibles. Reduce el número de problemas o selecciona más dificultades.`,
+          {
+            categories: req.config.categories,
+            available_problems: available,
+            requested_problems: req.config.num_problems,
+          },
+        );
+      }
     }
 
     // Generar código de sala único

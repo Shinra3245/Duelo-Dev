@@ -60,6 +60,11 @@ test.describe('vista de partida sincronizada', () => {
         [host, rival, third].map((page) => page.locator('.duel-problem-content h3').textContent()),
       );
       expect(new Set(sharedProblemTitles).size).toBe(1);
+      const sharedDifficulties = await Promise.all(
+        [host, rival, third].map((page) => page.locator('.duel-problem-category').textContent()),
+      );
+      expect(new Set(sharedDifficulties).size).toBe(1);
+      expect(sharedDifficulties[0]).toMatch(/^Dificultad: (Inicial|Fácil|Medio)$/);
 
       const countdownValues = await Promise.all(
         [host, rival, third].map(async (page) =>

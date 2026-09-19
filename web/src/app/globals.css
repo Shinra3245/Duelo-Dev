@@ -945,6 +945,12 @@ body:has(.duel-room-shell) {
   background: rgb(255 255 255 / 0.04);
 }
 
+.duel-problem-meta .duel-problem-category {
+  color: #d8e8ff;
+  border-color: rgb(96 165 250 / 0.35);
+  background: rgb(37 99 235 / 0.18);
+}
+
 .duel-problem-content h3 {
   margin-top: 0.9rem;
   color: #f8fafc;

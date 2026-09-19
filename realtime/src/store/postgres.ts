@@ -166,18 +166,6 @@ export class PostgresMatchStore implements MatchStore {
       ids.push(...categorized.rows.map((row) => String(row.id)));
     }
 
-    if (ids.length < limit) {
-      const fallback = await this.pool.query(
-        `SELECT id
-         FROM problems
-         WHERE NOT (id = ANY($1::uuid[]))
-         ORDER BY created_at ASC, id ASC
-         LIMIT $2`,
-        [ids, limit - ids.length],
-      );
-      ids.push(...fallback.rows.map((row) => String(row.id)));
-    }
-
     return ids.slice(0, limit);
   }
 

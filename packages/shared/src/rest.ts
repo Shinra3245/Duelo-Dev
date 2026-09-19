@@ -15,6 +15,7 @@ import {
   type MatchFinishReason,
   type MatchStatus,
   type PlayerScore,
+  type ProblemCategory,
   MAX_COMPILE_OUTPUT_BYTES,
 } from './events.js';
 
@@ -173,6 +174,7 @@ export interface ProblemExample {
 
 export interface ProblemPublicResponse {
   problem_id: string;
+  category: ProblemCategory;
   title: string;
   description: string;
   time_limit_ms: number;

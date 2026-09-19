@@ -4,6 +4,7 @@ import type {
   MatchEntity,
   MatchPlayerEntity,
   MatchStatus,
+  ProblemCategory,
   ProblemEntity,
   RefreshTokenEntity,
   SubmissionEntity,
@@ -242,6 +243,9 @@ export interface ProblemRepository {
   findProblemById(id: string): Promise<ProblemEntity | null>;
   findProblemByContentHash?(contentHash: string): Promise<ProblemEntity | null>;
   findAllProblems?(limit?: number): Promise<ProblemEntity[]>;
+  countProblemsByCategories(
+    categories: readonly ProblemCategory[],
+  ): Promise<Partial<Record<ProblemCategory, number>>>;
   findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]>;
   createProblem(problem: ProblemEntity): Promise<ProblemEntity>;
   createTestCase(testCase: TestCaseEntity): Promise<TestCaseEntity>;

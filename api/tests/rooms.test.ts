@@ -94,6 +94,76 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
   };
 
   describe('POST /api/v1/rooms (Creación de sala)', () => {
+    it('valida en modo producción disponibilidad y selección de dificultades', async () => {
+      const availabilityApp = createApp({
+        seedPilotProblems: true,
+        validateRoomProblemAvailability: true,
+        serviceName: 'api-room-difficulty-test',
+        authSecret: 'test-room-difficulty-secret-1234567890',
+        rateLimitConfig: { enabled: false },
+      });
+      const { port } = await availabilityApp.start(0, '127.0.0.1');
+      const availabilityUrl = `http://127.0.0.1:${port}`;
+
+      try {
+        const registered = await fetch(`${availabilityUrl}/api/v1/auth/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email: `difficulty-${Date.now()}@example.com`,
+            gamertag: `diff-${Date.now().toString().slice(-6)}`,
+            password: 'Password123!',
+          }),
+        });
+        const cookieValue = extractCookies(registered)[AUTH_COOKIE_NAMES.ACCESS_TOKEN];
+        expect(registered.status).toBe(201);
+        expect(cookieValue).toBeTruthy();
+
+        const insufficient = await fetch(`${availabilityUrl}/api/v1/rooms`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Authorization: `Bearer ${cookieValue}`,
+          },
+          body: JSON.stringify({
+            config: { ...validPuntosConfig, categories: ['facil'], num_problems: 3 },
+          }),
+        });
+        expect(insufficient.status).toBe(400);
+        expect((await insufficient.json()).error.message).toContain('2 retos disponibles');
+
+        const selected = await fetch(`${availabilityUrl}/api/v1/rooms`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Authorization: `Bearer ${cookieValue}`,
+          },
+          body: JSON.stringify({
+            config: {
+              ...validPuntosConfig,
+              categories: ['muy_facil', 'facil', 'facil_medio'],
+              num_problems: 7,
+            },
+          }),
+        });
+        expect(selected.status).toBe(201);
+
+        const inactive = await fetch(`${availabilityUrl}/api/v1/rooms`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Authorization: `Bearer ${cookieValue}`,
+          },
+          body: JSON.stringify({
+            config: { ...validPuntosConfig, categories: ['dificil'], num_problems: 1 },
+          }),
+        });
+        expect(inactive.status).toBe(400);
+      } finally {
+        await availabilityApp.close();
+      }
+    });
+
     it('limita a los invitados a unirse y respeta la política de creación registrada', async () => {
       const host = await registerUser('policy-host@example.com', 'policy-host');
       const roomResponse = await fetch(`${baseUrl}/api/v1/rooms`, {

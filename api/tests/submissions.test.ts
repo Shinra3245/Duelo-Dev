@@ -720,6 +720,7 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
       expect(res.status).toBe(200);
       const data = (await res.json()) as ProblemPublicResponse;
       expect(data.problem_id).toBe(testProblemId);
+      expect(data.category).toBe('facil');
       expect(data.title).toBe('Suma Simple');
       expect(data.description).toBe('Calcula la suma de dos enteros a y b.');
       expect(data.time_limit_ms).toBe(1000);

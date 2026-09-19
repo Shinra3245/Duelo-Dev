@@ -153,6 +153,23 @@ describe('API Runtime Schemas & Validation', () => {
       expect(res.ok).toBe(true);
     });
 
+    it('rechaza dificultades todavía no habilitadas para partidas', () => {
+      const res = validateCreateRoomRequest({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          categories: ['dificil'],
+          num_problems: 1,
+          time_per_problem_s: 60,
+        },
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.errors.some((error) => error.code === 'INACTIVE_DIFFICULTY')).toBe(true);
+      }
+    });
+
     it('rechaza terminantemente la presencia de award_on_timeout', () => {
       const res = validateCreateRoomRequest({
         config: {

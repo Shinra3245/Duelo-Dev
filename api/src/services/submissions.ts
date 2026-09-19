@@ -328,6 +328,7 @@ export class SubmissionService {
 
     return {
       problem_id: problem.id,
+      category: problem.category,
       title: problem.title,
       description: problem.description,
       time_limit_ms: problem.time_limit_ms,

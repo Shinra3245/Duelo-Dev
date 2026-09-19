@@ -3,6 +3,7 @@ import type {
   MatchCodeSnapshotEntity,
   MatchEntity,
   MatchPlayerEntity,
+  ProblemCategory,
   ProblemEntity,
   RefreshTokenEntity,
   SubmissionEntity,
@@ -709,6 +710,19 @@ export class InMemoryProblemRepository implements ProblemRepository {
       if (list.length >= limit) break;
     }
     return list;
+  }
+
+  async countProblemsByCategories(
+    categories: readonly ProblemCategory[],
+  ): Promise<Partial<Record<ProblemCategory, number>>> {
+    const selected = new Set(categories);
+    const counts: Partial<Record<ProblemCategory, number>> = {};
+    for (const problem of this.problems.values()) {
+      if (selected.has(problem.category)) {
+        counts[problem.category] = (counts[problem.category] ?? 0) + 1;
+      }
+    }
+    return counts;
   }
 
   async findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]> {

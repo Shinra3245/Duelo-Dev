@@ -4,6 +4,7 @@ import type {
   MatchCodeSnapshotEntity,
   MatchEntity,
   MatchPlayerEntity,
+  ProblemCategory,
   ProblemEntity,
   RefreshTokenEntity,
   SubmissionEntity,
@@ -743,6 +744,21 @@ export class PostgresProblemRepository implements ProblemRepository {
       limit,
     ]);
     return res.rows.map(mapProblemRow);
+  }
+
+  async countProblemsByCategories(
+    categories: readonly ProblemCategory[],
+  ): Promise<Partial<Record<ProblemCategory, number>>> {
+    const res = await this.pool.query(
+      `SELECT category, COUNT(*)::int AS count
+       FROM problems
+       WHERE category = ANY($1::text[])
+       GROUP BY category`,
+      [[...categories]],
+    );
+    return Object.fromEntries(
+      res.rows.map((row) => [String(row['category']) as ProblemCategory, Number(row['count'])]),
+    );
   }
 
   async findTestCasesByProblemId(problemId: string): Promise<TestCaseEntity[]> {
