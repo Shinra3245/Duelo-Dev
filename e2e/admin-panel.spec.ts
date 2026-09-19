@@ -12,6 +12,62 @@ test.describe('panel administrativo en navegador', () => {
   );
   test.setTimeout(60_000);
 
+  test('conserva legibilidad y acceso a los datos en móvil', async ({ page }) => {
+    await loginAsAdmin(page);
+
+    const desktop = await page.evaluate(() => {
+      const panels = [...document.querySelectorAll('.admin-grid-bottom > .admin-panel')].map(
+        (panel) => panel.getBoundingClientRect(),
+      );
+      return {
+        fitsViewport: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        rankingPanelsDoNotOverlap:
+          panels.length < 2 ||
+          panels[0]!.right <= panels[1]!.left ||
+          panels[1]!.right <= panels[0]!.left,
+      };
+    });
+    expect(desktop.fitsViewport).toBe(true);
+    expect(desktop.rankingPanelsDoNotOverlap).toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobile = await page.evaluate(() => {
+      const cells = [...document.querySelectorAll('.admin-table-wrap td:not(.admin-table-empty)')];
+      const firstCell = cells[0];
+      const primaryButton = document.querySelector('.admin-primary')!;
+      const luminance = (color: string) => {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number);
+        const linear = channels.map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+      };
+      const primaryStyles = getComputedStyle(primaryButton);
+      const [lighter, darker] = [
+        luminance(primaryStyles.color),
+        luminance(primaryStyles.backgroundColor),
+      ].sort((left, right) => right - left);
+      return {
+        fitsViewport: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        tablesUseCards:
+          getComputedStyle(document.querySelector('.admin-table-wrap tbody')!).display === 'grid',
+        everyCellHasLabel: cells.every((cell) => Boolean(cell.getAttribute('data-label'))),
+        firstCellLabel: firstCell ? getComputedStyle(firstCell, '::before').content : null,
+        primaryContrast: (lighter! + 0.05) / (darker! + 0.05),
+      };
+    });
+    expect(mobile.fitsViewport).toBe(true);
+    expect(mobile.tablesUseCards).toBe(true);
+    expect(mobile.everyCellHasLabel).toBe(true);
+    expect(mobile.primaryContrast).toBeGreaterThanOrEqual(4.5);
+    if (mobile.firstCellLabel !== null) expect(mobile.firstCellLabel).not.toBe('none');
+    await expect(page.getByRole('button', { name: 'Crear sala' })).toBeVisible();
+  });
+
   test('crea una sala, la cierra y conserva su historial', async ({ page }) => {
     await loginAsAdmin(page);
     const room = await createRoom(page);
@@ -29,7 +85,7 @@ test.describe('panel administrativo en navegador', () => {
     await roomCard.getByRole('button', { name: 'Cerrar sala' }).click();
     expect((await closeResponse).ok()).toBeTruthy();
 
-    await expect(roomCard).toContainText('abandoned');
+    await expect(roomCard).toContainText('Cerradas');
     await expect(roomCard.getByRole('button', { name: 'Cerrar sala' })).toHaveCount(0);
     await page
       .getByRole('combobox', { name: 'Filtrar salas por estado' })
@@ -43,7 +99,7 @@ test.describe('panel administrativo en navegador', () => {
     expect(room.config.max_players).toBe(3);
 
     const roomCard = page.locator('article.admin-room-card').filter({ hasText: room.room_code });
-    await expect(roomCard).toContainText('lobby');
+    await expect(roomCard).toContainText('Lobby');
 
     const closeResponse = page.waitForResponse(
       (response) =>
@@ -53,7 +109,7 @@ test.describe('panel administrativo en navegador', () => {
     page.once('dialog', (dialog) => void dialog.accept());
     await roomCard.getByRole('button', { name: 'Cerrar sala' }).click();
     expect((await closeResponse).ok()).toBeTruthy();
-    await expect(roomCard).toContainText('abandoned');
+    await expect(roomCard).toContainText('Cerradas');
   });
 
   test('cierra todas las salas activas cuando se habilita explícitamente', async ({ page }) => {
@@ -79,7 +135,7 @@ test.describe('panel administrativo en navegador', () => {
     expect(response.ok()).toBeTruthy();
     const body = (await response.json()) as { closed_count: number };
     expect(body.closed_count).toBeGreaterThanOrEqual(1);
-    await expect(roomCard).toContainText('abandoned');
+    await expect(roomCard).toContainText('Cerradas');
   });
 });
 
@@ -89,6 +145,8 @@ async function loginAsAdmin(page: Page) {
   await page.getByLabel('Contraseña').fill(adminPassword!);
   await page.getByRole('button', { name: 'Entrar al panel' }).click();
   await expect(page.getByRole('heading', { name: 'Panel administrativo' })).toBeVisible();
+  await expect(page.locator('.admin-layout')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toBeEnabled();
 }
 
 async function createRoom(

@@ -474,7 +474,8 @@ export default function AdminPage() {
                   <div>
                     <strong>{room.room_code}</strong>
                     <span>
-                      {room.mode} · {room.status}
+                      {room.mode === 'puntos' ? 'Puntos' : 'Rondas'} ·{' '}
+                      {roomStatusLabels[room.status]}
                     </span>
                   </div>
                   <time dateTime={room.created_at}>{formatDate(room.created_at)}</time>
@@ -534,21 +535,29 @@ export default function AdminPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>Jugador</th>
-                    <th>Puntos</th>
-                    <th>Victorias</th>
+                    <th scope="col">#</th>
+                    <th scope="col">Jugador</th>
+                    <th scope="col">Puntos</th>
+                    <th scope="col">Victorias</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ranking.map((entry) => (
-                    <tr key={entry.user_id}>
-                      <td>{entry.rank}</td>
-                      <td>{entry.gamertag}</td>
-                      <td>{entry.score}</td>
-                      <td>{entry.wins}</td>
+                  {ranking.length === 0 ? (
+                    <tr>
+                      <td className="admin-table-empty" colSpan={4}>
+                        Aún no hay resultados para mostrar.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    ranking.map((entry) => (
+                      <tr key={entry.user_id}>
+                        <td data-label="Posición">{entry.rank}</td>
+                        <td data-label="Jugador">{entry.gamertag}</td>
+                        <td data-label="Puntos">{entry.score}</td>
+                        <td data-label="Victorias">{entry.wins}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -564,21 +573,29 @@ export default function AdminPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Jugador</th>
-                    <th>Sala</th>
-                    <th>Casos</th>
-                    <th>Estado</th>
+                    <th scope="col">Jugador</th>
+                    <th scope="col">Sala</th>
+                    <th scope="col">Casos</th>
+                    <th scope="col">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {players.map((player) => (
-                    <tr key={`${player.match_id}-${player.user_id}`}>
-                      <td>{player.gamertag}</td>
-                      <td>{player.room_code}</td>
-                      <td>{player.cases_total}</td>
-                      <td>{player.connection_status}</td>
+                  {players.length === 0 ? (
+                    <tr>
+                      <td className="admin-table-empty" colSpan={4}>
+                        Aún no hay participaciones para mostrar.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    players.map((player) => (
+                      <tr key={`${player.match_id}-${player.user_id}`}>
+                        <td data-label="Jugador">{player.gamertag}</td>
+                        <td data-label="Sala">{player.room_code}</td>
+                        <td data-label="Casos">{player.cases_total}</td>
+                        <td data-label="Estado">{player.connection_status}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
