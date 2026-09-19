@@ -1889,3 +1889,13 @@ body:has(.duel-room-shell) {
     transform: none !important;
   }
 }
+
+.duel-room-content button:disabled {
+  cursor: not-allowed;
+  transform: none;
+  border-color: #475569 !important;
+  color: #cbd5e1 !important;
+  background-color: #263448 !important;
+  box-shadow: none !important;
+  opacity: 1;
+}

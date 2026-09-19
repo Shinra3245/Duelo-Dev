@@ -103,6 +103,28 @@ test.describe('flujo de torneo en navegador', () => {
       await expect(host.getByRole('heading', { name: 'Resultados finales' })).toBeVisible({
         timeout: 30_000,
       });
+      const disabledButtonContrast = await host
+        .getByRole('button', { name: 'Partida finalizada' })
+        .evaluate((button) => {
+          const luminance = (color: string) => {
+            const channels = color
+              .match(/[\d.]+/g)!
+              .slice(0, 3)
+              .map(Number);
+            const linear = channels.map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+          };
+          const styles = getComputedStyle(button);
+          const [lighter, darker] = [
+            luminance(styles.color),
+            luminance(styles.backgroundColor),
+          ].sort((left, right) => right - left);
+          return (lighter! + 0.05) / (darker! + 0.05);
+        });
+      expect(disabledButtonContrast).toBeGreaterThanOrEqual(4.5);
     } finally {
       await rivalContext.close();
       await hostContext.close();
