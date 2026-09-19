@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ERROR_CODES } from '@duelodev/shared';
-import { api } from '../src/lib/api.js';
+import { api, resolveApiBaseUrl } from '../src/lib/api.js';
 
 const mockFetch = vi.fn<typeof fetch>();
 global.fetch = mockFetch;
@@ -23,6 +23,24 @@ describe('REST API Client', () => {
 
     expect(config?.credentials).toBe('include');
     expect(config?.headers).toHaveProperty('Content-Type', 'application/json');
+  });
+
+  it('alinea alias loopback de la API con el host de la página para conservar cookies', () => {
+    expect(
+      resolveApiBaseUrl('http://localhost:3001/api/v1', {
+        hostname: '127.0.0.1',
+        protocol: 'http:',
+      }),
+    ).toBe('http://127.0.0.1:3001/api/v1');
+  });
+
+  it('mantiene endpoints remotos configurados explícitamente', () => {
+    expect(
+      resolveApiBaseUrl('https://api.duelodev.test/api/v1', {
+        hostname: '127.0.0.1',
+        protocol: 'http:',
+      }),
+    ).toBe('https://api.duelodev.test/api/v1');
   });
 
   it('lanza ApiClientError cuando el servidor responde con error JSON', async () => {

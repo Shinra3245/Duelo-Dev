@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RealtimeClient } from '../src/lib/realtime.js';
+import { RealtimeClient, resolveRealtimeUrl } from '../src/lib/realtime.js';
 import { buildCodeSyncUrl, CodeSyncClient } from '../src/lib/code-sync.js';
 
 type WebSocketMessageHandler = (event: { data: string }) => void;
@@ -56,6 +56,24 @@ describe('Realtime Client', () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     expect(connectSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('alinea alias loopback del WebSocket con el host de la página', () => {
+    expect(
+      resolveRealtimeUrl('ws://localhost:3002/match', {
+        hostname: '127.0.0.1',
+        protocol: 'http:',
+      }),
+    ).toBe('ws://127.0.0.1:3002/match');
+  });
+
+  it('usa WSS cuando la página se sirve mediante HTTPS', () => {
+    expect(
+      resolveRealtimeUrl('ws://localhost:3002/match', {
+        hostname: 'duelodev.test',
+        protocol: 'https:',
+      }),
+    ).toBe('wss://duelodev.test:3002/match');
   });
 
   it('procesa mensajes entrantes con JSON válido', async () => {

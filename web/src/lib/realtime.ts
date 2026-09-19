@@ -1,3 +1,5 @@
+import { alignLoopbackServiceHost, type BrowserLocation } from './browser-service-url';
+
 type EventHandler = (payload: unknown) => void;
 
 interface RealtimeClientOptions {
@@ -119,33 +121,19 @@ const DEFAULT_REALTIME_URL = 'ws://localhost:3002/match';
 
 export const realtimeUrl = resolveRealtimeUrl();
 
-function resolveRealtimeUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_REALTIME_URL || DEFAULT_REALTIME_URL;
-  if (typeof window === 'undefined') {
-    return configuredUrl;
-  }
-
-  const browserHost = window.location.hostname;
-  if (isLoopbackHost(browserHost)) {
+export function resolveRealtimeUrl(
+  configuredUrl = process.env.NEXT_PUBLIC_REALTIME_URL || DEFAULT_REALTIME_URL,
+  browserLocation: BrowserLocation | null = typeof window === 'undefined' ? null : window.location,
+) {
+  if (!browserLocation) {
     return configuredUrl;
   }
 
   try {
-    const parsed = new URL(configuredUrl);
-    if (!isLoopbackHost(parsed.hostname)) {
-      return configuredUrl;
-    }
-
-    parsed.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    parsed.hostname = browserHost;
-    parsed.port = parsed.port || '3002';
-    return parsed.toString();
+    const socketProtocol = browserLocation.protocol === 'https:' ? 'wss:' : 'ws:';
+    return alignLoopbackServiceHost(configuredUrl, browserLocation, socketProtocol);
   } catch {
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    return `${protocol}://${browserHost}:3002/match`;
+    const protocol = browserLocation.protocol === 'https:' ? 'wss' : 'ws';
+    return `${protocol}://${browserLocation.hostname}:3002/match`;
   }
-}
-
-function isLoopbackHost(hostname: string) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 }
