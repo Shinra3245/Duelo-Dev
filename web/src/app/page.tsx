@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { api } from '@/lib/api';
@@ -18,6 +19,14 @@ const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'
 type AccessMode = 'register' | 'login' | 'guest';
 
 gsap.registerPlugin(useGSAP);
+
+const DuelArenaCanvas = dynamic(
+  () => import('@/components/duel-arena/DuelArenaCanvas').then((module) => module.DuelArenaCanvas),
+  {
+    ssr: false,
+    loading: () => <div className="duel-arena-loading" aria-hidden="true" />,
+  },
+);
 
 export default function Home() {
   const router = useRouter();
@@ -223,6 +232,19 @@ export default function Home() {
           data-landing-item
           className="flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-10"
         >
+          <div data-landing-item className="landing-arena-frame">
+            <div className="landing-arena-caption">
+              <span>DUEL CORE // 01</span>
+              <span>2 PLAYERS · 1 PROBLEM</span>
+            </div>
+            <DuelArenaCanvas className="landing-arena-canvas" />
+            <div className="landing-arena-footer">
+              <span className="landing-arena-pulse" />
+              <span>Juez Python listo</span>
+              <span className="landing-arena-divider" />
+              <span>WebSocket sincronizado</span>
+            </div>
+          </div>
           <div>
             <div data-landing-item className="mb-7 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300 font-black text-slate-950 shadow-lg shadow-cyan-400/20">
