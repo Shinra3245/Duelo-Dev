@@ -272,6 +272,13 @@ textarea:focus-visible {
   margin: 4rem auto 0;
 }
 
+.duel-landing h1,
+.duel-landing h2,
+.duel-landing h3 {
+  font-family: var(--font-duel-display), Inter, ui-sans-serif, sans-serif;
+  text-wrap: balance;
+}
+
 .landing-showcase-heading {
   max-width: 42rem;
   padding: 1rem 0.25rem;
@@ -319,14 +326,16 @@ textarea:focus-visible {
   background: linear-gradient(145deg, rgb(15 31 52 / 0.88), rgb(8 17 31 / 0.92));
   box-shadow: inset 0 1px rgb(255 255 255 / 0.04);
   transition:
-    transform 220ms ease,
-    border-color 220ms ease,
-    background 220ms ease;
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.landing-flow-card:hover {
-  border-color: rgb(103 232 249 / 0.36);
-  transform: translateY(-4px);
+@media (hover: hover) {
+  .landing-flow-card:hover {
+    border-color: rgb(103 232 249 / 0.36);
+    transform: translateY(-4px);
+  }
 }
 
 .landing-flow-card-featured {
@@ -361,7 +370,7 @@ textarea:focus-visible {
 .landing-flow-card p {
   margin: 0.55rem 0 0;
   color: #a9bad0;
-  font-size: 0.92rem;
+  font-size: 1rem;
   line-height: 1.65;
 }
 
@@ -388,7 +397,7 @@ textarea:focus-visible {
 .landing-difficulty-intro > p:not(.landing-section-kicker) {
   margin: 0.75rem 0 0;
   color: #a9bad0;
-  font-size: 0.92rem;
+  font-size: 1rem;
   line-height: 1.65;
 }
 
@@ -439,8 +448,8 @@ textarea:focus-visible {
 .landing-difficulty-card p {
   margin: 0;
   color: #9fb2c8;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 .landing-difficulty-card-start {
@@ -497,17 +506,29 @@ textarea:focus-visible {
   border-radius: 0.85rem;
   color: #062338;
   background: var(--duel-cyan);
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 900;
   text-decoration: none;
   transition:
-    transform 180ms ease,
-    background 180ms ease;
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.landing-cta-link:hover {
-  background: #a5f3fc;
-  transform: translateY(-2px);
+.landing-cta-link:focus-visible {
+  outline: 3px solid #ecfeff;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgb(103 232 249 / 0.3);
+}
+
+@media (hover: hover) {
+  .landing-cta-link:hover:not(:active) {
+    background: #a5f3fc;
+    transform: translateY(-2px);
+  }
+}
+
+.landing-cta-link:active {
+  transform: scale(0.985);
 }
 
 @media (max-width: 760px) {
@@ -541,8 +562,12 @@ textarea:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .landing-flow-card,
-  .landing-cta-link {
+  .landing-flow-card:hover,
+  .landing-cta-link,
+  .landing-cta-link:hover,
+  .landing-cta-link:active {
     transition: none;
+    transform: none;
   }
 }
 
