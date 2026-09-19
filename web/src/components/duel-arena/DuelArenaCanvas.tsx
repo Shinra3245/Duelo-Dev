@@ -17,13 +17,14 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
     const container = arenaRef.current;
     if (!canvas || !container) return;
 
+    const compactDevice = window.matchMedia('(max-width: 640px), (pointer: coarse)').matches;
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
         canvas,
         alpha: true,
         antialias: true,
-        powerPreference: 'high-performance',
+        powerPreference: compactDevice ? 'low-power' : 'high-performance',
       });
     } catch {
       return;
@@ -181,7 +182,8 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
       const { width, height } = container.getBoundingClientRect();
       const safeWidth = Math.max(width, 280);
       const safeHeight = Math.max(height, 260);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+      const pixelRatioLimit = window.matchMedia('(max-width: 640px)').matches ? 1.25 : 1.5;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioLimit));
       renderer.setSize(safeWidth, safeHeight, false);
       camera.aspect = safeWidth / safeHeight;
       camera.updateProjectionMatrix();
@@ -190,10 +192,10 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
 
     const renderFrame = () => {
       animationFrame = 0;
-      if (!visible) return;
-      animationFrame = window.requestAnimationFrame(renderFrame);
+      if (!visible || document.hidden) return;
 
       if (!reducedMotion) {
+        animationFrame = window.requestAnimationFrame(renderFrame);
         const elapsed = performance.now() * 0.001;
         world.rotation.y = Math.sin(elapsed * 0.16) * 0.045;
         outerRing.rotation.z += 0.0015;
@@ -205,10 +207,11 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
         rightDuelist.signal.scale.setScalar(1 + Math.sin(elapsed * 3.2 + Math.PI) * 0.16);
         leftDuelist.core.rotation.y += 0.018;
         rightDuelist.core.rotation.y -= 0.018;
+        camera.position.x += (targetCameraX - camera.position.x) * 0.04;
+        camera.position.y += (targetCameraY - camera.position.y) * 0.04;
+      } else {
+        camera.position.set(0, 3.9, 10.2);
       }
-
-      camera.position.x += (targetCameraX - camera.position.x) * 0.04;
-      camera.position.y += (targetCameraY - camera.position.y) * 0.04;
       camera.lookAt(0, 1.1, 0);
       renderer.render(scene, camera);
     };
@@ -223,6 +226,7 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
     };
 
     const onPointerLeave = () => {
+      if (reducedMotion) return;
       targetCameraX = 0;
       targetCameraY = 3.9;
     };
@@ -230,8 +234,24 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
     const onMotionPreferenceChange = (event: MediaQueryListEvent) => {
       reducedMotion = event.matches;
       if (reducedMotion) {
+        if (animationFrame !== 0) window.cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
         targetCameraX = 0;
         targetCameraY = 3.9;
+        camera.position.set(0, 3.9, 10.2);
+        camera.lookAt(0, 1.1, 0);
+        renderer.render(scene, camera);
+      } else if (visible && !document.hidden && animationFrame === 0) {
+        renderFrame();
+      }
+    };
+
+    const onDocumentVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationFrame !== 0) window.cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+      } else if (visible && !reducedMotion && animationFrame === 0) {
+        renderFrame();
       }
     };
 
@@ -240,7 +260,14 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
       ([entry]) => {
         if (!entry) return;
         visible = entry.isIntersecting;
-        if (visible && animationFrame === 0) renderFrame();
+        if (!visible && animationFrame !== 0) {
+          window.cancelAnimationFrame(animationFrame);
+          animationFrame = 0;
+        } else if (visible && !document.hidden && !reducedMotion && animationFrame === 0) {
+          renderFrame();
+        } else if (visible && !document.hidden && reducedMotion) {
+          renderer.render(scene, camera);
+        }
       },
       { threshold: 0.05 },
     );
@@ -250,9 +277,10 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
     container.addEventListener('pointermove', onPointerMove);
     container.addEventListener('pointerleave', onPointerLeave);
     reducedMotionQuery.addEventListener('change', onMotionPreferenceChange);
+    document.addEventListener('visibilitychange', onDocumentVisibilityChange);
     setWebglReady(true);
     resize();
-    renderFrame();
+    if (!reducedMotion) renderFrame();
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
@@ -261,6 +289,7 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
       container.removeEventListener('pointermove', onPointerMove);
       container.removeEventListener('pointerleave', onPointerLeave);
       reducedMotionQuery.removeEventListener('change', onMotionPreferenceChange);
+      document.removeEventListener('visibilitychange', onDocumentVisibilityChange);
       scene.traverse((object) => {
         if (
           object instanceof THREE.Mesh ||
