@@ -17,8 +17,9 @@
  * - Salida única y determinista sin checkers especiales.
  */
 import type { SeedProblem } from './types.js';
+import { ADDITIONAL_PROBLEMS } from './active-problems.js';
 
-export const PILOT_PROBLEMS: readonly SeedProblem[] = [
+const FOUNDATIONAL_PROBLEMS: readonly SeedProblem[] = [
   {
     slug: 'suma-parcial',
     title: 'Suma parcial',
@@ -472,4 +473,10 @@ Un único entero con el producto punto de ambos vectores.`,
       },
     ],
   },
+];
+
+/** Incluye los retos históricos y el catálogo de tres dificultades habilitadas. */
+export const PILOT_PROBLEMS: readonly SeedProblem[] = [
+  ...FOUNDATIONAL_PROBLEMS,
+  ...ADDITIONAL_PROBLEMS,
 ];

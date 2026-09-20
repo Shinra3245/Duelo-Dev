@@ -66,6 +66,24 @@ def test_loads_committed_pilot_bundles_used_by_api_seeds() -> None:
         assert cases[0].expected == first_expected
 
 
+def test_every_seeded_problem_has_a_complete_judge_manifest() -> None:
+    root = Path(__file__).resolve().parents[2] / "problems"
+    provider = DirectoryCasesProvider(root)
+    manifests = sorted((root / "cases").glob("*/v*/manifest.json"))
+
+    assert len(manifests) == 33
+    for path in manifests:
+        problem_id = path.parents[1].name
+        version = int(path.parent.name.removeprefix("v"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        cases = provider.load_cases(f"cases/{problem_id}", problem_id, version)
+
+        assert len(cases) == MAX_CASES_PER_PROBLEM
+        assert [case.ordinal for case in cases] == list(range(1, 13))
+        assert payload["problem_id"] == problem_id
+        assert payload["problem_version"] == version
+
+
 @pytest.mark.parametrize(
     "reference",
     [

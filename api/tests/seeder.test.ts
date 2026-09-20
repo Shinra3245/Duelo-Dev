@@ -26,10 +26,10 @@ function loadCaseBundle(problemId: string, version: number): CaseBundleManifest 
 
 describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
   describe('Catálogo de problemas piloto (PILOT_PROBLEMS)', () => {
-    it('contiene exactamente los problemas piloto aprobados', () => {
-      expect(PILOT_PROBLEMS).toHaveLength(7);
+    it('conserva el catálogo histórico y garantiza diez retos por dificultad activa', () => {
+      expect(PILOT_PROBLEMS).toHaveLength(33);
       const slugs = PILOT_PROBLEMS.map((p) => p.slug);
-      expect(slugs).toEqual([
+      expect(slugs.slice(0, 7)).toEqual([
         'suma-parcial',
         'parentesis',
         'consultas-suma',
@@ -38,6 +38,14 @@ describe('Problem Seeds and Seeder Service (doc 04 §1, doc 07)', () => {
         'palindromo',
         'producto-punto',
       ]);
+      expect(new Set(slugs).size).toBe(slugs.length);
+
+      const activeCounts = new Map<string, number>();
+      for (const problem of PILOT_PROBLEMS.filter((item) => item.category !== 'muy_facil')) {
+        activeCounts.set(problem.category, (activeCounts.get(problem.category) ?? 0) + 1);
+      }
+      expect(Object.fromEntries(activeCounts)).toEqual({ facil: 10, facil_medio: 10, dificil: 10 });
+      expect(PILOT_PROBLEMS.filter((item) => item.category === 'muy_facil')).toHaveLength(3);
     });
 
     it('cumple los invariantes de estructura, límites y origen en cada problema piloto', () => {

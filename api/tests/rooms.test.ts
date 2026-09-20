@@ -126,11 +126,11 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
             Authorization: `Bearer ${cookieValue}`,
           },
           body: JSON.stringify({
-            config: { ...validPuntosConfig, categories: ['facil'], num_problems: 3 },
+            config: { ...validPuntosConfig, categories: ['facil'], num_problems: 11 },
           }),
         });
         expect(insufficient.status).toBe(400);
-        expect((await insufficient.json()).error.message).toContain('2 retos disponibles');
+        expect((await insufficient.json()).error.message).toContain('10 retos disponibles');
 
         const selected = await fetch(`${availabilityUrl}/api/v1/rooms`, {
           method: 'POST',
@@ -141,7 +141,7 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
           body: JSON.stringify({
             config: {
               ...validPuntosConfig,
-              categories: ['muy_facil', 'facil', 'facil_medio'],
+              categories: ['facil', 'facil_medio', 'dificil'],
               num_problems: 7,
             },
           }),
@@ -155,7 +155,7 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
             Authorization: `Bearer ${cookieValue}`,
           },
           body: JSON.stringify({
-            config: { ...validPuntosConfig, categories: ['dificil'], num_problems: 1 },
+            config: { ...validPuntosConfig, categories: ['muy_facil'], num_problems: 1 },
           }),
         });
         expect(inactive.status).toBe(400);

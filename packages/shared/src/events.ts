@@ -102,15 +102,15 @@ export function isGameModeName(value: unknown): value is GameModeName {
 export const PROBLEM_CATEGORIES = ['muy_facil', 'facil', 'facil_medio', 'dificil'] as const;
 export type ProblemCategory = (typeof PROBLEM_CATEGORIES)[number];
 
-/** Dificultades habilitadas para el MVP; `dificil` queda fuera del flujo principal. */
-export const ACTIVE_PROBLEM_CATEGORIES = ['muy_facil', 'facil', 'facil_medio'] as const;
+/** Categorías disponibles al crear partidas nuevas; `muy_facil` se conserva para historial. */
+export const ACTIVE_PROBLEM_CATEGORIES = ['facil', 'facil_medio', 'dificil'] as const;
 export type ActiveProblemCategory = (typeof ACTIVE_PROBLEM_CATEGORIES)[number];
 
 export const PROBLEM_CATEGORY_LABELS: Record<ProblemCategory, string> = {
-  muy_facil: 'Inicial',
-  facil: 'Fácil',
-  facil_medio: 'Medio',
-  dificil: 'Difícil',
+  muy_facil: 'Inicial (histórica)',
+  facil: 'Junior (Fácil)',
+  facil_medio: 'Semi-senior (Medio)',
+  dificil: 'Senior (Difícil)',
 };
 
 export function isProblemCategory(value: unknown): value is ProblemCategory {

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "problem_id": "0f3dde09-0c0f-58cc-8c18-466f67f123e4",
+  "problem_version": 1,
+  "cases": [
+    {
+      "ordinal": 1,
+      "input": "8\n10 9 2 5 3 7 101 18\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 2,
+      "input": "4\n1 2 2 3\n",
+      "expected": "3\n"
+    },
+    {
+      "ordinal": 3,
+      "input": "1\n7\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 4,
+      "input": "5\n5 4 3 2 1\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 5,
+      "input": "5\n1 2 3 4 5\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 6,
+      "input": "3\n1 1 1\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 7,
+      "input": "4\n-3 -2 -1 0\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 8,
+      "input": "5\n3 1 2 2 4\n",
+      "expected": "3\n"
+    },
+    {
+      "ordinal": 9,
+      "input": "6\n5 1 6 2 3 4\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 10,
+      "input": "7\n7 2 3 1 4 5 6\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 11,
+      "input": "5\n10 4 3 8 9\n",
+      "expected": "3\n"
+    },
+    {
+      "ordinal": 12,
+      "input": "5\n-5 -4 -3 -2 -1\n",
+      "expected": "5\n"
+    }
+  ]
+}

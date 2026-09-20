@@ -7,6 +7,7 @@ import { Space_Grotesk } from 'next/font/google';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { ACTIVE_PROBLEM_CATEGORIES } from '@duelodev/shared';
 import { api } from '@/lib/api';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import type {
@@ -17,7 +18,7 @@ import type {
   RondasMatchConfig,
 } from '@duelodev/shared';
 
-const PILOT_CATEGORIES: ProblemCategory[] = ['muy_facil', 'facil', 'facil_medio'];
+const PILOT_CATEGORIES: ProblemCategory[] = [...ACTIVE_PROBLEM_CATEGORIES];
 type AccessMode = 'register' | 'login' | 'guest';
 
 const displayFont = Space_Grotesk({
@@ -705,18 +706,18 @@ export default function Home() {
           <div className="landing-difficulty-grid">
             <div className="landing-difficulty-card landing-difficulty-card-start">
               <span>01</span>
-              <strong>Inicial</strong>
-              <p>Calienta con lógica directa y casos cortos.</p>
+              <strong>Junior (Fácil)</strong>
+              <p>Domina estructuras básicas y patrones de entrada/salida.</p>
             </div>
             <div className="landing-difficulty-card landing-difficulty-card-easy">
               <span>02</span>
-              <strong>Fácil</strong>
-              <p>Encuentra el patrón y gana velocidad.</p>
+              <strong>Semi-senior (Medio)</strong>
+              <p>Combina estructuras, búsqueda y recorridos eficientes.</p>
             </div>
             <div className="landing-difficulty-card landing-difficulty-card-medium">
               <span>03</span>
-              <strong>Medio</strong>
-              <p>Combina estrategia, precisión y tiempo.</p>
+              <strong>Senior (Difícil)</strong>
+              <p>Resuelve retos de optimización, grafos y programación dinámica.</p>
             </div>
           </div>
         </div>

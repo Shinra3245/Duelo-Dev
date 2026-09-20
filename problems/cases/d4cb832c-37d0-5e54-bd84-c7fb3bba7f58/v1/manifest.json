@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "problem_id": "d4cb832c-37d0-5e54-bd84-c7fb3bba7f58",
+  "problem_version": 1,
+  "cases": [
+    {
+      "ordinal": 1,
+      "input": "2 3 2\n1 2 3\n4 5 6\n1 1 2 2\n1 2 2 3\n",
+      "expected": "12\n16\n"
+    },
+    {
+      "ordinal": 2,
+      "input": "2 2 2\n-1 2\n3 -4\n1 1 2 2\n1 2 2 2\n",
+      "expected": "0\n-2\n"
+    },
+    {
+      "ordinal": 3,
+      "input": "1 1 1\n5\n1 1 1 1\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 4,
+      "input": "1 3 3\n1 2 3\n1 1 1 1\n1 2 1 2\n1 3 1 3\n",
+      "expected": "1\n2\n3\n"
+    },
+    {
+      "ordinal": 5,
+      "input": "2 2 2\n0 0\n0 0\n1 1 2 2\n1 2 2 2\n",
+      "expected": "0\n0\n"
+    },
+    {
+      "ordinal": 6,
+      "input": "2 2 2\n1 2\n3 4\n1 1 1 2\n2 1 2 2\n",
+      "expected": "3\n7\n"
+    },
+    {
+      "ordinal": 7,
+      "input": "3 3 1\n1 2 3\n4 5 6\n7 8 9\n2 2 2 2\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 8,
+      "input": "3 2 2\n1 2\n3 4\n5 6\n1 1 3 1\n1 2 3 2\n",
+      "expected": "9\n12\n"
+    },
+    {
+      "ordinal": 9,
+      "input": "2 2 1\n-1 -2\n-3 -4\n1 1 2 2\n",
+      "expected": "-10\n"
+    },
+    {
+      "ordinal": 10,
+      "input": "2 3 2\n0 0 0\n4 5 6\n2 1 2 3\n1 1 1 3\n",
+      "expected": "15\n0\n"
+    },
+    {
+      "ordinal": 11,
+      "input": "3 2 2\n1 10\n2 20\n3 30\n1 1 3 2\n2 2 3 2\n",
+      "expected": "66\n50\n"
+    },
+    {
+      "ordinal": 12,
+      "input": "3 3 3\n1 1 1\n1 1 1\n1 1 1\n1 1 3 3\n2 2 2 2\n2 2 3 3\n",
+      "expected": "9\n1\n4\n"
+    }
+  ]
+}

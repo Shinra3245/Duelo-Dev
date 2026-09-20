@@ -313,7 +313,7 @@ describe('Judge Queue & Submission Reconciler (doc 04 §4, §5)', () => {
         config: {
           mode: 'puntos',
           max_players: 2,
-          categories: ['muy_facil'],
+          categories: ['facil'],
           num_problems: 1,
           time_per_problem_s: 60,
         },

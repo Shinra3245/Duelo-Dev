@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "problem_id": "317d2a06-d835-5c89-b373-57fa68c3275f",
+  "problem_version": 1,
+  "cases": [
+    {
+      "ordinal": 1,
+      "input": "ABCBDAB\nBDCABA\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 2,
+      "input": "abc\nabc\n",
+      "expected": "3\n"
+    },
+    {
+      "ordinal": 3,
+      "input": "a\nb\n",
+      "expected": "0\n"
+    },
+    {
+      "ordinal": 4,
+      "input": "a\na\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 5,
+      "input": "aaaa\naa\n",
+      "expected": "2\n"
+    },
+    {
+      "ordinal": 6,
+      "input": "abc\ndef\n",
+      "expected": "0\n"
+    },
+    {
+      "ordinal": 7,
+      "input": "AGGTAB\nGXTXAYB\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 8,
+      "input": "abcdef\nace\n",
+      "expected": "3\n"
+    },
+    {
+      "ordinal": 9,
+      "input": "abcbdab\nbdcaba\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 10,
+      "input": "x\nxxxx\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 11,
+      "input": "XMJYAUZ\nMZJAWXU\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 12,
+      "input": "azbycx\nabcxyz\n",
+      "expected": "4\n"
+    }
+  ]
+}

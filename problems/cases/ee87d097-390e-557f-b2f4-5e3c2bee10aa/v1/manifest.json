@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "problem_id": "ee87d097-390e-557f-b2f4-5e3c2bee10aa",
+  "problem_version": 1,
+  "cases": [
+    {
+      "ordinal": 1,
+      "input": "duelodev\n",
+      "expected": "4\n"
+    },
+    {
+      "ordinal": 2,
+      "input": "programacion\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 3,
+      "input": "a\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 4,
+      "input": "rhythm\n",
+      "expected": "0\n"
+    },
+    {
+      "ordinal": 5,
+      "input": "aeiou\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 6,
+      "input": "bcdfg\n",
+      "expected": "0\n"
+    },
+    {
+      "ordinal": 7,
+      "input": "murcielago\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 8,
+      "input": "computadora\n",
+      "expected": "5\n"
+    },
+    {
+      "ordinal": 9,
+      "input": "ae\n",
+      "expected": "2\n"
+    },
+    {
+      "ordinal": 10,
+      "input": "xxxy\n",
+      "expected": "0\n"
+    },
+    {
+      "ordinal": 11,
+      "input": "bbbbbbba\n",
+      "expected": "1\n"
+    },
+    {
+      "ordinal": 12,
+      "input": "programador\n",
+      "expected": "4\n"
+    }
+  ]
+}

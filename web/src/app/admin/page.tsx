@@ -19,7 +19,7 @@ const defaultConfig: CreateRoomRequest = {
     mode: 'puntos',
     max_players: 2,
     num_problems: 3,
-    categories: ['muy_facil', 'facil', 'facil_medio'],
+    categories: ['facil', 'facil_medio', 'dificil'],
     time_per_problem_s: 300,
   },
 };
@@ -514,7 +514,7 @@ export default function AdminPage() {
                             mode: 'rondas',
                             max_players: current.config.max_players,
                             num_problems: 3,
-                            categories: ['muy_facil', 'facil', 'facil_medio'],
+                            categories: ['facil', 'facil_medio', 'dificil'],
                             target: 3,
                             match_duration_s: 600,
                           },

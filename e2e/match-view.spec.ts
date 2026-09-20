@@ -64,7 +64,9 @@ test.describe('vista de partida sincronizada', () => {
         [host, rival, third].map((page) => page.locator('.duel-problem-category').textContent()),
       );
       expect(new Set(sharedDifficulties).size).toBe(1);
-      expect(sharedDifficulties[0]).toMatch(/^Dificultad: (Inicial|Fácil|Medio)$/);
+      expect(sharedDifficulties[0]).toMatch(
+        /^Dificultad: (Junior \(Fácil\)|Semi-senior \(Medio\)|Senior \(Difícil\))$/,
+      );
       const instructionPanel = await host.locator('.duel-instructions-card').evaluate((card) => {
         const problem = card.querySelector('.duel-problem-content');
         return {

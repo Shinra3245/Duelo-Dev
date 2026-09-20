@@ -144,7 +144,7 @@ describe('API Runtime Schemas & Validation', () => {
         config: {
           mode: 'rondas',
           max_players: 3,
-          categories: ['muy_facil'],
+          categories: ['facil'],
           match_duration_s: 600,
           num_problems: 10,
           target: 6,
@@ -153,12 +153,26 @@ describe('API Runtime Schemas & Validation', () => {
       expect(res.ok).toBe(true);
     });
 
-    it('rechaza dificultades todavía no habilitadas para partidas', () => {
+    it('permite la categoría Senior (Difícil)', () => {
       const res = validateCreateRoomRequest({
         config: {
           mode: 'puntos',
           max_players: 2,
           categories: ['dificil'],
+          num_problems: 1,
+          time_per_problem_s: 60,
+        },
+      });
+
+      expect(res.ok).toBe(true);
+    });
+
+    it('rechaza la categoría histórica al crear partidas nuevas', () => {
+      const res = validateCreateRoomRequest({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          categories: ['muy_facil'],
           num_problems: 1,
           time_per_problem_s: 60,
         },

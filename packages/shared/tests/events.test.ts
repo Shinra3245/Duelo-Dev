@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIVE_PROBLEM_CATEGORIES,
   C2S,
   HOST_LOBBY_TIMEOUT_MS,
   MATCH_FINISH_REASONS,
@@ -11,6 +12,7 @@ import {
   MAX_YDOC_BYTES,
   PLAYER_CONNECTIONS,
   PROBLEM_CATEGORIES,
+  PROBLEM_CATEGORY_LABELS,
   RECONNECT_GRACE_MS,
   RONDAS_TARGET_VALUES,
   ROUND_STATUSES,
@@ -106,6 +108,14 @@ describe('contrato de eventos y estado de partida', () => {
     expect(isProblemCategory('invalida')).toBe(false);
     expect(isProblemCategory(null)).toBe(false);
     expect(isProblemCategory(123)).toBe(false);
+  });
+
+  it('mantiene las tres dificultades activas y las etiquetas del torneo', () => {
+    expect(ACTIVE_PROBLEM_CATEGORIES).toEqual(['facil', 'facil_medio', 'dificil']);
+    expect(PROBLEM_CATEGORY_LABELS.facil).toBe('Junior (Fácil)');
+    expect(PROBLEM_CATEGORY_LABELS.facil_medio).toBe('Semi-senior (Medio)');
+    expect(PROBLEM_CATEGORY_LABELS.dificil).toBe('Senior (Difícil)');
+    expect(PROBLEM_CATEGORY_LABELS.muy_facil).toBe('Inicial (histórica)');
   });
 
   it('valida targets de rondas en {3, 6, 9, 10}', () => {

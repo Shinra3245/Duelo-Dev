@@ -69,7 +69,7 @@ async function createRunningMatchFixture(
     mode: 'puntos',
     num_problems: 3,
     time_per_problem_s: 60,
-    categories: ['muy_facil'],
+    categories: ['facil'],
     max_players: 2,
   };
 
@@ -220,7 +220,7 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       mode: 'puntos',
       num_problems: 3,
       time_per_problem_s: 60,
-      categories: ['muy_facil'],
+      categories: ['facil'],
       max_players: 2,
     };
     const resCreateRoom = await fetch(`${apiBaseUrl}/api/v1/rooms`, {

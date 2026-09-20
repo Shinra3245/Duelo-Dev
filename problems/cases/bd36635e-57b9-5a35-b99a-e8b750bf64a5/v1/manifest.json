@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "problem_id": "bd36635e-57b9-5a35-b99a-e8b750bf64a5",
+  "problem_version": 1,
+  "cases": [
+    {
+      "ordinal": 1,
+      "input": "duelodev\n",
+      "expected": "vedoleud\n"
+    },
+    {
+      "ordinal": 2,
+      "input": "anita\n",
+      "expected": "atina\n"
+    },
+    {
+      "ordinal": 3,
+      "input": "a\n",
+      "expected": "a\n"
+    },
+    {
+      "ordinal": 4,
+      "input": "ab\n",
+      "expected": "ba\n"
+    },
+    {
+      "ordinal": 5,
+      "input": "aa\n",
+      "expected": "aa\n"
+    },
+    {
+      "ordinal": 6,
+      "input": "abcd\n",
+      "expected": "dcba\n"
+    },
+    {
+      "ordinal": 7,
+      "input": "level\n",
+      "expected": "level\n"
+    },
+    {
+      "ordinal": 8,
+      "input": "python\n",
+      "expected": "nohtyp\n"
+    },
+    {
+      "ordinal": 9,
+      "input": "racecar\n",
+      "expected": "racecar\n"
+    },
+    {
+      "ordinal": 10,
+      "input": "xyz\n",
+      "expected": "zyx\n"
+    },
+    {
+      "ordinal": 11,
+      "input": "abcc\n",
+      "expected": "ccba\n"
+    },
+    {
+      "ordinal": 12,
+      "input": "casa\n",
+      "expected": "asac\n"
+    }
+  ]
+}

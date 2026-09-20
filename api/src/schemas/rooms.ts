@@ -95,7 +95,8 @@ export function validateCreateRoomRequest(input: unknown): ValidationResult<Crea
   if (!config.categories.every((category) => ACTIVE_CATEGORY_SET.has(category))) {
     errors.push({
       field: 'config.categories',
-      message: 'Solo se pueden seleccionar las dificultades Inicial, Fácil y Medio.',
+      message:
+        'Solo se pueden seleccionar las dificultades Junior (Fácil), Semi-senior (Medio) y Senior (Difícil).',
       code: 'INACTIVE_DIFFICULTY',
     });
   }
