@@ -205,8 +205,8 @@ export class PostgresMatchStore implements MatchStore {
              current_problem_idx = $4,
              is_ready = $5,
              is_revealed = $6,
-             connection_status = $7,
-             left_at = CASE WHEN $7 = 'left' THEN COALESCE(left_at, clock_timestamp()) ELSE left_at END
+             connection_status = $7::varchar(20),
+             left_at = CASE WHEN $7::varchar(20) = 'left' THEN COALESCE(left_at, clock_timestamp()) ELSE left_at END
          WHERE match_id = $8 AND user_id = $9`,
         [
           pScore?.score ?? 0,

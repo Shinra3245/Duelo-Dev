@@ -14,34 +14,37 @@ test.describe('vista de partida sincronizada', () => {
   test('sincroniza instrucciones, tableros relativos al jugador y código rival desenfocado', async ({
     browser,
   }) => {
+    const adminContext = await browser.newContext();
     const hostContext = await browser.newContext();
     const rivalContext = await browser.newContext();
     const thirdContext = await browser.newContext();
+    const admin = await adminContext.newPage();
     const host = await hostContext.newPage();
     const rival = await rivalContext.newPage();
     const third = await thirdContext.newPage();
     const suffix = Date.now().toString(36).slice(-7);
+    const hostGamertag = `host-${suffix}`;
     const rivalGamertag = `rival-${suffix}`;
     const thirdGamertag = `third-${suffix}`;
 
     try {
-      await host.goto('/admin');
-      await host.getByLabel('Correo').fill(adminEmail!);
-      await host.getByLabel('Contraseña').fill(adminPassword!);
-      await host.getByRole('button', { name: 'Entrar al panel' }).click();
-      await expect(host.locator('.admin-layout')).toBeVisible();
+      await admin.goto('/admin');
+      await admin.getByLabel('Correo').fill(adminEmail!);
+      await admin.getByLabel('Contraseña').fill(adminPassword!);
+      await admin.getByRole('button', { name: 'Entrar al panel' }).click();
+      await expect(admin.locator('.admin-layout')).toBeVisible();
 
-      await host.getByLabel('Jugadores').selectOption('3');
-      const createResponse = host.waitForResponse(
+      await admin.getByLabel('Jugadores').selectOption('3');
+      const createResponse = admin.waitForResponse(
         (response) =>
           response.url().endsWith('/api/v1/admin/rooms/create') &&
           response.request().method() === 'POST',
       );
-      await host.getByRole('button', { name: 'Crear sala' }).click();
+      await admin.getByRole('button', { name: 'Crear sala' }).click();
       const room = (await (await createResponse).json()) as { room_code: string };
-      await host.goto(`/room/${room.room_code}`);
-      await expect(host.getByRole('heading', { name: 'Lobby' })).toBeVisible();
 
+      // Las salas administrativas nacen vacías; el primer jugador que entra toma el rol host.
+      await enterAndJoin(host, hostGamertag, room.room_code);
       await enterAndJoin(rival, rivalGamertag, room.room_code);
       await enterAndJoin(third, thirdGamertag, room.room_code);
       await expect(host.getByText(rivalGamertag, { exact: true })).toBeVisible();
@@ -222,6 +225,7 @@ test.describe('vista de partida sincronizada', () => {
       await thirdContext.close();
       await rivalContext.close();
       await hostContext.close();
+      await adminContext.close();
     }
   });
 });

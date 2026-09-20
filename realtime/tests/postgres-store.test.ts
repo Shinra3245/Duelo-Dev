@@ -240,6 +240,8 @@ describe('PostgresMatchStore', () => {
 
     const playerUpdate = savingPool.calls.find((call) => call.sql.includes('UPDATE match_players'));
     expect(playerUpdate?.values[6]).toBe('left');
+    expect(playerUpdate?.sql).toContain('connection_status = $7::varchar(20)');
+    expect(playerUpdate?.sql).toContain("WHEN $7::varchar(20) = 'left'");
     expect(playerUpdate?.sql).toContain('COALESCE(left_at, clock_timestamp())');
   });
 });
