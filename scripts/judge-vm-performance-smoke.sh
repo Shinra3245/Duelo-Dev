@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Protocolo reproducible de rendimiento: 10 calentamientos y 100 muestras por lenguaje.
+# Protocolo reproducible: 10 calentamientos y 100 muestras por lenguaje, en ráfagas de 10.
 # La ejecución ocurre dentro de la VM rootless y no modifica el benchmark de carga inicial.
 
 readonly VM_USER="${JUDGE_VM_USER:-judge}"
@@ -12,6 +12,7 @@ readonly LANGUAGE="${JUDGE_PERF_LANGUAGE:-python}"
 readonly SAMPLES="${JUDGE_PERF_SAMPLES:-100}"
 readonly WARMUP="${JUDGE_PERF_WARMUP:-10}"
 readonly WORKERS="${JUDGE_PERF_WORKERS:-3}"
+readonly BURST_SIZE=10
 
 case "$LANGUAGE" in
   python|cpp|java) ;;
@@ -80,7 +81,7 @@ scp -P "$VM_PORT" \
 tar -C problems -czf - cases | "${ssh_base[@]}" "tar -xzf - -C ${remote_dir_quoted}/cases"
 
 "${ssh_base[@]}" \
-  "REMOTE_DIR=${remote_dir_quoted} LANGUAGE=${LANGUAGE} SAMPLES=${SAMPLES} WARMUP=${WARMUP} WORKERS=${WORKERS} bash -s" <<'REMOTE_SCRIPT'
+  "REMOTE_DIR=${remote_dir_quoted} LANGUAGE=${LANGUAGE} SAMPLES=${SAMPLES} WARMUP=${WARMUP} WORKERS=${WORKERS} PERF_BURST_SIZE=${BURST_SIZE} bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 if [[ "${LANGUAGE}" == python ]]; then
@@ -99,7 +100,8 @@ cpp_image="$(docker image inspect gcc:14-bookworm --format '{{index .RepoDigests
 java_image="$(docker image inspect eclipse-temurin:21-jdk-jammy --format '{{index .RepoDigests 0}}')"
 
 PERF_LANGUAGE="${LANGUAGE}" PERF_SAMPLES="${SAMPLES}" PERF_WARMUP="${WARMUP}" \
-PERF_WORKERS="${WORKERS}" PERF_PYTHON_IMAGE="${python_image}" PERF_CPP_IMAGE="${cpp_image}" \
+PERF_WORKERS="${WORKERS}" PERF_BURST_SIZE="${PERF_BURST_SIZE}" \
+PERF_PYTHON_IMAGE="${python_image}" PERF_CPP_IMAGE="${cpp_image}" \
 PERF_JAVA_IMAGE="${java_image}" PYTHONPATH="${REMOTE_DIR}" python3 - <<'PY'
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -129,6 +131,7 @@ language = os.environ["PERF_LANGUAGE"]
 samples = int(os.environ["PERF_SAMPLES"])
 warmup = int(os.environ["PERF_WARMUP"])
 workers = int(os.environ["PERF_WORKERS"])
+burst_size = int(os.environ["PERF_BURST_SIZE"])
 base_images = {
     "python": os.environ["PERF_PYTHON_IMAGE"],
     "cpp": os.environ["PERF_CPP_IMAGE"],
@@ -237,11 +240,14 @@ with tempfile.TemporaryDirectory(prefix="duelodev-performance-cases-") as case_r
             if warmup_result.get("failed"):
                 raise AssertionError(json.dumps(warmup_result, sort_keys=True))
 
-        submitted = []
-        for index in range(samples):
-            admitted_at = monotonic()
-            submitted.append(pool.submit(execute, index, admitted_at))
-        measurements = [future.result() for future in submitted]
+        measurements = []
+        for batch_start in range(0, samples, burst_size):
+            submitted = []
+            batch_end = min(batch_start + burst_size, samples)
+            for index in range(batch_start, batch_end):
+                admitted_at = monotonic()
+                submitted.append(pool.submit(execute, index, admitted_at))
+            measurements.extend(future.result() for future in submitted)
 
 failures = [item for item in measurements if item.get("failed")]
 if failures:
@@ -267,6 +273,7 @@ summary = {
     "samples": samples,
     "warmup": warmup,
     "workers": workers,
+    "burst_size": burst_size,
     "cases_per_job": 12,
     "compile_p50_ms": percentile([item["compile_ms"] for item in measurements], 0.50),
     "compile_p95_ms": percentile([item["compile_ms"] for item in measurements], 0.95),
