@@ -106,6 +106,13 @@ export type ProblemCategory = (typeof PROBLEM_CATEGORIES)[number];
 export const ACTIVE_PROBLEM_CATEGORIES = ['facil', 'facil_medio', 'dificil'] as const;
 export type ActiveProblemCategory = (typeof ACTIVE_PROBLEM_CATEGORIES)[number];
 
+/** Cupo actual sembrado por dificultad activa, protegido por los tests del catálogo. */
+export const ACTIVE_PROBLEMS_PER_CATEGORY = 10;
+export const MAX_ACTIVE_PROBLEMS = ACTIVE_PROBLEM_CATEGORIES.length * ACTIVE_PROBLEMS_PER_CATEGORY;
+
+/** Capacidades habilitadas para las salas del MVP. */
+export const SUPPORTED_PLAYER_COUNTS = [2, 3] as const;
+
 export const PROBLEM_CATEGORY_LABELS: Record<ProblemCategory, string> = {
   muy_facil: 'Inicial (histórica)',
   facil: 'Junior (Fácil)',
@@ -200,6 +207,9 @@ export type MatchConfig = PuntosMatchConfig | RondasMatchConfig;
  * - Categorías válidas no vacías.
  * - En Rondas: target en {3, 6, 9, 10} y target <= num_problems.
  * - Prohibición expresa de award_on_timeout.
+ *
+ * Los límites operativos actuales se aplican únicamente a la creación de salas;
+ * este guard también valida eventos y partidas históricas.
  */
 export function isMatchConfig(value: unknown): value is MatchConfig {
   if (typeof value !== 'object' || value === null) return false;
@@ -255,6 +265,19 @@ export function isMatchConfig(value: unknown): value is MatchConfig {
   }
 
   return false;
+}
+
+/** Política vigente para nuevas salas; separada del contrato histórico de partidas. */
+export function isRoomCreationConfig(value: unknown): value is MatchConfig {
+  return (
+    isMatchConfig(value) &&
+    SUPPORTED_PLAYER_COUNTS.some((count) => count === value.max_players) &&
+    value.num_problems <= MAX_ACTIVE_PROBLEMS &&
+    new Set(value.categories).size === value.categories.length &&
+    value.categories.every((category) =>
+      ACTIVE_PROBLEM_CATEGORIES.some((activeCategory) => activeCategory === category),
+    )
+  );
 }
 
 export function isPuntosConfig(value: unknown): value is PuntosMatchConfig {

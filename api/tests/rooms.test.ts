@@ -78,7 +78,7 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
 
   const validPuntosConfig: PuntosMatchConfig = {
     mode: 'puntos',
-    max_players: 4,
+    max_players: 3,
     categories: ['facil', 'facil_medio'],
     num_problems: 3,
     time_per_problem_s: 180,
@@ -317,6 +317,21 @@ describe('Rooms REST API (/api/v1/rooms)', () => {
       expect(res.status).toBe(400);
       const data = (await res.json()) as ApiError;
       expect(data.error.code).toBe(ERROR_CODES.VALIDATION_FAILED);
+    });
+
+    it('rechaza cuatro jugadores aunque el solicitante llame a la API normal', async () => {
+      const host = await registerUser('host-four@example.com', 'host-four');
+      const response = await fetch(baseUrl + '/api/v1/rooms', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer ' + host.accessToken,
+        },
+        body: JSON.stringify({ config: { ...validPuntosConfig, max_players: 4 } }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as ApiError).error.code).toBe(ERROR_CODES.VALIDATION_FAILED);
     });
   });
 

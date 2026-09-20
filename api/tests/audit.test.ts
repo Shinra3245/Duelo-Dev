@@ -381,10 +381,10 @@ describe('Infraestructura de Registro de Eventos de Auditoría y Métricas Opera
       const createdRoom = await roomService.createRoom(hostAuth.user.id, {
         config: {
           mode: 'puntos',
-          max_players: 4,
-          target_score: 100,
-          round_duration_s: 300,
-          problem_categories: ['facil'],
+          max_players: 3,
+          num_problems: 1,
+          time_per_problem_s: 60,
+          categories: ['facil'],
         },
       });
 

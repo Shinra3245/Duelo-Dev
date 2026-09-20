@@ -1,6 +1,9 @@
 import {
   ACTIVE_PROBLEM_CATEGORIES,
+  MAX_ACTIVE_PROBLEMS,
+  SUPPORTED_PLAYER_COUNTS,
   isMatchConfig,
+  isRoomCreationConfig,
   type CreateRoomRequest,
   type JoinRoomRequest,
 } from '@duelodev/shared';
@@ -25,17 +28,18 @@ export const createRoomRequestSchema = {
       required: ['mode', 'max_players', 'categories', 'num_problems'],
       properties: {
         mode: { type: 'string', enum: ['puntos', 'rondas'] },
-        max_players: { type: 'integer', minimum: 2 },
+        max_players: { type: 'integer', enum: SUPPORTED_PLAYER_COUNTS },
         categories: {
           type: 'array',
           items: { type: 'string', enum: ACTIVE_PROBLEM_CATEGORIES },
           minItems: 1,
+          uniqueItems: true,
         },
         // Puntos
         time_per_problem_s: { type: 'integer', minimum: 1 },
         // Rondas
         match_duration_s: { type: 'integer', minimum: 1 },
-        num_problems: { type: 'integer', minimum: 1 },
+        num_problems: { type: 'integer', minimum: 1, maximum: MAX_ACTIVE_PROBLEMS },
         target: { type: 'integer', enum: [3, 6, 9, 10] },
       },
     },
@@ -98,6 +102,15 @@ export function validateCreateRoomRequest(input: unknown): ValidationResult<Crea
       message:
         'Solo se pueden seleccionar las dificultades Junior (Fácil), Semi-senior (Medio) y Senior (Difícil).',
       code: 'INACTIVE_DIFFICULTY',
+    });
+  }
+
+  if (errors.length === 0 && !isRoomCreationConfig(config)) {
+    errors.push({
+      field: 'config',
+      message:
+        'La sala debe tener 2 o 3 jugadores, dificultades activas sin repetir y hasta 30 retos.',
+      code: 'INVALID_CONFIG',
     });
   }
 

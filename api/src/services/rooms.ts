@@ -4,6 +4,7 @@ import {
   ERROR_MESSAGES,
   comparePlayerScores,
   determineWinners,
+  isRoomCreationConfig,
   type CreateRoomRequest,
   type JoinRoomRequest,
   type JoinRoomResponse,
@@ -116,6 +117,14 @@ export class RoomService {
         403,
         ERROR_CODES.ROOM_CREATION_DISABLED,
         ERROR_MESSAGES.ROOM_CREATION_DISABLED,
+      );
+    }
+
+    if (!isRoomCreationConfig(req.config)) {
+      throw new HttpError(
+        400,
+        ERROR_CODES.VALIDATION_FAILED,
+        'La sala debe tener 2 o 3 jugadores, dificultades activas sin repetir y hasta 30 retos.',
       );
     }
 

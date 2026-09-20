@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_PROBLEM_CATEGORIES,
+  ACTIVE_PROBLEMS_PER_CATEGORY,
+  MAX_ACTIVE_PROBLEMS,
   C2S,
   HOST_LOBBY_TIMEOUT_MS,
   MATCH_FINISH_REASONS,
@@ -17,8 +19,10 @@ import {
   RONDAS_TARGET_VALUES,
   ROUND_STATUSES,
   S2C,
+  SUPPORTED_PLAYER_COUNTS,
   isGameModeName,
   isMatchConfig,
+  isRoomCreationConfig,
   isMatchFinishReason,
   isMatchFinishedPayload,
   isMatchStartedPayload,
@@ -163,8 +167,20 @@ describe('contrato de eventos y estado de partida', () => {
     expect(isMatchConfig({ ...puntosConfig, categories: [] })).toBe(false);
     expect(isMatchConfig({ ...puntosConfig, categories: ['inventada'] })).toBe(false);
 
-    // Invariante violado: max_players < 2
+    // La validación estructural se conserva amplia para configuraciones históricas.
     expect(isMatchConfig({ ...puntosConfig, max_players: 1 })).toBe(false);
+    expect(isMatchConfig({ ...puntosConfig, max_players: 3 })).toBe(true);
+    expect(isMatchConfig({ ...puntosConfig, max_players: 4 })).toBe(true);
+    expect(isMatchConfig({ ...puntosConfig, num_problems: MAX_ACTIVE_PROBLEMS + 1 })).toBe(true);
+    expect(isMatchConfig({ ...puntosConfig, categories: ['facil', 'facil'] })).toBe(true);
+    expect(isRoomCreationConfig(puntosConfig)).toBe(true);
+    expect(isRoomCreationConfig({ ...puntosConfig, max_players: 4 })).toBe(false);
+    expect(isRoomCreationConfig({ ...puntosConfig, num_problems: MAX_ACTIVE_PROBLEMS + 1 })).toBe(
+      false,
+    );
+    expect(isRoomCreationConfig({ ...puntosConfig, categories: ['facil', 'facil'] })).toBe(false);
+    expect(SUPPORTED_PLAYER_COUNTS).toEqual([2, 3]);
+    expect(ACTIVE_PROBLEMS_PER_CATEGORY).toBe(10);
   });
 
   it('configuración discriminada inequívoca para Rondas y guardias estrictas', () => {
@@ -178,6 +194,7 @@ describe('contrato de eventos y estado de partida', () => {
     };
 
     expect(isMatchConfig(rondasConfig)).toBe(true);
+    expect(isRoomCreationConfig(rondasConfig)).toBe(false);
     expect(isRondasConfig(rondasConfig)).toBe(true);
     expect(isPuntosConfig(rondasConfig)).toBe(false);
 
@@ -339,6 +356,16 @@ describe('contrato de eventos y estado de partida', () => {
       problem_order: ['p-1', 'p-2', 'p-3'],
     };
     expect(isMatchStartedPayload(startPayload)).toBe(true);
+    expect(
+      isMatchStartedPayload({
+        ...startPayload,
+        config: {
+          ...startPayload.config,
+          max_players: 4,
+          num_problems: MAX_ACTIVE_PROBLEMS + 1,
+        },
+      }),
+    ).toBe(true);
     expect(isMatchStartedPayload({ ...startPayload, state_version: 0 })).toBe(false);
 
     const beginPayload: ProblemBeginPayload = {

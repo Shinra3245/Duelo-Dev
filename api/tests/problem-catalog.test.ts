@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { ACTIVE_PROBLEM_CATEGORIES, ACTIVE_PROBLEMS_PER_CATEGORY } from '@duelodev/shared';
 import { PILOT_PROBLEMS } from '../src/seeds/pilot-problems.js';
 
-const ACTIVE_CATEGORIES = ['facil', 'facil_medio', 'dificil'] as const;
+const ACTIVE_CATEGORIES = ACTIVE_PROBLEM_CATEGORIES;
 const ACTIVE_PILOT_SLUGS = ['parentesis', 'consultas-suma', 'palindromo', 'producto-punto'];
 
 function tokens(input: string): string[] {
@@ -59,9 +60,11 @@ describe('catálogo de dificultades activas', () => {
   const activeProblems = PILOT_PROBLEMS.filter((problem) => problem.category !== 'muy_facil');
 
   it('mantiene exactamente diez problemas por cada dificultad activa', () => {
-    expect(activeProblems).toHaveLength(30);
+    expect(activeProblems).toHaveLength(ACTIVE_CATEGORIES.length * ACTIVE_PROBLEMS_PER_CATEGORY);
     for (const category of ACTIVE_CATEGORIES) {
-      expect(activeProblems.filter((problem) => problem.category === category)).toHaveLength(10);
+      expect(activeProblems.filter((problem) => problem.category === category)).toHaveLength(
+        ACTIVE_PROBLEMS_PER_CATEGORY,
+      );
     }
   });
 

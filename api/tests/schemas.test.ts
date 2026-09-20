@@ -130,7 +130,7 @@ describe('API Runtime Schemas & Validation', () => {
       const res = validateCreateRoomRequest({
         config: {
           mode: 'puntos',
-          max_players: 4,
+          max_players: 3,
           num_problems: 3,
           categories: ['facil', 'facil_medio'],
           time_per_problem_s: 300,
@@ -241,6 +241,30 @@ describe('API Runtime Schemas & Validation', () => {
         },
       });
       expect(res.ok).toBe(false);
+    });
+
+    it('rechaza más de tres jugadores y categorías duplicadas', () => {
+      const tooManyPlayers = validateCreateRoomRequest({
+        config: {
+          mode: 'puntos',
+          max_players: 4,
+          num_problems: 1,
+          categories: ['facil'],
+          time_per_problem_s: 60,
+        },
+      });
+      const duplicateCategory = validateCreateRoomRequest({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['facil', 'facil'],
+          time_per_problem_s: 60,
+        },
+      });
+
+      expect(tooManyPlayers.ok).toBe(false);
+      expect(duplicateCategory.ok).toBe(false);
     });
   });
 

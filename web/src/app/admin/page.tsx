@@ -13,6 +13,7 @@ import type {
   UserProfile,
 } from '@duelodev/shared';
 import { api, ApiClientError } from '@/lib/api';
+import { fitRondasTarget, getActiveProblemLimit } from '@/lib/admin-room-config';
 
 const defaultConfig: CreateRoomRequest = {
   config: {
@@ -284,7 +285,21 @@ export default function AdminPage() {
       const categories = current.config.categories.includes(category)
         ? current.config.categories.filter((item) => item !== category)
         : [...current.config.categories, category];
-      return { config: { ...current.config, categories } } as CreateRoomRequest;
+      if (categories.length === 0) return current;
+
+      const availableLimit = getActiveProblemLimit(categories);
+      const minimum = current.config.mode === 'rondas' ? 3 : 1;
+      const numProblems = Math.max(minimum, Math.min(current.config.num_problems, availableLimit));
+      const nextConfig =
+        current.config.mode === 'rondas'
+          ? {
+              ...current.config,
+              categories,
+              num_problems: numProblems,
+              target: fitRondasTarget(current.config.target, numProblems),
+            }
+          : { ...current.config, categories, num_problems: numProblems };
+      return { config: nextConfig } as CreateRoomRequest;
     });
   };
 
@@ -365,6 +380,8 @@ export default function AdminPage() {
       </main>
     );
   }
+
+  const availableProblemsLimit = getActiveProblemLimit(config.config.categories);
 
   return (
     <main className="admin-shell">
@@ -544,15 +561,31 @@ export default function AdminPage() {
               Problemas
               <input
                 type="number"
-                min={1}
-                max={10}
+                min={config.config.mode === 'rondas' ? 3 : 1}
+                max={availableProblemsLimit}
                 value={config.config.num_problems}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const minimum = config.config.mode === 'rondas' ? 3 : 1;
+                  const numProblems = Math.max(
+                    minimum,
+                    Math.min(availableProblemsLimit, Number(event.target.value) || minimum),
+                  );
                   setConfig((current) => ({
-                    config: { ...current.config, num_problems: Number(event.target.value) },
-                  }))
-                }
+                    config:
+                      current.config.mode === 'rondas'
+                        ? {
+                            ...current.config,
+                            num_problems: numProblems,
+                            target: fitRondasTarget(current.config.target, numProblems),
+                          }
+                        : { ...current.config, num_problems: numProblems },
+                  }));
+                }}
               />
+              <small>
+                Hasta {availableProblemsLimit} retos según las dificultades seleccionadas; la
+                disponibilidad real se valida al guardar.
+              </small>
             </label>
             <fieldset className="admin-difficulty-fieldset">
               <legend>Dificultad</legend>

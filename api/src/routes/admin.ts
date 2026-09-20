@@ -78,7 +78,7 @@ export async function handleAdminCreateRoom(
   const admin = await requireAdmin(req, ctx);
   const body = await parseJsonBody(req);
   const validated = validateCreateRoomRequest(body);
-  if (!validated.ok || validated.data.config.max_players > 3) {
+  if (!validated.ok) {
     throw new HttpError(400, ERROR_CODES.VALIDATION_FAILED, ERROR_MESSAGES.VALIDATION_FAILED, {
       errors: [
         {
