@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const tournamentEnabled = process.env.E2E_TOURNAMENT === '1';
+const tournamentEnabled =
+  process.env.E2E_TOURNAMENT === '1' && process.env.E2E_DISPOSABLE_STACK === '1';
 
 test.describe('flujo de torneo en navegador', () => {
   test.skip(
     !tournamentEnabled,
-    'Requiere E2E_TOURNAMENT=1, servicios LAN activos y el worker aislado del juez',
+    'Requiere E2E_TOURNAMENT=1, E2E_DISPOSABLE_STACK=1, DB/Redis y worker aislados',
   );
   test.setTimeout(120_000);
 
