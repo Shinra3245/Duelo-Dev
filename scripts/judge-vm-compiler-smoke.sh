@@ -6,10 +6,26 @@ set -euo pipefail
 readonly VM_USER="judge"
 readonly VM_HOST="127.0.0.1"
 readonly VM_PORT="2222"
-readonly REMOTE_DIR="/home/judge/duelodev-compiler-smoke"
+SMOKE_SUFFIX="${JUDGE_VM_COMPILER_SUFFIX:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+if [[ ! "$SMOKE_SUFFIX" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,47}$ ]]; then
+  printf 'Error: JUDGE_VM_COMPILER_SUFFIX debe ser alfanumérico y contener hasta 48 caracteres.\n' >&2
+  exit 2
+fi
+readonly REMOTE_DIR="/home/judge/duelodev-compiler-smoke-${SMOKE_SUFFIX}"
+REMOTE_DIR_CREATED=0
+
+cleanup() {
+  if [[ "$REMOTE_DIR_CREATED" == 1 ]]; then
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" \
+      "${VM_USER}@${VM_HOST}" "rm -rf -- '${REMOTE_DIR}'" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
-  "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
+  "${VM_USER}@${VM_HOST}" \
+  "mkdir '${REMOTE_DIR}' || exit 1; if ! mkdir '${REMOTE_DIR}/judge'; then rmdir '${REMOTE_DIR}' || true; exit 1; fi"
+REMOTE_DIR_CREATED=1
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/case_store.py judge/compiler.py \
   judge/docker_compiler.py judge/evaluation.py judge/languages.py judge/limits.py \
   judge/pipeline.py judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
