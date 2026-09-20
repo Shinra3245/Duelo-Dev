@@ -33,6 +33,9 @@ export const READY_STATE = {
   CLOSED: 3,
 } as const;
 
+/** Cota defensiva por mensaje; `/match` aplica además el límite contractual de 8 KiB. */
+export const DEFAULT_MAX_MESSAGE_BYTES = 512 * 1024;
+
 export class NativeWebSocket {
   public readyState: number = READY_STATE.OPEN;
   public onMessage: ((data: string | Uint8Array, isBinary: boolean) => void) | null = null;
@@ -42,6 +45,7 @@ export class NativeWebSocket {
   private buffer: Buffer = Buffer.alloc(0);
   private fragmentBuffers: Buffer[] = [];
   private fragmentOpcode: number = 0;
+  private fragmentBytes: number = 0;
   private isClosed: boolean = false;
   private closeCode: number = 1000;
   private closeReason: string = '';
@@ -50,7 +54,12 @@ export class NativeWebSocket {
   constructor(
     public readonly socket: Duplex,
     initialHead?: Buffer,
+    private readonly maxMessageBytes: number = DEFAULT_MAX_MESSAGE_BYTES,
   ) {
+    if (!Number.isSafeInteger(maxMessageBytes) || maxMessageBytes < 1) {
+      throw new RangeError('maxMessageBytes debe ser un entero positivo');
+    }
+
     if (initialHead && initialHead.length > 0) {
       this.buffer = Buffer.from(initialHead);
     }
@@ -208,6 +217,17 @@ export class NativeWebSocket {
         offset += 8;
       }
 
+      const messageBytes =
+        opcode === OPCODES.CONTINUATION ? this.fragmentBytes + payloadLen : payloadLen;
+      if ((opcode & 0x08) !== 0 && (!fin || payloadLen > 125)) {
+        this.close(1002, 'Invalid WebSocket control frame');
+        return;
+      }
+      if ((opcode & 0x08) === 0 && messageBytes > this.maxMessageBytes) {
+        this.close(1009, 'WebSocket message exceeds maximum size');
+        return;
+      }
+
       // Lectura de Masking Key (4 bytes)
       if (this.buffer.length < offset + 4) return;
       const maskKey = this.buffer.subarray(offset, offset + 4);
@@ -270,11 +290,13 @@ export class NativeWebSocket {
     // Manejo de fragmentación
     if (opcode === OPCODES.CONTINUATION) {
       this.fragmentBuffers.push(payload);
+      this.fragmentBytes += payload.length;
       if (fin) {
         const fullPayload = Buffer.concat(this.fragmentBuffers);
         const origOpcode = this.fragmentOpcode;
         this.fragmentBuffers = [];
         this.fragmentOpcode = 0;
+        this.fragmentBytes = 0;
 
         if (origOpcode === OPCODES.TEXT) {
           this.onMessage?.(fullPayload.toString('utf8'), false);
@@ -288,6 +310,7 @@ export class NativeWebSocket {
     if (!fin) {
       this.fragmentOpcode = opcode;
       this.fragmentBuffers = [payload];
+      this.fragmentBytes = payload.length;
       return;
     }
 
@@ -368,6 +391,7 @@ export function upgradeToWebSocket(
   req: IncomingMessage,
   socket: Duplex,
   head: Buffer,
+  maxMessageBytes: number = DEFAULT_MAX_MESSAGE_BYTES,
 ): NativeWebSocket | null {
   const upgradeHeader = req.headers.upgrade;
   const connectionHeader = req.headers.connection;
@@ -408,5 +432,5 @@ export function upgradeToWebSocket(
   ].join('\r\n');
 
   socket.write(responseHeaders);
-  return new NativeWebSocket(socket, head);
+  return new NativeWebSocket(socket, head, maxMessageBytes);
 }

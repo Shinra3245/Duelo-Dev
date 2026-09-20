@@ -126,6 +126,46 @@ describe('RFC 6455 Native WebSocket Unit Tests', () => {
       expect(res.isBinary).toBe(true);
     });
 
+    it('cierra con 1009 un mensaje que supera el máximo configurado', async () => {
+      const { clientStream, serverStream } = createStreamPair();
+      const ws = new NativeWebSocket(serverStream, undefined, 5);
+      const closePromise = new Promise<{ code: number; reason: string }>((resolve) => {
+        ws.onClose = (code, reason) => resolve({ code, reason });
+      });
+
+      clientStream.write(createClientMaskedFrame(OPCODES.TEXT, Buffer.from('123456')));
+
+      await expect(closePromise).resolves.toEqual({
+        code: 1009,
+        reason: 'WebSocket message exceeds maximum size',
+      });
+    });
+
+    it('suma los bytes de los fragmentos antes de aceptarlos', async () => {
+      const { clientStream, serverStream } = createStreamPair();
+      const ws = new NativeWebSocket(serverStream, undefined, 6);
+      const closePromise = new Promise<number>((resolve) => {
+        ws.onClose = (code) => resolve(code);
+      });
+
+      clientStream.write(createClientMaskedFrame(OPCODES.TEXT, Buffer.from('1234'), false));
+      clientStream.write(createClientMaskedFrame(OPCODES.CONTINUATION, Buffer.from('567'), true));
+
+      await expect(closePromise).resolves.toBe(1009);
+    });
+
+    it('rechaza los frames de control fragmentados o mayores a 125 bytes', async () => {
+      const { clientStream, serverStream } = createStreamPair();
+      const ws = new NativeWebSocket(serverStream);
+      const closePromise = new Promise<number>((resolve) => {
+        ws.onClose = (code) => resolve(code);
+      });
+
+      clientStream.write(createClientMaskedFrame(OPCODES.PING, Buffer.alloc(126)));
+
+      await expect(closePromise).resolves.toBe(1002);
+    });
+
     it('responde a Ping con Pong automáticamente', async () => {
       const { clientStream, serverStream } = createStreamPair();
       const ws = new NativeWebSocket(serverStream);

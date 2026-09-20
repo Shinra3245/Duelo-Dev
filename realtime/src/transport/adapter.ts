@@ -15,6 +15,7 @@ import {
   C2S,
   createYjsErrorMessage,
   ERROR_CODES,
+  MAX_EVENT_PAYLOAD_BYTES,
   parseYjsClientMessage,
   S2C,
   type Logger,
@@ -27,6 +28,7 @@ import { parseYjsPath } from '../yjs/auth.js';
 import type { YjsHub } from '../yjs/hub.js';
 import type { YjsClientConnection } from '../yjs/types.js';
 import { type NativeWebSocket, upgradeToWebSocket } from './websocket.js';
+import { serializeMatchEvent } from './event-budget.js';
 
 export interface SetupRealtimeUpgradeHandlerOptions {
   server: Server;
@@ -58,6 +60,24 @@ function getRemoteAddress(socket: Duplex): string | undefined {
     return (socket as { remoteAddress: string }).remoteAddress;
   }
   return undefined;
+}
+
+function sendMatchEvent(
+  ws: NativeWebSocket,
+  event: string,
+  payload: unknown,
+  logger: Logger | undefined,
+): void {
+  const message = serializeMatchEvent(event, payload);
+  if (message === null) {
+    logger?.error('Evento WebSocket /match excede el presupuesto', {
+      event,
+      max_bytes: MAX_EVENT_PAYLOAD_BYTES,
+    });
+    ws.close(1011, 'Server event exceeds payload limit');
+    return;
+  }
+  ws.send(message);
 }
 
 /**
@@ -94,7 +114,7 @@ export function setupRealtimeUpgradeHandler(
         return;
       }
 
-      const ws = upgradeToWebSocket(req, socket, head);
+      const ws = upgradeToWebSocket(req, socket, head, MAX_EVENT_PAYLOAD_BYTES);
       if (!ws) return;
 
       activeSockets.add(ws);
@@ -114,19 +134,19 @@ export function setupRealtimeUpgradeHandler(
           rooms.delete(room);
         },
         emit(event: string, payload: unknown): void {
-          ws.send(JSON.stringify({ event, payload }));
+          sendMatchEvent(ws, event, payload, logger);
         },
         sendError(code: string, message: string, details?: unknown): void {
-          ws.send(
-            JSON.stringify({
-              event: S2C.ERROR,
-              payload: {
-                code,
-                message,
-                details,
-                server_time: Date.now(),
-              },
-            }),
+          sendMatchEvent(
+            ws,
+            S2C.ERROR,
+            {
+              code,
+              message,
+              details,
+              server_time: Date.now(),
+            },
+            logger,
           );
         },
         disconnect(): void {
