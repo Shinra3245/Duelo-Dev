@@ -12,6 +12,7 @@
 
 import { createYjsSyncMessage, type Logger } from '@duelodev/shared';
 import type { MatchStore } from '../store/types.js';
+import type { RealtimeMatchSession } from '../types.js';
 import { authorizeYjsAccess, parseYjsPath } from './auth.js';
 import { YjsDocument } from './document.js';
 import type { CodeSnapshot, YjsAuthContext, YjsClientConnection } from './types.js';
@@ -60,6 +61,11 @@ export class YjsHub {
     return `${matchId}:${userId}:${roundId}`;
   }
 
+  private isActivePlayer(session: RealtimeMatchSession, userId: string): boolean {
+    const player = session.players.get(userId);
+    return player !== undefined && player.connection !== 'left';
+  }
+
   /**
    * Procesa una solicitud de conexión a `/yjs/{match_id}/{user_id}`.
    *
@@ -90,7 +96,7 @@ export class YjsHub {
       return { authorized: false, reason: 'Partida no encontrada.' };
     }
 
-    const isMember = session.players.has(auth.userId);
+    const isMember = this.isActivePlayer(session, auth.userId);
     const targetPlayer = session.players.get(targetUserId);
 
     if (!targetPlayer) {
@@ -154,27 +160,19 @@ export class YjsHub {
   /**
    * Aplica una actualización binaria proveniente de un cliente.
    */
-  handleIncomingUpdate(
+  async handleIncomingUpdate(
     client: YjsClientConnection,
     update: Uint8Array,
     generation: number,
     updatedText?: string,
-  ): { applied: boolean; reason?: string } {
-    if (!client.isOwner) {
+  ): Promise<{ applied: boolean; reason?: string }> {
+    if (!client.isOwner || client.userId !== client.targetUserId) {
       return {
         applied: false,
         reason: 'Solo el dueño del documento puede enviar actualizaciones.',
       };
     }
-
-    const key = this.docKey(client.matchId, client.targetUserId);
-    const doc = this.activeDocuments.get(key);
-
-    if (!doc) {
-      return { applied: false, reason: 'Documento Yjs no encontrado.' };
-    }
-
-    return doc.applyUpdate(update, generation, updatedText, client.id);
+    return this.handleIncomingBinaryUpdate(client, update, generation, updatedText);
   }
 
   /** Variante asíncrona del transporte binario con el mismo filtro de permisos. */
@@ -182,8 +180,9 @@ export class YjsHub {
     client: YjsClientConnection,
     update: Uint8Array,
     generation: number,
+    updatedText?: string,
   ): Promise<{ applied: boolean; reason?: string }> {
-    if (!client.isOwner) {
+    if (!client.isOwner || client.userId !== client.targetUserId) {
       return {
         applied: false,
         reason: 'Solo el dueño del documento puede enviar actualizaciones.',
@@ -193,18 +192,16 @@ export class YjsHub {
     const session = await this.matchStore.getMatch(client.matchId);
     if (!session) return { applied: false, reason: 'Partida no encontrada.' };
 
-    const targetPlayer = session.players.get(client.targetUserId);
-    if (!targetPlayer) {
-      return { applied: false, reason: 'Jugador objetivo no pertenece a la partida.' };
+    if (!this.isActivePlayer(session, client.userId)) {
+      return { applied: false, reason: 'El jugador ya no participa activamente en la partida.' };
     }
 
     const doc = this.activeDocuments.get(this.docKey(client.matchId, client.targetUserId));
     if (!doc) return { applied: false, reason: 'Documento Yjs no encontrado.' };
 
-    return doc.applyUpdate(update, generation, undefined, client.id, (observer) => {
-      if (observer.userId === client.targetUserId) return true;
-      return session.players.has(observer.userId);
-    });
+    return doc.applyUpdate(update, generation, updatedText, client.id, (observer) =>
+      this.isActivePlayer(session, observer.userId),
+    );
   }
 
   /**
@@ -216,7 +213,7 @@ export class YjsHub {
     sourceCode: string,
     generation: number,
   ): Promise<{ applied: boolean; reason?: string }> {
-    if (!client.isOwner) {
+    if (!client.isOwner || client.userId !== client.targetUserId) {
       return {
         applied: false,
         reason: 'Solo el dueño del documento puede enviar actualizaciones.',
@@ -228,9 +225,8 @@ export class YjsHub {
       return { applied: false, reason: 'Partida no encontrada.' };
     }
 
-    const targetPlayer = session.players.get(client.targetUserId);
-    if (!targetPlayer) {
-      return { applied: false, reason: 'Jugador objetivo no pertenece a la partida.' };
+    if (!this.isActivePlayer(session, client.userId)) {
+      return { applied: false, reason: 'El jugador ya no participa activamente en la partida.' };
     }
 
     const key = this.docKey(client.matchId, client.targetUserId);
@@ -239,10 +235,9 @@ export class YjsHub {
       return { applied: false, reason: 'Documento Yjs no encontrado.' };
     }
 
-    return doc.applyTextUpdate(sourceCode, generation, client.id, (observer) => {
-      if (observer.userId === client.targetUserId) return true;
-      return session.players.has(observer.userId);
-    });
+    return doc.applyTextUpdate(sourceCode, generation, client.id, (observer) =>
+      this.isActivePlayer(session, observer.userId),
+    );
   }
 
   /**

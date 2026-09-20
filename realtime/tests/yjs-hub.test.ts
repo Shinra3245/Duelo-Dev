@@ -192,6 +192,59 @@ describe('YjsHub', () => {
       expect(res.document).toBeDefined();
     });
 
+    it('revoca lectura, escritura y difusión en vivo a un jugador que abandonó', async () => {
+      const session = createSampleSession('match-1');
+      await store.saveMatch(session);
+
+      const ownerOne = createMockYjsClient('owner-1', 'user-1', 'match-1', 'user-1');
+      const rivalTwo = createMockYjsClient('rival-2', 'user-2', 'match-1', 'user-1');
+      const ownerTwo = createMockYjsClient('owner-2', 'user-2', 'match-1', 'user-2');
+      await hub.handleConnection('/yjs/match-1/user-1', ownerOne, {
+        userId: 'user-1',
+        gamertag: 'coder1',
+        role: 'user',
+      });
+      await hub.handleConnection('/yjs/match-1/user-1', rivalTwo, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+      await hub.handleConnection('/yjs/match-1/user-2', ownerTwo, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+
+      session.players.get('user-2')!.connection = 'left';
+      await store.saveMatch(session);
+
+      const reconnectAttempt = createMockYjsClient('rival-2-new', 'user-2', 'match-1', 'user-1');
+      const denied = await hub.handleConnection('/yjs/match-1/user-1', reconnectAttempt, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+      expect(denied.authorized).toBe(false);
+      expect(reconnectAttempt.closed).toBe(true);
+
+      const receivedBeforeUpdate = rivalTwo.sentText.length;
+      const activeUpdate = await hub.handleIncomingTextUpdate(ownerOne, 'print(2)', 1);
+      expect(activeUpdate.applied).toBe(true);
+      expect(rivalTwo.sentText).toHaveLength(receivedBeforeUpdate);
+
+      const textWriteAfterLeaving = await hub.handleIncomingTextUpdate(ownerTwo, 'print(3)', 1);
+      expect(textWriteAfterLeaving.applied).toBe(false);
+      expect(textWriteAfterLeaving.reason).toContain('ya no participa');
+
+      const binaryWriteAfterLeaving = await hub.handleIncomingBinaryUpdate(
+        ownerTwo,
+        new Uint8Array([1]),
+        1,
+      );
+      expect(binaryWriteAfterLeaving.applied).toBe(false);
+      expect(binaryWriteAfterLeaving.reason).toContain('ya no participa');
+    });
+
     it('sincroniza código en vivo a miembros aunque la interfaz aplique desenfoque', async () => {
       const session = createSampleSession('match-1');
       await store.saveMatch(session);
@@ -248,7 +301,7 @@ describe('YjsHub', () => {
       await hub.handleConnection('/yjs/match-1/user-1', ownerClient, ownerAuth);
 
       const update = new Uint8Array([1, 2, 3]);
-      const res = hub.handleIncomingUpdate(ownerClient, update, 1, 'updated code');
+      const res = await hub.handleIncomingUpdate(ownerClient, update, 1, 'updated code');
 
       expect(res.applied).toBe(true);
       const doc = hub.getDocument('match-1', 'user-1');
@@ -274,7 +327,7 @@ describe('YjsHub', () => {
       });
 
       const update = new Uint8Array([1, 2, 3]);
-      const res = hub.handleIncomingUpdate(rivalClient, update, 1, 'hacked code');
+      const res = await hub.handleIncomingUpdate(rivalClient, update, 1, 'hacked code');
 
       expect(res.applied).toBe(false);
       expect(res.reason).toContain('Solo el dueño');
