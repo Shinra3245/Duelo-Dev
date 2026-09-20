@@ -351,7 +351,7 @@ describe('MatchHub', () => {
       expect(updated?.players.get('user-1')?.connection).toBe('connected');
     });
 
-    it('si se desconecta el último socket, entra a reconnecting y expira a disconnected tras periodo de gracia', async () => {
+    it('al vencer la gracia marca left y declara ganador al único jugador activo', async () => {
       const session = createSampleSession('match-1');
       await store.saveMatch(session);
 
@@ -373,9 +373,51 @@ describe('MatchHub', () => {
       // Avanzar el reloj para agotar reconnectGraceMs (5000ms)
       await vi.advanceTimersByTimeAsync(5000);
 
-      // Verificación de estado final: disconnected
+      // La desconexión competitiva queda definitiva y resuelve la partida por abandono.
       updated = await store.getMatch('match-1');
-      expect(updated?.players.get('user-1')?.connection).toBe('disconnected');
+      expect(updated?.players.get('user-1')?.connection).toBe('left');
+      expect(updated?.status).toBe('finished');
+      expect(updated?.winner_ids).toEqual(['user-2']);
+      const finished = client2.emittedEvents.find((event) => event.event === S2C.MATCH_FINISHED);
+      expect(finished?.payload).toMatchObject({
+        finish_reason: 'abandonment',
+        winner_ids: ['user-2'],
+      });
+    });
+
+    it('tras la gracia en una sala de tres no permite reconexión ni retira a los otros dos', async () => {
+      const session = createSampleSession('match-1', [
+        { userId: 'user-1', gamertag: 'coder1' },
+        { userId: 'user-2', gamertag: 'coder2' },
+        { userId: 'user-3', gamertag: 'coder3' },
+      ]);
+      session.config.max_players = 3;
+      await store.saveMatch(session);
+
+      const clients = [
+        createMockClient('sock-1', 'user-1', 'coder1'),
+        createMockClient('sock-2', 'user-2', 'coder2'),
+        createMockClient('sock-3', 'user-3', 'coder3'),
+      ];
+      for (const client of clients) {
+        hub.registerClient(client);
+        await hub.handleJoinMatch(client, { match_id: 'match-1' });
+      }
+
+      await hub.handleDisconnect(clients[0]!);
+      await vi.advanceTimersByTimeAsync(5000);
+
+      const updated = await store.getMatch('match-1');
+      expect(updated?.players.get('user-1')?.connection).toBe('left');
+      expect(updated?.status).toBe('running');
+
+      const reconnectingClient = createMockClient('sock-1-new', 'user-1', 'coder1');
+      hub.registerClient(reconnectingClient);
+      await hub.handleJoinMatch(reconnectingClient, { match_id: 'match-1' });
+
+      expect(reconnectingClient.errorsSent).toHaveLength(1);
+      expect(reconnectingClient.errorsSent[0]?.code).toBe('NOT_A_PLAYER');
+      expect(reconnectingClient.roomsJoined).toHaveLength(0);
     });
 
     it('si el usuario se reconecta antes de expirar la gracia, cancela el timer y permanece connected', async () => {

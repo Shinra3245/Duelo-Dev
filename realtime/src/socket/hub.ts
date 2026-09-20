@@ -13,7 +13,7 @@
  * - doc 04 §86: `compile_output` solo al dueño del envío; rivales reciben `undefined`.
  * - Reconexión con gracia configurable (`reconnectGraceMs`, defecto RECONNECT_GRACE_MS).
  * - `state_version` monotónico por partida.
- * - Presencia con transición `connected → reconnecting → disconnected`.
+ * - Presencia con transición `connected → reconnecting → left` al expirar la gracia.
  */
 
 import {
@@ -433,7 +433,7 @@ export class MatchHub {
    * Transición de presencia:
    * 1. Si el usuario tiene otros sockets activos: no cambia presencia.
    * 2. Si es su último socket: presencia → 'reconnecting', inicia timer de gracia.
-   * 3. Si el timer expira sin reconexión: presencia → 'disconnected'.
+   * 3. Si el timer expira sin reconexión: presencia → 'left' y pierde acceso competitivo.
    */
   async handleDisconnect(client: SocketClient): Promise<void> {
     const matchId = client.matchId;
@@ -1067,7 +1067,7 @@ export class MatchHub {
 
   /**
    * Expira el periodo de gracia de reconexión:
-   * si el usuario sigue sin sockets, marca presencia como 'disconnected'.
+   * si el usuario sigue sin sockets, marca al jugador como 'left'.
    */
   private async expireReconnectGrace(matchId: string, userId: string): Promise<void> {
     const graceKey = `${matchId}:${userId}`;
@@ -1086,7 +1086,7 @@ export class MatchHub {
     if (!player || player.connection !== 'reconnecting') return;
 
     const now = Date.now();
-    player.connection = 'disconnected';
+    player.connection = 'left';
     session.state_version += 1;
     await this.matchStore.saveMatch(session);
 
@@ -1096,12 +1096,12 @@ export class MatchHub {
       room.broadcast(S2C.PLAYER_STATUS, {
         match_id: matchId,
         user_id: userId,
-        status: 'disconnected',
+        status: 'left',
         server_time: now,
       });
     }
 
-    this.logger?.info('Periodo de gracia expirado; jugador desconectado', {
+    this.logger?.info('Periodo de gracia expirado; jugador marcado como abandonado', {
       match_id: matchId,
       user_id: userId,
     });
