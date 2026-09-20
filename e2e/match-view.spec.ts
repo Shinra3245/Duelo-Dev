@@ -65,6 +65,24 @@ test.describe('vista de partida sincronizada', () => {
       );
       expect(new Set(sharedDifficulties).size).toBe(1);
       expect(sharedDifficulties[0]).toMatch(/^Dificultad: (Inicial|Fácil|Medio)$/);
+      const instructionPanel = await host.locator('.duel-instructions-card').evaluate((card) => {
+        const problem = card.querySelector('.duel-problem-content');
+        return {
+          viewportHeight: window.innerHeight,
+          cardTop: card.getBoundingClientRect().top,
+          cardBottom: card.getBoundingClientRect().bottom,
+          contentHeight: card.scrollHeight,
+          visibleHeight: card.clientHeight,
+          problemContentHeight: problem?.scrollHeight ?? 0,
+          problemVisibleHeight: problem?.clientHeight ?? 0,
+        };
+      });
+      expect(instructionPanel.cardTop).toBeGreaterThanOrEqual(0);
+      expect(instructionPanel.cardBottom).toBeLessThanOrEqual(instructionPanel.viewportHeight);
+      expect(instructionPanel.contentHeight).toBeLessThanOrEqual(instructionPanel.visibleHeight);
+      expect(instructionPanel.problemContentHeight).toBeLessThanOrEqual(
+        instructionPanel.problemVisibleHeight,
+      );
 
       const countdownValues = await Promise.all(
         [host, rival, third].map(async (page) =>
@@ -121,10 +139,11 @@ test.describe('vista de partida sincronizada', () => {
 
       const desktopLayout = await host.evaluate(() => ({
         viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
         boards: [...document.querySelectorAll('.duel-code-board-grid .duel-code-board')].map(
           (board) => {
-            const { left, right, width } = board.getBoundingClientRect();
-            return { left, right, width };
+            const { left, right, top, bottom, width } = board.getBoundingClientRect();
+            return { left, right, top, bottom, width };
           },
         ),
       }));
@@ -133,6 +152,29 @@ test.describe('vista de partida sincronizada', () => {
       expect(desktopLayout.boards[2]!.width).toBeLessThan(desktopLayout.boards[0]!.width);
       expect(
         desktopLayout.boards.every((board) => board.right <= desktopLayout.viewportWidth),
+      ).toBe(true);
+      expect(desktopLayout.boards.every((board) => board.top >= 0)).toBe(true);
+      expect(
+        desktopLayout.boards.every((board) => board.bottom <= desktopLayout.viewportHeight),
+      ).toBe(true);
+
+      const fixedGameViewport = await host.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        documentWidth: document.documentElement.scrollWidth,
+        documentHeight: document.documentElement.scrollHeight,
+        locked: document.documentElement.classList.contains('duel-game-viewport'),
+      }));
+      expect(fixedGameViewport.locked).toBe(true);
+      expect(fixedGameViewport.documentWidth).toBeLessThanOrEqual(fixedGameViewport.viewportWidth);
+      expect(fixedGameViewport.documentHeight).toBeLessThanOrEqual(
+        fixedGameViewport.viewportHeight,
+      );
+      expect(
+        await host.evaluate(() => {
+          const unload = new Event('beforeunload', { cancelable: true });
+          return !window.dispatchEvent(unload);
+        }),
       ).toBe(true);
 
       await host.getByRole('button', { name: 'Abrir el reto' }).click();
@@ -156,9 +198,24 @@ test.describe('vista de partida sincronizada', () => {
       await expect(blurredCodeOnThird).not.toHaveClass(/duel-code-blurred/);
 
       await third.setViewportSize({ width: 390, height: 844 });
+      await third.evaluate(() =>
+        Object.defineProperty(navigator, 'userAgent', {
+          configurable: true,
+          get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile',
+        }),
+      );
+      await third.evaluate(() => window.dispatchEvent(new Event('resize')));
+      await expect(
+        third.getByRole('heading', { name: 'Esta partida requiere una computadora' }),
+      ).toBeVisible();
+      await expect(
+        third.getByText(/abre esta sala desde una computadora de escritorio o laptop/i),
+      ).toBeVisible();
       expect(
-        await third.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-      ).toBe(true);
+        await third.evaluate(() =>
+          document.documentElement.classList.contains('duel-game-viewport'),
+        ),
+      ).toBe(false);
     } finally {
       await thirdContext.close();
       await rivalContext.close();

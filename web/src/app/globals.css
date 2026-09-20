@@ -1415,6 +1415,335 @@ body:has(.duel-room-shell) {
   text-align: center;
 }
 
+.duel-mobile-lobby-warning,
+.duel-mobile-game-warning {
+  border: 1px solid rgb(251 191 36 / 0.42);
+  border-radius: 1rem;
+  color: #fde68a;
+  background: rgb(120 53 15 / 0.28);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.6;
+  padding: 0.9rem 1rem;
+}
+
+.duel-mobile-game-block {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1.25rem;
+  color: #e2e8f0;
+  background: radial-gradient(circle at 50% 0, rgb(34 211 238 / 0.13), transparent 42%), #07111f;
+}
+
+.duel-mobile-game-card {
+  width: min(100%, 38rem);
+  padding: clamp(1.25rem, 5vw, 2.5rem);
+  border: 1px solid rgb(103 232 249 / 0.24);
+  border-radius: 1.5rem;
+  background: linear-gradient(145deg, #101d30, #0a1321);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.35);
+}
+
+.duel-mobile-game-card h1 {
+  margin-top: 0.65rem;
+  color: #f8fafc;
+  font-size: clamp(1.7rem, 5vw, 2.5rem);
+  font-weight: 950;
+  line-height: 1.12;
+}
+
+.duel-mobile-game-card > p:not(.duel-game-eyebrow) {
+  margin-top: 1rem;
+  color: #c4d2e2;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.duel-mobile-game-card .duel-mobile-game-warning {
+  color: #fde68a;
+}
+
+html.duel-game-viewport,
+html.duel-game-viewport body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.duel-game-viewport body {
+  position: fixed;
+  inset: 0;
+}
+
+.duel-room-shell.duel-game-viewport-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.duel-room-frame.duel-game-viewport-frame {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  margin: 0;
+  border-radius: 0;
+}
+
+.duel-room-header.duel-game-viewport-header {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.8rem;
+}
+
+.duel-game-viewport-header > div {
+  min-height: 2.5rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.duel-game-viewport-header > div > div:first-child > p:first-child {
+  display: none;
+}
+
+.duel-game-viewport-header h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+}
+
+.duel-game-viewport-header > div > div:last-child {
+  gap: 0.4rem;
+  font-size: 0.68rem;
+}
+
+.duel-game-viewport-header .duel-room-status,
+.duel-game-viewport-header .duel-room-connection {
+  padding: 0.3rem 0.55rem;
+}
+
+.duel-room-content.duel-game-viewport-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0.45rem;
+}
+
+.duel-game-viewport-content > .duel-game-shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.duel-game-viewport-content .duel-instructions-card {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem;
+}
+
+.duel-game-viewport-content .duel-instructions-heading {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.duel-game-viewport-content .duel-instructions-heading h2 {
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+}
+
+.duel-game-viewport-content .duel-problem-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0.85rem;
+}
+
+.duel-game-viewport-content .duel-problem-content h3 {
+  margin-top: 0.5rem;
+  font-size: clamp(1.15rem, 1.8vw, 1.6rem);
+}
+
+.duel-game-viewport-content .duel-problem-description {
+  margin-top: 0.45rem;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.duel-game-viewport-content .duel-problem-examples {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.duel-game-viewport-content .duel-problem-examples article {
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+  padding: 0.55rem;
+}
+
+.duel-game-viewport-content .duel-problem-examples article > p {
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.duel-game-viewport-content .duel-new-match-view {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.duel-game-viewport-content .duel-game-toolbar {
+  flex: 0 0 auto;
+  gap: 0.45rem;
+  padding: 0.4rem;
+}
+
+.duel-game-viewport-content .duel-toolbar-metric {
+  padding: 0.25rem 0.55rem;
+}
+
+.duel-game-viewport-content .duel-toolbar-metric strong {
+  font-size: 1.35rem;
+}
+
+.duel-game-viewport-content .duel-code-board-grid {
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(10rem, 0.68fr);
+  gap: 0.45rem;
+}
+
+.duel-game-viewport-content .duel-code-board-grid.duel-two-boards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.duel-game-viewport-content .duel-code-board-grid > .duel-code-board {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  border-radius: 0.8rem;
+}
+
+.duel-game-viewport-content .duel-code-board-compact {
+  grid-column: auto;
+}
+
+.duel-game-viewport-content .duel-code-board-header {
+  min-height: 3.2rem;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  padding: 0.4rem;
+}
+
+.duel-game-viewport-content .duel-code-player-name {
+  font-size: 0.7rem;
+}
+
+.duel-game-viewport-content .duel-code-visibility-button {
+  min-height: 1.9rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.58rem;
+}
+
+.duel-game-viewport-content .duel-python-editor > div:nth-child(2),
+.duel-game-viewport-content .duel-rival-code-frame {
+  min-height: 0;
+  flex: 1 1 auto;
+  height: auto;
+}
+
+.duel-game-viewport-content .duel-rival-code,
+.duel-game-viewport-content .duel-code-board-compact .duel-rival-code {
+  min-height: 0;
+  height: 100%;
+  font-size: 0.68rem;
+  line-height: 1.35rem;
+}
+
+.duel-game-viewport-content .duel-game-actions {
+  flex: 0 0 auto;
+  gap: 0.15rem;
+}
+
+.duel-game-viewport-content .duel-submit-button {
+  width: min(100%, 24rem);
+  min-height: 2.65rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.duel-game-viewport-content .duel-game-actions p {
+  font-size: 0.62rem;
+}
+
+.duel-game-viewport-content .duel-live-standings {
+  max-height: 9rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 0.45rem 0.65rem;
+}
+
+.duel-game-viewport-content .duel-live-standings > div:first-child {
+  margin-bottom: 0.15rem;
+}
+
+.duel-game-viewport-content .duel-live-standings > div:first-child p {
+  display: none;
+}
+
+.duel-game-viewport-content .duel-live-standings > div:first-child h3 {
+  font-size: 0.9rem;
+}
+
+.duel-game-viewport-content .duel-final-standings {
+  max-height: 9rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 0.45rem 0.65rem;
+}
+
+.duel-game-viewport-content .duel-live-standings > div:last-child table,
+.duel-game-viewport-content .duel-final-standings > div:last-child table {
+  min-width: 0;
+  font-size: 0.66rem;
+}
+
+.duel-game-viewport-content .duel-live-standings th,
+.duel-game-viewport-content .duel-live-standings td,
+.duel-game-viewport-content .duel-final-standings th,
+.duel-game-viewport-content .duel-final-standings td {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+.duel-game-viewport-content .duel-challenge-popover {
+  max-height: calc(100% - 4.5rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.duel-game-viewport-content .duel-leave-dialog {
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .duel-game-shell button:focus-visible {
   outline: 3px solid #67e8f9;
   outline-offset: 3px;

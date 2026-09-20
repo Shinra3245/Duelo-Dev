@@ -4,12 +4,14 @@ import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
+import { isMobileGameDevice } from '@/lib/device-support';
 import {
   getClosingDelimiterSkipPosition,
   insertAutoClosePair,
   isClipboardShortcut,
 } from '@/lib/editor-behavior';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
+import { protectActiveMatchUnload } from '@/lib/match-unload';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
 import type {
@@ -54,6 +56,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [isChallengeOpen, setIsChallengeOpen] = useState(false);
   const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [deviceCapability, setDeviceCapability] = useState<'checking' | 'desktop' | 'mobile'>(
+    'checking',
+  );
   const [now, setNow] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const sourceCodeRef = useRef(sourceCode);
@@ -78,6 +83,20 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     if (!user || user.role !== 'guest') return;
     return registerGuestSessionCleanup();
   }, [user]);
+
+  useEffect(() => {
+    const updateDeviceCapability = () => {
+      setDeviceCapability(
+        isMobileGameDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+          ? 'mobile'
+          : 'desktop',
+      );
+    };
+
+    updateDeviceCapability();
+    window.addEventListener('resize', updateDeviceCapability);
+    return () => window.removeEventListener('resize', updateDeviceCapability);
+  }, []);
 
   // Load room & connect
   useEffect(() => {
@@ -468,7 +487,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   };
 
   const handleReady = () => {
-    if (!isConnected) return;
+    if (!isConnected || deviceCapability !== 'desktop') return;
     setActionError('');
     wsClient?.send(C2S.READY, {});
   };
@@ -491,6 +510,24 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     }
   };
 
+  const isGameViewportActive = Boolean(
+    room && ['running', 'settling', 'finished', 'abandoned'].includes(room.status),
+  );
+  const canConfirmBrowserLeave = room?.status === 'running' || room?.status === 'settling';
+
+  useEffect(() => {
+    if (!canConfirmBrowserLeave) return;
+    const confirmUnload = (event: BeforeUnloadEvent) => protectActiveMatchUnload(event);
+    window.addEventListener('beforeunload', confirmUnload);
+    return () => window.removeEventListener('beforeunload', confirmUnload);
+  }, [canConfirmBrowserLeave]);
+
+  useEffect(() => {
+    if (!isGameViewportActive || deviceCapability !== 'desktop') return;
+    document.documentElement.classList.add('duel-game-viewport');
+    return () => document.documentElement.classList.remove('duel-game-viewport');
+  }, [isGameViewportActive, deviceCapability]);
+
   if (!room || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200">
@@ -499,6 +536,31 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           Cargando sala...
         </div>
       </div>
+    );
+  }
+
+  if (isGameViewportActive && deviceCapability !== 'desktop') {
+    return (
+      <main className="duel-mobile-game-block" role="status" aria-live="polite">
+        <div className="duel-mobile-game-card">
+          <p className="duel-game-eyebrow">DueloDev · Sala {roomCode.toUpperCase()}</p>
+          <h1>
+            {deviceCapability === 'checking'
+              ? 'Preparando el espacio de juego'
+              : 'Esta partida requiere una computadora'}
+          </h1>
+          <p>
+            {deviceCapability === 'checking'
+              ? 'Estamos comprobando el tamaño y el tipo de dispositivo.'
+              : 'Abre esta sala desde una computadora de escritorio o laptop para ver los tableros y continuar.'}
+          </p>
+          {deviceCapability === 'mobile' && (
+            <p className="duel-mobile-game-warning">
+              La partida sigue en curso y el reloj puede avanzar mientras cambias de dispositivo.
+            </p>
+          )}
+        </div>
+      </main>
     );
   }
 
@@ -518,7 +580,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const minPlayersToStart = 2;
   const readyPlayerCount = room.players.filter((player) => player.is_ready).length;
   const hasRequiredPlayers = readyPlayerCount >= minPlayersToStart;
-  const canStartMatch = canUseRealtime && hasRequiredPlayers && !isStartingMatch;
+  const canStartMatch =
+    canUseRealtime && deviceCapability === 'desktop' && hasRequiredPlayers && !isStartingMatch;
   const canSubmit =
     room.status === 'running' &&
     Boolean(matchState?.problem_id && matchState.round_id) &&
@@ -542,9 +605,15 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const timeLabel = secondsRemaining === null ? 'Sin reloj activo' : formatClock(secondsRemaining);
 
   return (
-    <div className="duel-room-shell min-h-screen bg-slate-950 px-3 py-4 text-slate-900 sm:px-6 sm:py-8">
-      <div className="duel-room-frame mx-auto w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-100 shadow-2xl shadow-black/30">
-        <header className="duel-room-header bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 px-5 py-5 text-white sm:px-8">
+    <div
+      className={`duel-room-shell min-h-screen bg-slate-950 px-3 py-4 text-slate-900 sm:px-6 sm:py-8 ${isGameViewportActive ? 'duel-game-viewport-shell' : ''}`}
+    >
+      <div
+        className={`duel-room-frame mx-auto w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-100 shadow-2xl shadow-black/30 ${isGameViewportActive ? 'duel-game-viewport-frame' : ''}`}
+      >
+        <header
+          className={`duel-room-header bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 px-5 py-5 text-white sm:px-8 ${isGameViewportActive ? 'duel-game-viewport-header' : ''}`}
+        >
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
@@ -571,7 +640,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           </div>
         </header>
 
-        <div className="duel-room-content p-4 sm:p-8">
+        <div
+          className={`duel-room-content p-4 sm:p-8 ${isGameViewportActive ? 'duel-game-viewport-content' : ''}`}
+        >
           {actionError && (
             <div className="duel-room-alert mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium leading-6 text-rose-800">
               {actionError}
@@ -590,8 +661,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       Lobby
                     </h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                      Comparte el código con los jugadores. La partida se habilita cuando la sala
-                      alcance su capacidad.
+                      Comparte el código con los jugadores. La partida se habilita cuando haya al
+                      menos dos participantes listos.
                     </p>
                   </div>
                   <div className="rounded-2xl border border-indigo-200 bg-white/80 px-4 py-3 text-left shadow-sm sm:text-right">
@@ -664,10 +735,16 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   onClick={handleReady}
-                  disabled={!canUseRealtime}
+                  disabled={!canUseRealtime || deviceCapability !== 'desktop'}
                   className="rounded-2xl bg-indigo-600 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                 >
-                  {canUseRealtime ? 'Marcar como listo' : 'Conectando...'}
+                  {deviceCapability === 'checking'
+                    ? 'Validando dispositivo...'
+                    : deviceCapability === 'mobile'
+                      ? 'Disponible en computadora'
+                      : canUseRealtime
+                        ? 'Marcar como listo'
+                        : 'Conectando...'}
                 </button>
 
                 {isHost && (
@@ -676,14 +753,25 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                     disabled={!canStartMatch}
                     className="rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                   >
-                    {isStartingMatch
-                      ? 'Empezando...'
-                      : hasRequiredPlayers
-                        ? 'Empezar partida'
-                        : `Esperando jugadores (${readyPlayerCount}/${minPlayersToStart})`}
+                    {deviceCapability === 'checking'
+                      ? 'Validando dispositivo...'
+                      : deviceCapability === 'mobile'
+                        ? 'Inicia desde una computadora'
+                        : isStartingMatch
+                          ? 'Empezando...'
+                          : hasRequiredPlayers
+                            ? 'Empezar partida'
+                            : `Esperando jugadores (${readyPlayerCount}/${minPlayersToStart})`}
                   </button>
                 )}
               </div>
+
+              {deviceCapability === 'mobile' && (
+                <p className="duel-mobile-lobby-warning" role="status">
+                  Puedes consultar este lobby desde aquí, pero para marcarte listo y jugar abre la
+                  sala en una computadora de escritorio o laptop.
+                </p>
+              )}
 
               {!hasRequiredPlayers && (
                 <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium leading-6 text-amber-900">
@@ -1048,7 +1136,7 @@ function FinalStandings({
   players: RoomPlayerSummary[];
 }) {
   return (
-    <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-950 to-slate-950 p-5 text-white shadow-xl sm:p-7">
+    <section className="duel-final-standings rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-950 to-slate-950 p-5 text-white shadow-xl sm:p-7">
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">
@@ -1129,7 +1217,7 @@ function LiveStandings({
   players: RoomPlayerSummary[];
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="duel-live-standings rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-xl font-black text-slate-950">Marcador en vivo</h3>
