@@ -180,9 +180,42 @@ with tempfile.TemporaryDirectory(prefix="duelodev-performance-cases-") as case_r
         class TimedSubmissionRunner:
             def run_cases(self, artifact, sandbox, cases):
                 started = monotonic()
-                result = DockerSubmissionRunner(DockerSessionBackend(invoker)).run_cases(
-                    artifact, sandbox, cases
-                )
+                class TimedSessionBackend:
+                    def __init__(self, backend):
+                        self._backend = backend
+
+                    def _measure(self, name, method, *args):
+                        operation_started = monotonic()
+                        try:
+                            return method(*args)
+                        finally:
+                            metric = f"session_{name}_docker_ms"
+                            phase[metric] = phase.get(metric, 0) + round(
+                                (monotonic() - operation_started) * 1000
+                            )
+
+                    def start(self, sandbox):
+                        return self._measure("start", self._backend.start, sandbox)
+
+                    def execute(self, session_id, command, stdin, timeout_ms):
+                        return self._measure(
+                            "execute",
+                            self._backend.execute,
+                            session_id,
+                            command,
+                            stdin,
+                            timeout_ms,
+                        )
+
+                    def reset(self, session_id):
+                        return self._measure("reset", self._backend.reset, session_id)
+
+                    def close(self, session_id):
+                        return self._measure("close", self._backend.close, session_id)
+
+                result = DockerSubmissionRunner(
+                    TimedSessionBackend(DockerSessionBackend(invoker))
+                ).run_cases(artifact, sandbox, cases)
                 phase["session_ms"] = round((monotonic() - started) * 1000)
                 return result
 
@@ -279,6 +312,30 @@ summary = {
     "compile_p95_ms": percentile([item["compile_ms"] for item in measurements], 0.95),
     "session_p50_ms": percentile([item["session_ms"] for item in measurements], 0.50),
     "session_p95_ms": percentile([item["session_ms"] for item in measurements], 0.95),
+    "session_start_docker_p50_ms": percentile(
+        [item["session_start_docker_ms"] for item in measurements], 0.50
+    ),
+    "session_start_docker_p95_ms": percentile(
+        [item["session_start_docker_ms"] for item in measurements], 0.95
+    ),
+    "session_execute_docker_p50_ms": percentile(
+        [item["session_execute_docker_ms"] for item in measurements], 0.50
+    ),
+    "session_execute_docker_p95_ms": percentile(
+        [item["session_execute_docker_ms"] for item in measurements], 0.95
+    ),
+    "session_reset_docker_p50_ms": percentile(
+        [item["session_reset_docker_ms"] for item in measurements], 0.50
+    ),
+    "session_reset_docker_p95_ms": percentile(
+        [item["session_reset_docker_ms"] for item in measurements], 0.95
+    ),
+    "session_close_docker_p50_ms": percentile(
+        [item["session_close_docker_ms"] for item in measurements], 0.50
+    ),
+    "session_close_docker_p95_ms": percentile(
+        [item["session_close_docker_ms"] for item in measurements], 0.95
+    ),
     "cleanup_p50_ms": percentile([item["cleanup_ms"] for item in measurements], 0.50),
     "cleanup_p95_ms": percentile([item["cleanup_ms"] for item in measurements], 0.95),
     "queue_p50_ms": percentile([item["queue_ms"] for item in measurements], 0.50),
