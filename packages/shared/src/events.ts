@@ -464,6 +464,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function isJoinMatchPayload(value: unknown): value is { match_id: string } {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 1 &&
+    typeof value.match_id === 'string' &&
+    value.match_id.length > 0 &&
+    value.match_id.length <= 64
+  );
+}
+
+export function isToggleRevealPayload(value: unknown): value is { visible: boolean } {
+  return isRecord(value) && Object.keys(value).length === 1 && typeof value.visible === 'boolean';
+}
+
+export function isEmptyClientPayload(value: unknown): value is Record<string, never> {
+  return isRecord(value) && Object.keys(value).length === 0;
+}
+
 export function isMatchStartedPayload(value: unknown): value is MatchStartedPayload {
   if (!isRecord(value)) return false;
   const p = value as Record<string, unknown>;

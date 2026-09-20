@@ -15,6 +15,9 @@ import {
   C2S,
   createYjsErrorMessage,
   ERROR_CODES,
+  isEmptyClientPayload,
+  isJoinMatchPayload,
+  isToggleRevealPayload,
   MAX_EVENT_PAYLOAD_BYTES,
   parseYjsClientMessage,
   S2C,
@@ -167,27 +170,42 @@ export function setupRealtimeUpgradeHandler(
 
           switch (event) {
             case C2S.JOIN_MATCH:
-              if (payload && typeof payload === 'object' && 'match_id' in payload) {
-                void matchHub.handleJoinMatch(client, payload as { match_id: string });
+              if (isJoinMatchPayload(payload)) {
+                void matchHub.handleJoinMatch(client, payload);
               } else {
-                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'match_id es requerido');
+                client.sendError(
+                  ERROR_CODES.VALIDATION_FAILED,
+                  'match_id debe ser un identificador válido.',
+                );
               }
               break;
             case C2S.LEAVE_MATCH:
-              void matchHub.handleLeaveMatch(client);
+              if (isEmptyClientPayload(payload)) {
+                void matchHub.handleLeaveMatch(client);
+              } else {
+                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'leave_match no acepta campos.');
+              }
               break;
             case C2S.TOGGLE_REVEAL:
-              if (payload && typeof payload === 'object' && 'visible' in payload) {
-                void matchHub.handleToggleReveal(client, payload as { visible: boolean });
+              if (isToggleRevealPayload(payload)) {
+                void matchHub.handleToggleReveal(client, payload);
               } else {
-                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'visible es requerido');
+                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'visible debe ser un booleano.');
               }
               break;
             case C2S.READY:
-              void matchHub.handleReady(client);
+              if (isEmptyClientPayload(payload)) {
+                void matchHub.handleReady(client);
+              } else {
+                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'ready no acepta campos.');
+              }
               break;
             case C2S.HEARTBEAT:
-              void matchHub.handleHeartbeat(client);
+              if (isEmptyClientPayload(payload)) {
+                void matchHub.handleHeartbeat(client);
+              } else {
+                client.sendError(ERROR_CODES.VALIDATION_FAILED, 'heartbeat no acepta campos.');
+              }
               break;
             default:
               client.sendError('UNKNOWN_EVENT', `Evento no reconocido: ${event}`);

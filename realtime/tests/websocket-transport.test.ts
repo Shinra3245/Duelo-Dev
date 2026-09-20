@@ -131,6 +131,20 @@ describe('Native WebSocket Transport & Adapter (F3 Unidad 6)', () => {
 
     // Enviar C2S.JOIN_MATCH
     const messagesReceived: Array<{ event: string; payload: unknown }> = [];
+    const invalidJoinPromise = new Promise<Record<string, unknown>>((resolve) => {
+      ws.onmessage = (event) => {
+        const parsed = JSON.parse(String(event.data)) as { event: string; payload: unknown };
+        messagesReceived.push(parsed);
+        if (parsed.event === S2C.ERROR) {
+          resolve(parsed.payload as Record<string, unknown>);
+        }
+      };
+    });
+    ws.send(JSON.stringify({ event: C2S.JOIN_MATCH, payload: { match_id: 42 } }));
+    await expect(invalidJoinPromise).resolves.toMatchObject({
+      message: 'match_id debe ser un identificador válido.',
+    });
+
     const messagePromise = new Promise<void>((resolve) => {
       ws.onmessage = (event) => {
         try {

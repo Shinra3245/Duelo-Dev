@@ -20,7 +20,9 @@ import {
   ROUND_STATUSES,
   S2C,
   SUPPORTED_PLAYER_COUNTS,
+  isEmptyClientPayload,
   isGameModeName,
+  isJoinMatchPayload,
   isMatchConfig,
   isRoomCreationConfig,
   isMatchFinishReason,
@@ -40,6 +42,7 @@ import {
   isRoundStatus,
   isScoreUpdatePayload,
   isSubmissionReceivedPayload,
+  isToggleRevealPayload,
   isVerdictPayload,
   matchRoom,
   type MatchConfig,
@@ -82,6 +85,22 @@ describe('contrato de eventos y estado de partida', () => {
       'match_finished',
       'error',
     ]);
+  });
+
+  it('valida payloads C2S en runtime y rechaza claves o tipos extra', () => {
+    expect(isJoinMatchPayload({ match_id: 'match-1' })).toBe(true);
+    expect(isJoinMatchPayload({ match_id: '' })).toBe(false);
+    expect(isJoinMatchPayload({ match_id: 42 })).toBe(false);
+    expect(isJoinMatchPayload({ match_id: 'match-1', role: 'admin' })).toBe(false);
+    expect(isJoinMatchPayload([])).toBe(false);
+
+    expect(isToggleRevealPayload({ visible: true })).toBe(true);
+    expect(isToggleRevealPayload({ visible: 'true' })).toBe(false);
+    expect(isToggleRevealPayload({ visible: false, user_id: 'other' })).toBe(false);
+
+    expect(isEmptyClientPayload({})).toBe(true);
+    expect(isEmptyClientPayload({ unexpected: true })).toBe(false);
+    expect(isEmptyClientPayload(null)).toBe(false);
   });
 
   it('valida estados de partida, ronda, conexiones y modos con guardias', () => {
