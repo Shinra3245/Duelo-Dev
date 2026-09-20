@@ -36,7 +36,6 @@ def started_backend(*later: RuntimeObservation) -> tuple[DockerSessionBackend, F
         [
             observation((CONTAINER_ID + "\n").encode()),
             observation(),
-            observation(b"0\n"),
             *later,
         ]
     )
@@ -123,20 +122,13 @@ def test_reset_requires_cleanup_and_a_valid_oom_counter() -> None:
     assert not backend.reset(CONTAINER_ID)
 
 
-def test_start_fails_closed_when_oom_counter_is_unavailable() -> None:
-    invoker = FakeInvoker(
-        [
-            observation((CONTAINER_ID + "\n").encode()),
-            observation(),
-            observation(b"unavailable", 1),
-            observation(),
-        ]
-    )
+def test_start_uses_new_cgroups_zero_oom_baseline_without_extra_exec() -> None:
+    invoker = FakeInvoker([observation((CONTAINER_ID + "\n").encode()), observation()])
     backend = DockerSessionBackend(invoker, lambda: TOKEN)
 
-    with pytest.raises(RuntimeError, match="contador OOM"):
-        backend.start(spec())
-    assert invoker.calls[-1][0] == ("docker", "rm", "--force", CONTAINER_ID)
+    assert backend.start(spec()) == CONTAINER_ID
+    assert len(invoker.calls) == 2
+    assert all(call[0][:2] != ("docker", "exec") for call in invoker.calls)
 
 
 def test_close_falls_back_to_label_and_forgets_only_after_removal() -> None:

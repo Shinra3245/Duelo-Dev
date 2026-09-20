@@ -92,10 +92,9 @@ class DockerSessionBackend:
         if not _successful(started):
             self._remove(session_id, token)
             raise RuntimeError("No se pudo iniciar la sesión Docker")
-        oom_count = self._read_oom_count(session_id)
-        if oom_count is None:
-            self._remove(session_id, token)
-            raise RuntimeError("No se pudo leer el contador OOM de la sesión")
+        # El cgroup recién creado no ha podido registrar OOM; su contador inicial es cero.
+        # La primera lectura remota se hace si una ejecución termina con código 137.
+        oom_count = 0
         with self._lock:
             self._sessions[session_id] = _Session(token, oom_count)
         return session_id
