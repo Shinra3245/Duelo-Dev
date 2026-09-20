@@ -460,9 +460,14 @@ export const HOST_LOBBY_TIMEOUT_MS = 60_000;
 
 // ────────────────── Guardias de invariantes para eventos ──────────────────
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function isMatchStartedPayload(value: unknown): value is MatchStartedPayload {
-  if (typeof value !== 'object' || value === null) return false;
+  if (!isRecord(value)) return false;
   const p = value as Record<string, unknown>;
+  const config = p.config;
   return (
     typeof p.match_id === 'string' &&
     p.match_id.length > 0 &&
@@ -475,7 +480,9 @@ export function isMatchStartedPayload(value: unknown): value is MatchStartedPayl
     isGameModeName(p.mode) &&
     typeof p.round_id === 'string' &&
     p.round_id.length > 0 &&
-    isMatchConfig(p.config) &&
+    isMatchConfig(config) &&
+    config.mode === p.mode &&
+    (p.mode !== 'rondas' || p.problem_order === undefined) &&
     (p.problem_order === undefined ||
       (Array.isArray(p.problem_order) &&
         p.problem_order.every((id) => typeof id === 'string' && id.length > 0)))
@@ -639,7 +646,7 @@ export function isMatchFinishedPayload(value: unknown): value is MatchFinishedPa
 }
 
 export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
-  if (typeof value !== 'object' || value === null) return false;
+  if (!isRecord(value)) return false;
   const p = value as Record<string, unknown>;
 
   if (
@@ -653,8 +660,8 @@ export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
     p.server_time <= 0 ||
     !isMatchStatus(p.status) ||
     !isGameModeName(p.mode) ||
-    (p.round_id !== null && typeof p.round_id !== 'string') ||
-    (p.problem_id !== null && typeof p.problem_id !== 'string') ||
+    (p.round_id !== null && (typeof p.round_id !== 'string' || p.round_id.length === 0)) ||
+    (p.problem_id !== null && (typeof p.problem_id !== 'string' || p.problem_id.length === 0)) ||
     typeof p.problem_index !== 'number' ||
     !Number.isInteger(p.problem_index) ||
     p.problem_index < 0 ||
@@ -668,14 +675,27 @@ export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
     (p.round_status !== null && !isRoundStatus(p.round_status)) ||
     !Array.isArray(p.scores) ||
     !p.scores.every(isPlayerScore) ||
-    typeof p.reveal_flags !== 'object' ||
-    p.reveal_flags === null ||
+    !isRecord(p.reveal_flags) ||
     !Object.values(p.reveal_flags).every((v) => typeof v === 'boolean') ||
-    typeof p.players !== 'object' ||
-    p.players === null ||
-    !Object.values(p.players).every(isPlayerConnection)
+    !isRecord(p.players) ||
+    !Object.values(p.players).every(isPlayerConnection) ||
+    (p.winner_ids !== undefined &&
+      (!Array.isArray(p.winner_ids) ||
+        !p.winner_ids.every((id) => typeof id === 'string' && id.length > 0))) ||
+    (p.winner_id !== undefined &&
+      p.winner_id !== null &&
+      (typeof p.winner_id !== 'string' || p.winner_id.length === 0)) ||
+    (p.finish_reason !== undefined && !isMatchFinishReason(p.finish_reason))
   ) {
     return false;
+  }
+
+  if (Array.isArray(p.winner_ids) && p.winner_id !== undefined) {
+    if (p.winner_ids.length === 1) {
+      if (p.winner_id !== p.winner_ids[0]) return false;
+    } else if (p.winner_id !== null) {
+      return false;
+    }
   }
 
   // En Rondas, está estrictamente prohibido exponer problem_order para no revelar problemas futuros (doc 04 §3)

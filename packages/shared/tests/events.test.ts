@@ -331,6 +331,24 @@ describe('contrato de eventos y estado de partida', () => {
 
     expect(isMatchSyncPayload(syncPayload)).toBe(true);
 
+    expect(isMatchSyncPayload({ ...syncPayload, round_id: '' })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, problem_id: '' })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, reveal_flags: [] })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, players: [] })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, winner_ids: 'user-a' })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, winner_ids: [''] })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, winner_id: 42 })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, finish_reason: 'invented' })).toBe(false);
+
+    const finishedSync = {
+      ...syncPayload,
+      winner_ids: ['user-a'],
+      winner_id: 'user-a',
+      finish_reason: 'target_reached',
+    };
+    expect(isMatchSyncPayload(finishedSync)).toBe(true);
+    expect(isMatchSyncPayload({ ...finishedSync, winner_id: 'user-b' })).toBe(false);
+
     // Invariante violado: filtración de lista de problemas en Rondas (doc 04 §3)
     const leakingSync = {
       ...syncPayload,
@@ -356,6 +374,28 @@ describe('contrato de eventos y estado de partida', () => {
       problem_order: ['p-1', 'p-2', 'p-3'],
     };
     expect(isMatchStartedPayload(startPayload)).toBe(true);
+
+    const rondasStart: MatchStartedPayload = {
+      server_time: startPayload.server_time,
+      match_id: startPayload.match_id,
+      state_version: startPayload.state_version,
+      round_id: startPayload.round_id,
+      mode: 'rondas',
+      config: {
+        mode: 'rondas',
+        num_problems: 3,
+        match_duration_s: 600,
+        target: 3,
+        categories: ['facil'],
+        max_players: 2,
+      },
+    };
+    expect(isMatchStartedPayload(rondasStart)).toBe(true);
+    expect(isMatchStartedPayload({ ...rondasStart, problem_order: ['secret-problem'] })).toBe(
+      false,
+    );
+    expect(isMatchStartedPayload({ ...startPayload, mode: 'rondas' })).toBe(false);
+
     expect(
       isMatchStartedPayload({
         ...startPayload,
