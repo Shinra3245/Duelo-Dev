@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
 import { isMobileGameDevice } from '@/lib/device-support';
+import { highlightPython } from '@/lib/python-highlight';
 import {
   getClosingDelimiterSkipPosition,
   insertAutoClosePair,
@@ -1493,31 +1494,5 @@ function RivalCodeBoard({
         {!isRevealed && <span className="duel-code-blur-badge">Código desenfocado</span>}
       </div>
     </article>
-  );
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function highlightPython(value: string): string {
-  const escaped = escapeHtml(value);
-  return escaped.replace(
-    /(#.*|&quot;.*?&quot;|&#39;.*?&#39;|\b(?:and|as|assert|class|def|elif|else|for|from|if|import|in|is|not|or|return|while|True|False|None)\b|\b\d+(?:\.\d+)?\b)/g,
-    (token) => {
-      const color = token.startsWith('#')
-        ? 'text-emerald-300'
-        : token.startsWith('&quot;') || token.startsWith('&#39;')
-          ? 'text-amber-300'
-          : /^\d/.test(token)
-            ? 'text-fuchsia-300'
-            : 'text-cyan-300';
-      return `<span class="${color}">${token}</span>`;
-    },
   );
 }
