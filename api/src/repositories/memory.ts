@@ -400,7 +400,9 @@ export class InMemoryRoomRepository implements RoomRepository {
     const existing = matchPlayers.find((player) => player.user_id === input.user_id);
     if (existing)
       return { status: 'existing' as const, match: { ...match }, player: { ...existing } };
-    if (matchPlayers.length >= maxPlayers) return { status: 'full' as const };
+    if (matchPlayers.filter((player) => player.connection_status !== 'left').length >= maxPlayers) {
+      return { status: 'full' as const };
+    }
 
     if (matchPlayers.length === 0 && match.host_id !== input.user_id) {
       this.matches.set(match.id, { ...match, host_id: input.user_id });

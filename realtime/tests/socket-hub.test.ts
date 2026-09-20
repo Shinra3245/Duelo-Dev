@@ -900,6 +900,104 @@ describe('MatchHub', () => {
       expect(finishPayload.winner_ids).toEqual(['user-1']);
     });
 
+    it.each(['puntos', 'rondas'] as const)(
+      'la salida explícita en modo %s conserva dos jugadores activos en una sala de tres',
+      async (mode) => {
+        const session = createSampleSession(`match-leave-three-${mode}`, [
+          { userId: 'user-1', gamertag: 'coder1' },
+          { userId: 'user-2', gamertag: 'coder2' },
+          { userId: 'user-3', gamertag: 'coder3' },
+        ]);
+        session.mode = mode;
+        session.config =
+          mode === 'puntos'
+            ? { ...session.config, mode, max_players: 3 }
+            : {
+                mode,
+                max_players: 3,
+                categories: ['facil'],
+                num_problems: 3,
+                match_duration_s: 300,
+                target: 3,
+              };
+        session.problem_ids = ['p1', 'p2', 'p3'];
+        await store.saveMatch(session);
+
+        const clients = [
+          createMockClient('sock-1', 'user-1', 'coder1'),
+          createMockClient('sock-2', 'user-2', 'coder2'),
+          createMockClient('sock-3', 'user-3', 'coder3'),
+        ];
+        for (const client of clients) {
+          hub.registerClient(client);
+          await hub.handleJoinMatch(client, { match_id: session.match_id });
+          client.emittedEvents.length = 0;
+        }
+
+        await hub.handleLeaveMatch(clients[2]!);
+
+        const updated = await store.getMatch(session.match_id);
+        expect(updated?.status).toBe('running');
+        expect(updated?.players.get('user-3')?.connection).toBe('left');
+        expect(
+          [...(updated?.players.values() ?? [])].filter(
+            (player) => player.connection === 'connected',
+          ),
+        ).toHaveLength(2);
+        expect(clients[0]?.emittedEvents).toContainEqual({
+          event: S2C.PLAYER_STATUS,
+          payload: expect.objectContaining({ user_id: 'user-3', status: 'left' }),
+        });
+        expect(clients[0]?.emittedEvents.some((event) => event.event === S2C.MATCH_FINISHED)).toBe(
+          false,
+        );
+        expect(clients[2]?.matchId).toBeUndefined();
+
+        await hub.handleJoinMatch(clients[2]!, { match_id: session.match_id });
+        expect(clients[2]?.errorsSent.at(-1)?.code).toBe('NOT_A_PLAYER');
+      },
+    );
+
+    it.each(['puntos', 'rondas'] as const)(
+      'declara ganador al rival cuando la única otra persona abandona en modo %s',
+      async (mode) => {
+        const session = createSampleSession(`match-leave-two-${mode}`);
+        session.mode = mode;
+        if (mode === 'rondas') {
+          session.config = {
+            mode,
+            max_players: 2,
+            categories: ['facil'],
+            num_problems: 3,
+            match_duration_s: 300,
+            target: 3,
+          };
+        }
+        session.problem_ids = ['p1', 'p2', 'p3'];
+        await store.saveMatch(session);
+
+        const player = createMockClient('sock-1', 'user-1', 'coder1');
+        const leaver = createMockClient('sock-2', 'user-2', 'coder2');
+        hub.registerClient(player);
+        hub.registerClient(leaver);
+        await hub.handleJoinMatch(player, { match_id: session.match_id });
+        await hub.handleJoinMatch(leaver, { match_id: session.match_id });
+        player.emittedEvents.length = 0;
+
+        await hub.handleLeaveMatch(leaver);
+
+        const updated = await store.getMatch(session.match_id);
+        expect(updated?.status).toBe('finished');
+        expect(updated?.winner_ids).toEqual(['user-1']);
+        expect(updated?.players.get('user-2')?.connection).toBe('left');
+        const finish = player.emittedEvents.find((event) => event.event === S2C.MATCH_FINISHED);
+        expect(finish?.payload).toMatchObject({
+          finish_reason: 'abandonment',
+          winner_ids: ['user-1'],
+        });
+      },
+    );
+
     it('MATCH_SYNC incluye datos específicos de ronda en Puntos y Rondas', async () => {
       // Puntos
       const sessionPuntos = createSampleSession('m-sync-p');

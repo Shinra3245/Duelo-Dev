@@ -606,7 +606,8 @@ export class PostgresRoomRepository implements RoomRepository {
       }
 
       const countResult = await client.query(
-        'SELECT count(*)::integer AS count FROM match_players WHERE match_id = $1',
+        `SELECT count(*)::integer AS count FROM match_players
+         WHERE match_id = $1 AND connection_status <> 'left'`,
         [input.match_id],
       );
       const playerCount = Number(countResult.rows[0]?.['count'] ?? 0);

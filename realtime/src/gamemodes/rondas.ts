@@ -199,7 +199,11 @@ export class RondasMode implements PureGameMode {
     }
 
     const totalRegistered = Object.keys(ctx.players).length;
-    if (totalRegistered >= 2 && activePlayers.length === 1 && ctx.status === 'running') {
+    if (
+      totalRegistered >= 2 &&
+      activePlayers.length === 1 &&
+      (ctx.status === 'running' || ctx.status === 'settling')
+    ) {
       const winnerUserId = activePlayers[0]![0];
       return [
         {

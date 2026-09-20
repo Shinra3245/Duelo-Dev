@@ -153,6 +153,9 @@ export function setupRealtimeUpgradeHandler(
                 client.sendError(ERROR_CODES.VALIDATION_FAILED, 'match_id es requerido');
               }
               break;
+            case C2S.LEAVE_MATCH:
+              void matchHub.handleLeaveMatch(client);
+              break;
             case C2S.TOGGLE_REVEAL:
               if (payload && typeof payload === 'object' && 'visible' in payload) {
                 void matchHub.handleToggleReveal(client, payload as { visible: boolean });

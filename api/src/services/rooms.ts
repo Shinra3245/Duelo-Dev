@@ -225,6 +225,9 @@ export class RoomService {
     if (authenticatedUserId) {
       const existingPlayer = players.find((p) => p.user_id === authenticatedUserId);
       if (existingPlayer) {
+        if (existingPlayer.connection_status === 'left') {
+          throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
+        }
         const user = await this.userRepo.findById(authenticatedUserId);
         return {
           response: {
@@ -239,7 +242,10 @@ export class RoomService {
     }
 
     // Verificar capacidad máxima
-    if (players.length >= match.config.max_players) {
+    if (
+      players.filter((player) => player.connection_status !== 'left').length >=
+      match.config.max_players
+    ) {
       throw new HttpError(409, ERROR_CODES.ROOM_FULL, ERROR_MESSAGES.ROOM_FULL);
     }
 
@@ -298,6 +304,9 @@ export class RoomService {
     }
     if (joinResult.status === 'full') {
       throw new HttpError(409, ERROR_CODES.ROOM_FULL, ERROR_MESSAGES.ROOM_FULL);
+    }
+    if (joinResult.player.connection_status === 'left') {
+      throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
     }
 
     if (this.auditService && isGuest) {

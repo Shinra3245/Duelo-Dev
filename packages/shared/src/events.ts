@@ -24,6 +24,7 @@ export function matchRoom(matchId: string): string {
 
 export const C2S = {
   JOIN_MATCH: 'join_match',
+  LEAVE_MATCH: 'leave_match',
   TOGGLE_REVEAL: 'toggle_reveal',
   READY: 'ready',
   HEARTBEAT: 'heartbeat',
@@ -33,6 +34,7 @@ export type ClientEventName = (typeof C2S)[keyof typeof C2S];
 
 export interface ClientToServerEvents {
   [C2S.JOIN_MATCH]: (payload: { match_id: string }) => void;
+  [C2S.LEAVE_MATCH]: (payload: Record<string, never>) => void;
   [C2S.TOGGLE_REVEAL]: (payload: { visible: boolean }) => void;
   [C2S.READY]: (payload: Record<string, never>) => void;
   [C2S.HEARTBEAT]: (payload: Record<string, never>) => void;

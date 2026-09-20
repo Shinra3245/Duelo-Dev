@@ -172,6 +172,63 @@ describe('Native WebSocket Transport & Adapter (F3 Unidad 6)', () => {
     ws.close();
   });
 
+  it('acepta LEAVE_MATCH y publica la victoria por abandono al rival activo', async () => {
+    const session = createSampleSession('match-ws-leave');
+    session.problem_ids = ['problem-1'];
+    await server.ctx.matchStore.saveMatch(session);
+
+    const player = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/match?token=${createTestToken({ userId: 'user-1', gamertag: 'coder1' })}`,
+    );
+    const leaver = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/match?token=${createTestToken({ userId: 'user-2', gamertag: 'coder2' })}`,
+    );
+    const opened = (socket: WebSocket) =>
+      new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve();
+        socket.onerror = (error) => reject(error);
+      });
+    await Promise.all([opened(player), opened(leaver)]);
+
+    const nextEvent = (socket: WebSocket, eventName: string) =>
+      new Promise<Record<string, unknown>>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socket.removeEventListener('message', onMessage);
+          reject(new Error(`Timeout esperando ${eventName}`));
+        }, 3000);
+        const onMessage = (event: MessageEvent) => {
+          const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+          if (message.event !== eventName) return;
+          clearTimeout(timeout);
+          socket.removeEventListener('message', onMessage);
+          resolve(message);
+        };
+        socket.addEventListener('message', onMessage);
+      });
+
+    const playerSync = nextEvent(player, S2C.MATCH_SYNC);
+    player.send(JSON.stringify({ event: C2S.JOIN_MATCH, payload: { match_id: session.match_id } }));
+    await playerSync;
+    const leaverSync = nextEvent(leaver, S2C.MATCH_SYNC);
+    leaver.send(JSON.stringify({ event: C2S.JOIN_MATCH, payload: { match_id: session.match_id } }));
+    await leaverSync;
+
+    const statusPromise = nextEvent(player, S2C.PLAYER_STATUS);
+    const finishedPromise = nextEvent(player, S2C.MATCH_FINISHED);
+    leaver.send(JSON.stringify({ event: C2S.LEAVE_MATCH, payload: {} }));
+    const [statusMessage, finishedMessage] = await Promise.all([statusPromise, finishedPromise]);
+
+    expect(statusMessage.payload).toMatchObject({ user_id: 'user-2', status: 'left' });
+    expect(finishedMessage.payload).toMatchObject({
+      finish_reason: 'abandonment',
+      winner_ids: ['user-1'],
+    });
+    expect((await server.ctx.matchStore.getMatch(session.match_id))?.status).toBe('finished');
+
+    player.close();
+    leaver.close();
+  });
+
   it('permite conexión binaria a /yjs/{matchId}/{userId} para el dueño del documento', async () => {
     const session = createSampleSession('match-ws-yjs');
     await server.ctx.matchStore.saveMatch(session);

@@ -2,7 +2,7 @@
  * Hub central de partidas en tiempo real (doc 04 §74-108).
  *
  * Coordina la lógica C2S/S2C del namespace `/match`:
- * - `join_match`, `toggle_reveal`, `ready`, `heartbeat` (C2S).
+ * - `join_match`, `leave_match`, `toggle_reveal`, `ready`, `heartbeat` (C2S).
  * - `match_started`, `match_sync`, `verdict`, `score_update`,
  *   `reveal_changed`, `player_status`, `match_finished`, `error` (S2C).
  *
@@ -51,6 +51,7 @@ export interface MatchHubOptions {
  */
 export const HUB_C2S_EVENTS = [
   C2S.JOIN_MATCH,
+  C2S.LEAVE_MATCH,
   C2S.TOGGLE_REVEAL,
   C2S.READY,
   C2S.HEARTBEAT,
@@ -191,6 +192,12 @@ export class MatchHub {
       client.sendError('NOT_A_PLAYER', 'No eres miembro de esta partida.', { status: 403 });
       return;
     }
+    if (player.connection === 'left') {
+      client.sendError('NOT_A_PLAYER', 'Abandonaste esta partida y ya no puedes volver a entrar.', {
+        status: 403,
+      });
+      return;
+    }
 
     // Cancelar timer de gracia si existía
     const graceKey = `${matchId}:${client.userId}`;
@@ -233,6 +240,69 @@ export class MatchHub {
     // Enviar MATCH_SYNC personalizado al jugador que se conectó
     const syncPayload = this.buildMatchSyncPayload(session, client.userId);
     client.emit(S2C.MATCH_SYNC, syncPayload);
+  }
+
+  /** C2S.LEAVE_MATCH — registra una salida voluntaria y resuelve el abandono de forma inmediata. */
+  async handleLeaveMatch(client: SocketClient): Promise<void> {
+    const matchId = client.matchId;
+    if (!matchId) {
+      client.sendError(ERROR_CODES.VALIDATION_FAILED, 'No estás en ninguna partida.');
+      return;
+    }
+
+    const session = await this.matchStore.getMatch(matchId);
+    if (!session) {
+      client.sendError(ERROR_CODES.NOT_FOUND, 'Partida no encontrada.');
+      return;
+    }
+
+    const player = session.players.get(client.userId);
+    if (!player || player.connection === 'left') {
+      client.sendError('NOT_A_PLAYER', 'No eres un participante activo de esta partida.', {
+        status: 403,
+      });
+      return;
+    }
+    if (session.status !== 'running' && session.status !== 'settling') {
+      client.sendError(ERROR_CODES.CONFLICT, 'Sólo puedes abandonar una partida que ya inició.');
+      return;
+    }
+
+    const now = Date.now();
+    this.cancelGraceTimer(`${matchId}:${client.userId}`);
+    player.connection = 'left';
+    player.socket_id = undefined;
+    player.last_seen_at = now;
+    session.state_version += 1;
+    await this.matchStore.saveMatch(session);
+
+    const roomName = matchRoom(matchId);
+    const room = this.getRoom(roomName);
+    room?.broadcast(S2C.PLAYER_STATUS, {
+      match_id: matchId,
+      user_id: client.userId,
+      status: 'left',
+      server_time: now,
+    });
+
+    await this.applyPlayerStatusChange(session, client.userId, now);
+
+    // Cerrar las conexiones paralelas del jugador sin convertir la salida explícita en desconexión.
+    for (const playerClient of this.clients.values()) {
+      if (playerClient.userId !== client.userId || playerClient.matchId !== matchId) continue;
+      playerClient.leave(roomName);
+      room?.clients.delete(playerClient.id);
+      playerClient.matchId = undefined;
+    }
+
+    this.logger?.info('Jugador abandonó la partida explícitamente', {
+      match_id: matchId,
+      user_id: client.userId,
+      remaining_players: [...session.players.values()].filter(
+        (candidate) => candidate.connection === 'connected',
+      ).length,
+      state_version: session.state_version,
+    });
   }
 
   /**
@@ -388,7 +458,7 @@ export class MatchHub {
     if (!session) return;
 
     const player = session.players.get(client.userId);
-    if (!player) return;
+    if (!player || player.connection === 'left') return;
 
     // Transición a 'reconnecting'
     player.connection = 'reconnecting';
@@ -1036,13 +1106,22 @@ export class MatchHub {
       user_id: userId,
     });
 
+    await this.applyPlayerStatusChange(session, userId, now);
+  }
+
+  private async applyPlayerStatusChange(
+    session: RealtimeMatchSession,
+    userId: string,
+    now: number,
+  ): Promise<void> {
+    const player = session.players.get(userId);
+    if (!player) return;
+
+    const matchId = session.match_id;
     const mode = getGameMode(session.mode);
-    const ctx = buildMatchContext({
-      session,
-      problemIds: session.problem_ids ?? [],
-      now,
-    });
-    const actions = mode.onPlayerStatusChange(ctx, userId, 'disconnected');
+    const ctx = buildMatchContext({ session, problemIds: session.problem_ids ?? [], now });
+    const newStatus = player.connection === 'reconnecting' ? 'disconnected' : player.connection;
+    const actions = mode.onPlayerStatusChange(ctx, userId, newStatus);
     if (actions.length > 0) {
       applyModeActions(session, actions);
       await this.matchStore.saveMatch(session);

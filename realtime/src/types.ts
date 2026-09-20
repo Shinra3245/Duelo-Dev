@@ -19,7 +19,7 @@ import type { MatchControlSubscriber } from './queue/control.js';
 
 export type StructuredLogger = Logger;
 
-export type PlayerConnection = 'connected' | 'reconnecting' | 'disconnected';
+export type PlayerConnection = 'connected' | 'reconnecting' | 'disconnected' | 'left';
 
 export interface ReadinessProbe {
   name: string;

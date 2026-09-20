@@ -13,8 +13,11 @@ function clonePlayer(player: ConnectedPlayer): ConnectedPlayer {
   return { ...player };
 }
 
-function toPersistentConnection(connection: PlayerConnection): 'connected' | 'disconnected' {
-  return connection === 'connected' ? 'connected' : 'disconnected';
+function toPersistentConnection(
+  connection: PlayerConnection,
+): 'connected' | 'disconnected' | 'left' {
+  if (connection === 'connected' || connection === 'left') return connection;
+  return 'disconnected';
 }
 
 function cloneSession(session: RealtimeMatchSession): RealtimeMatchSession {
@@ -69,9 +72,9 @@ export class PostgresMatchStore implements MatchStore {
       const conn: PlayerConnection =
         p.connection_status === 'connected'
           ? 'connected'
-          : p.connection_status === 'disconnected'
-            ? 'disconnected'
-            : 'reconnecting';
+          : p.connection_status === 'left'
+            ? 'left'
+            : 'disconnected';
 
       const connectedPlayer: ConnectedPlayer = {
         user_id: String(p.user_id),
@@ -202,7 +205,8 @@ export class PostgresMatchStore implements MatchStore {
              current_problem_idx = $4,
              is_ready = $5,
              is_revealed = $6,
-             connection_status = $7
+             connection_status = $7,
+             left_at = CASE WHEN $7 = 'left' THEN COALESCE(left_at, clock_timestamp()) ELSE left_at END
          WHERE match_id = $8 AND user_id = $9`,
         [
           pScore?.score ?? 0,
@@ -244,7 +248,8 @@ export class PostgresMatchStore implements MatchStore {
 
     const res = await this.pool.query(
       `UPDATE match_players
-       SET connection_status = $1
+       SET connection_status = $1,
+           left_at = CASE WHEN $1 = 'left' THEN COALESCE(left_at, clock_timestamp()) ELSE left_at END
        WHERE match_id = $2 AND user_id = $3
        RETURNING *`,
       [toPersistentConnection(connection), matchId, userId],

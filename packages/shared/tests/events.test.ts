@@ -57,7 +57,13 @@ describe('contrato de eventos y estado de partida', () => {
   });
 
   it('los catálogos C2S y S2C contienen los eventos de doc 04', () => {
-    expect(Object.values(C2S)).toEqual(['join_match', 'toggle_reveal', 'ready', 'heartbeat']);
+    expect(Object.values(C2S)).toEqual([
+      'join_match',
+      'leave_match',
+      'toggle_reveal',
+      'ready',
+      'heartbeat',
+    ]);
     expect(Object.values(S2C)).toEqual([
       'match_started',
       'match_sync',

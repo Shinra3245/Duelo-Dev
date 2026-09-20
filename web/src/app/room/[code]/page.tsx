@@ -21,6 +21,7 @@ import type {
   MatchSummaryResponse,
   PlayerScore,
   RevealChangedPayload,
+  PlayerStatusPayload,
 } from '@duelodev/shared';
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
@@ -46,12 +47,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [matchSummary, setMatchSummary] = useState<MatchSummaryResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
   const [isChallengeOpen, setIsChallengeOpen] = useState(false);
+  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const sourceCodeRef = useRef(sourceCode);
   const lastPublishedSourceRef = useRef(sourceCode);
   const codeSyncClientsRef = useRef<Map<string, CodeSyncClient>>(new Map());
   const challengeButtonRef = useRef<HTMLButtonElement>(null);
+  const leaveDialogRef = useRef<HTMLDialogElement>(null);
+  const leaveCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const leaveTriggerButtonRef = useRef<HTMLButtonElement>(null);
+  const leaveRequestedRef = useRef(false);
+  const leaveTimeoutRef = useRef<number | null>(null);
 
   // App load
   useEffect(() => {
@@ -122,7 +130,15 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           setRoom((prev) => (prev ? { ...prev, status: typedPayload.status } : prev));
         });
 
-        client.on(S2C.PLAYER_STATUS, () => {
+        client.on(S2C.PLAYER_STATUS, (payload: unknown) => {
+          const status = payload as PlayerStatusPayload;
+          if (status.user_id === user.id && status.status === 'left') {
+            leaveRequestedRef.current = false;
+            if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
+            router.replace('/');
+            return;
+          }
+
           api.rooms
             .get(roomCode)
             .then((nextRoom) => {
@@ -226,6 +242,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.ERROR, (payload: unknown) => {
           const typedPayload = payload as EventErrorPayload;
+          if (leaveRequestedRef.current) {
+            leaveRequestedRef.current = false;
+            if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
+            setIsLeaving(false);
+          }
           setIsAwaitingVerdict(false);
           setActionError(typedPayload.message || 'Ocurrió un error en tiempo real');
         });
@@ -265,7 +286,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       ? [
           user.id,
           ...room.players
-            .filter((player) => player.user_id !== user.id)
+            .filter(
+              (player) =>
+                player.user_id !== user.id && matchState.players[player.user_id] !== 'left',
+            )
             .map((player) => player.user_id),
         ]
           .sort()
@@ -339,6 +363,25 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   }, [isChallengeOpen]);
 
   useEffect(() => {
+    const dialog = leaveDialogRef.current;
+    if (!dialog) return;
+    if (isLeaveDialogOpen && !dialog.open) {
+      dialog.showModal();
+      leaveCancelButtonRef.current?.focus();
+    } else if (!isLeaveDialogOpen && dialog.open) {
+      dialog.close();
+      leaveTriggerButtonRef.current?.focus();
+    }
+  }, [isLeaveDialogOpen]);
+
+  useEffect(
+    () => () => {
+      if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (
       (!matchState?.ends_at && !matchState?.instructions_ends_at) ||
       room?.status === 'finished' ||
@@ -403,6 +446,22 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     }
   };
 
+  const confirmLeaveMatch = () => {
+    if (!wsClient || !isConnected) {
+      setActionError('Espera a que vuelva la conexión para confirmar el abandono de forma segura.');
+      return;
+    }
+    setActionError('');
+    setIsLeaving(true);
+    leaveRequestedRef.current = true;
+    leaveTimeoutRef.current = window.setTimeout(() => {
+      leaveRequestedRef.current = false;
+      setIsLeaving(false);
+      setActionError('No recibimos confirmación del servidor. Puedes volver a intentarlo.');
+    }, 5000);
+    wsClient.send(C2S.LEAVE_MATCH, {});
+  };
+
   const handleReady = () => {
     if (!isConnected) return;
     setActionError('');
@@ -445,7 +504,12 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     room.status === 'settling' ||
     room.status === 'finished' ||
     room.status === 'abandoned';
+  const canLeaveMatch = room.status === 'running' || room.status === 'settling';
   const canUseRealtime = isConnected && wsClient !== null;
+  const currentMatchPlayers = room.players.filter(
+    (player) => matchState?.players[player.user_id] !== 'left',
+  );
+  const activePlayersAfterLeave = currentMatchPlayers.length - 1;
   const minPlayersToStart = 2;
   const readyPlayerCount = room.players.filter((player) => player.is_ready).length;
   const hasRequiredPlayers = readyPlayerCount >= minPlayersToStart;
@@ -640,15 +704,27 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                           Lee el reto. El tiempo de juego inicia al terminar la cuenta regresiva.
                         </p>
                       </div>
-                      <div
-                        className="duel-instructions-countdown"
-                        aria-label={`Inicio en ${instructionsRemaining} segundos`}
-                      >
-                        <span>INICIO EN</span>
-                        <strong aria-live="off">
-                          00:{String(instructionsRemaining).padStart(2, '0')}
-                        </strong>
-                        <span>Python 3</span>
+                      <div className="duel-instructions-controls">
+                        <div
+                          className="duel-instructions-countdown"
+                          aria-label={`Inicio en ${instructionsRemaining} segundos`}
+                        >
+                          <span>INICIO EN</span>
+                          <strong aria-live="off">
+                            00:{String(instructionsRemaining).padStart(2, '0')}
+                          </strong>
+                          <span>Python 3</span>
+                        </div>
+                        {canLeaveMatch && (
+                          <button
+                            ref={leaveTriggerButtonRef}
+                            type="button"
+                            className="duel-leave-match-trigger"
+                            onClick={() => setIsLeaveDialogOpen(true)}
+                          >
+                            Abandonar partida
+                          </button>
+                        )}
                       </div>
                     </div>
                     <ProblemStatement
@@ -671,27 +747,39 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                           <small> / {room.config.num_problems}</small>
                         </strong>
                       </div>
-                      <button
-                        ref={challengeButtonRef}
-                        type="button"
-                        className="duel-challenge-trigger"
-                        aria-label="Abrir el reto"
-                        aria-haspopup="dialog"
-                        aria-expanded={isChallengeOpen}
-                        aria-controls="duel-challenge-dialog"
-                        onClick={() => setIsChallengeOpen((open) => !open)}
-                      >
-                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M12 17v.01M9.1 9a3 3 0 1 1 5.2 2c-1.3 1.1-2.3 1.6-2.3 3"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                          />
-                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-                        </svg>
-                        <span>Ver reto</span>
-                      </button>
+                      <div className="duel-game-toolbar-actions">
+                        <button
+                          ref={challengeButtonRef}
+                          type="button"
+                          className="duel-challenge-trigger"
+                          aria-label="Abrir el reto"
+                          aria-haspopup="dialog"
+                          aria-expanded={isChallengeOpen}
+                          aria-controls="duel-challenge-dialog"
+                          onClick={() => setIsChallengeOpen((open) => !open)}
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                            <path
+                              d="M12 17v.01M9.1 9a3 3 0 1 1 5.2 2c-1.3 1.1-2.3 1.6-2.3 3"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                            />
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                          </svg>
+                          <span>Ver reto</span>
+                        </button>
+                        {canLeaveMatch && (
+                          <button
+                            ref={leaveTriggerButtonRef}
+                            type="button"
+                            className="duel-leave-match-trigger"
+                            onClick={() => setIsLeaveDialogOpen(true)}
+                          >
+                            Abandonar partida
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {isChallengeOpen && (
@@ -733,7 +821,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                     )}
 
                     <div
-                      className={`duel-code-board-grid ${room.players.length === 2 ? 'duel-two-boards' : ''}`}
+                      className={`duel-code-board-grid ${currentMatchPlayers.length === 2 ? 'duel-two-boards' : ''}`}
                     >
                       <PythonEditor
                         value={sourceCode}
@@ -743,7 +831,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         isRevealed={matchState.reveal_flags[user.id] ?? false}
                         onToggleReveal={handleToggleReveal}
                       />
-                      {room.players
+                      {currentMatchPlayers
                         .filter((player) => player.user_id !== user.id)
                         .map((player, index) => (
                           <RivalCodeBoard
@@ -812,7 +900,12 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       </div>
                     )}
                     {room.status !== 'finished' && room.status !== 'abandoned' && (
-                      <LiveStandings scores={displayedScores} players={room.players} />
+                      <LiveStandings
+                        scores={displayedScores.filter(
+                          (score) => matchState.players[score.user_id] !== 'left',
+                        )}
+                        players={currentMatchPlayers}
+                      />
                     )}
                     {matchSummary && (
                       <VisibleCodeSnapshots
@@ -827,6 +920,48 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                 <p className="rounded-2xl bg-white p-5 text-sm font-medium text-slate-500">
                   Sincronizando partida con el servidor...
                 </p>
+              )}
+              {canLeaveMatch && (
+                <dialog
+                  ref={leaveDialogRef}
+                  className="duel-leave-dialog"
+                  aria-labelledby="duel-leave-title"
+                  aria-describedby="duel-leave-description"
+                  onCancel={(event) => {
+                    event.preventDefault();
+                    if (!isLeaving) setIsLeaveDialogOpen(false);
+                  }}
+                >
+                  <p className="duel-game-eyebrow">SALIDA DE PARTIDA</p>
+                  <h2 id="duel-leave-title">¿Estás a punto de abandonar la partida?</h2>
+                  <p id="duel-leave-description">
+                    {activePlayersAfterLeave >= 2
+                      ? 'La partida continuará con los jugadores restantes.'
+                      : 'Tu rival será declarado ganador por abandono.'}{' '}
+                    Esta acción no se puede deshacer.
+                  </p>
+                  {actionError && <p className="duel-leave-error">{actionError}</p>}
+                  <div className="duel-leave-dialog-actions">
+                    <button
+                      ref={leaveCancelButtonRef}
+                      type="button"
+                      className="duel-leave-cancel"
+                      disabled={isLeaving}
+                      onClick={() => setIsLeaveDialogOpen(false)}
+                    >
+                      Seguir en la partida
+                    </button>
+                    <button
+                      type="button"
+                      className="duel-leave-confirm"
+                      disabled={isLeaving || !isConnected}
+                      aria-busy={isLeaving}
+                      onClick={confirmLeaveMatch}
+                    >
+                      {isLeaving ? 'Abandonando…' : 'Sí, abandonar'}
+                    </button>
+                  </div>
+                </dialog>
               )}
             </div>
           )}

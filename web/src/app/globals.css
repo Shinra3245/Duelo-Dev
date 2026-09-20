@@ -1105,6 +1105,108 @@ body:has(.duel-room-shell) {
   padding: 0.65rem 0.85rem;
 }
 
+.duel-game-toolbar-actions,
+.duel-instructions-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.duel-game-toolbar-actions {
+  flex-wrap: wrap;
+}
+
+.duel-leave-match-trigger {
+  min-height: 2.8rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgb(251 146 146 / 0.4);
+  border-radius: 0.85rem;
+  color: #fecaca;
+  background: rgb(127 29 29 / 0.26);
+  font-size: 0.73rem;
+  font-weight: 850;
+}
+
+.duel-leave-match-trigger:hover:not(:disabled) {
+  border-color: rgb(252 165 165 / 0.75);
+  background: rgb(153 27 27 / 0.45);
+}
+
+.duel-leave-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-width: none;
+  margin: auto;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid rgb(248 113 113 / 0.45);
+  border-radius: 1.4rem;
+  color: #e5edf8;
+  background:
+    radial-gradient(circle at 100% 0, rgb(248 113 113 / 0.14), transparent 38%),
+    linear-gradient(145deg, #101d30, #0a1321);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 0.55);
+}
+
+.duel-leave-dialog::backdrop {
+  background: rgb(2 6 23 / 0.82);
+  backdrop-filter: blur(5px);
+}
+
+.duel-leave-dialog h2 {
+  margin: 0.45rem 0 0.6rem;
+  color: #fff;
+  font-size: clamp(1.35rem, 3vw, 1.8rem);
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.duel-leave-dialog > p:not(.duel-game-eyebrow) {
+  color: #c5d2e1;
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.duel-leave-error {
+  margin-top: 0.85rem;
+  color: #fecaca !important;
+}
+
+.duel-leave-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+.duel-leave-dialog-actions button {
+  min-height: 2.9rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.duel-leave-cancel {
+  border: 1px solid rgb(148 163 184 / 0.35);
+  color: #e2e8f0;
+  background: rgb(255 255 255 / 0.06);
+}
+
+.duel-leave-confirm {
+  border: 1px solid rgb(248 113 113 / 0.65);
+  color: #fff;
+  background: #b91c1c;
+}
+
+.duel-leave-confirm:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.duel-leave-dialog-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .duel-challenge-trigger svg {
   width: 1.3rem;
   height: 1.3rem;
