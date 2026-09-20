@@ -162,7 +162,7 @@ export class SubmissionService {
 
       // 4. Verificar que el usuario sea un jugador elegible de la partida
       const player = await this.roomRepo.findPlayer(req.match_id, userId);
-      if (!player) {
+      if (!player || player.connection_status === 'left') {
         throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
       }
 
@@ -190,7 +190,7 @@ export class SubmissionService {
       const effectiveTimeLimitMs = resolveTimeLimitMs(baseTimeLimitMs, req.language);
 
       // 7. Persistir el envío de forma durable
-      const submission = await this.submissionRepo.createSubmission({
+      const submission = await this.submissionRepo.createSubmissionForActivePlayer({
         match_id: req.match_id,
         round_id: req.round_id,
         user_id: userId,
@@ -202,6 +202,9 @@ export class SubmissionService {
         admission_seq: nextAdmissionSeq,
         status: 'queued',
       });
+      if (!submission) {
+        throw new HttpError(403, ERROR_CODES.NOT_A_PLAYER, ERROR_MESSAGES.NOT_A_PLAYER);
+      }
 
       if (this.auditService) {
         await this.auditService.recordSubmission(

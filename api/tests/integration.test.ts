@@ -428,7 +428,65 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     expect(Number(matchSeq.rows[0]?.admission_seq)).toBe(3);
   });
 
-  it('5. Reconciliación de estado: recuperación determinista ante avisos perdidos', async () => {
+  it('5. Una salida concurrente gana la carrera antes de admitir y persistir un envío', async () => {
+    const fixture = await createRunningMatchFixture(pool, 'left');
+    const problemRepo = new PostgresProblemRepository(pool);
+    const problems = await problemRepo.findAllProblems();
+    expect(problems.length).toBeGreaterThan(0);
+
+    const leaveClient = await pool.connect();
+    try {
+      await leaveClient.query('BEGIN');
+      await leaveClient.query(
+        'UPDATE matches SET state_version = state_version + 1 WHERE id = $1',
+        [fixture.matchId],
+      );
+      await leaveClient.query(
+        `UPDATE match_players
+         SET connection_status = 'left', left_at = clock_timestamp()
+         WHERE match_id = $1 AND user_id = $2`,
+        [fixture.matchId, fixture.userId],
+      );
+
+      const repository = new PostgresSubmissionRepository(pool);
+      const pendingSubmission = repository.createSubmissionForActivePlayer({
+        match_id: fixture.matchId,
+        round_id: fixture.matchId,
+        user_id: fixture.userId,
+        problem_id: problems[0]!.id,
+        language: 'python',
+        source_code: 'print("must not be admitted")',
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        admission_seq: 0,
+        status: 'queued',
+      });
+      const didWaitForLeave = await Promise.race([
+        pendingSubmission.then(() => false),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 25)),
+      ]);
+
+      await leaveClient.query('COMMIT');
+      const submission = await pendingSubmission;
+
+      expect(didWaitForLeave).toBe(true);
+      expect(submission).toBeNull();
+      const storedSubmissions = await pool.query(
+        'SELECT id FROM submissions WHERE match_id = $1 AND user_id = $2',
+        [fixture.matchId, fixture.userId],
+      );
+      expect(storedSubmissions.rows).toHaveLength(0);
+      const match = await pool.query('SELECT admission_seq FROM matches WHERE id = $1', [
+        fixture.matchId,
+      ]);
+      expect(Number(match.rows[0]?.admission_seq)).toBe(0);
+    } finally {
+      await leaveClient.query('ROLLBACK').catch(() => undefined);
+      leaveClient.release();
+    }
+  });
+
+  it('6. Reconciliación de estado: recuperación determinista ante avisos perdidos', async () => {
     const fixture = await createRunningMatchFixture(pool, 'recon');
     const probRepo = new PostgresProblemRepository(pool);
     const problems = await probRepo.findAllProblems();

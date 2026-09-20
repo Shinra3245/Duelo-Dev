@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import {
@@ -81,6 +81,10 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   function extractCookies(res: Response): Record<string, string> {
@@ -341,6 +345,82 @@ describe('Submissions and Problems REST API (/api/v1)', () => {
       expect(subRes.status).toBe(403);
       const data = (await subRes.json()) as ApiError;
       expect(data.error.code).toBe(ERROR_CODES.NOT_A_PLAYER);
+    });
+
+    it('rechaza con 403 a un jugador que ya abandonó la partida', async () => {
+      const player = await registerUser('sub-left@test.com', 'SubLeftPlayer');
+      const match = await app.ctx.roomRepo.createMatch({
+        room_code: randomUUID().replaceAll('-', '').slice(0, 6).toUpperCase(),
+        mode: 'puntos',
+        status: 'running',
+        config: validPuntosConfig,
+        host_id: player.userId,
+      });
+      await app.ctx.roomRepo.addPlayer({
+        match_id: match.id,
+        user_id: player.userId,
+        connection_status: 'left',
+        left_at: new Date().toISOString(),
+      });
+
+      const response = await fetch(`${baseUrl}/api/v1/submissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: player.cookieHeader },
+        body: JSON.stringify({
+          match_id: match.id,
+          round_id: testRoundId,
+          problem_id: testProblemId,
+          language: 'python',
+          source_code: 'print("late")',
+        }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(((await response.json()) as ApiError).error.code).toBe(ERROR_CODES.NOT_A_PLAYER);
+      expect(await app.ctx.submissionRepo.findSubmissionsByMatch(match.id)).toHaveLength(0);
+    });
+
+    it('revalida la membresía justo antes de persistir frente a una salida concurrente', async () => {
+      const player = await registerUser('sub-race-left@test.com', 'SubRaceLeft');
+      const match = await app.ctx.roomRepo.createMatch({
+        room_code: randomUUID().replaceAll('-', '').slice(0, 6).toUpperCase(),
+        mode: 'puntos',
+        status: 'running',
+        config: validPuntosConfig,
+        host_id: player.userId,
+      });
+      const matchPlayer = await app.ctx.roomRepo.addPlayer({
+        match_id: match.id,
+        user_id: player.userId,
+      });
+      const createIfActive = app.ctx.submissionRepo.createSubmissionForActivePlayer.bind(
+        app.ctx.submissionRepo,
+      );
+      vi.spyOn(app.ctx.submissionRepo, 'createSubmissionForActivePlayer').mockImplementationOnce(
+        async (input) => {
+          await app.ctx.roomRepo.updatePlayer(matchPlayer.id, {
+            connection_status: 'left',
+            left_at: new Date().toISOString(),
+          });
+          return createIfActive(input);
+        },
+      );
+
+      const response = await fetch(`${baseUrl}/api/v1/submissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: player.cookieHeader },
+        body: JSON.stringify({
+          match_id: match.id,
+          round_id: testRoundId,
+          problem_id: testProblemId,
+          language: 'python',
+          source_code: 'print("racing leave")',
+        }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(((await response.json()) as ApiError).error.code).toBe(ERROR_CODES.NOT_A_PLAYER);
+      expect(await app.ctx.submissionRepo.findSubmissionsByMatch(match.id)).toHaveLength(0);
     });
 
     it('rechaza envíos durante la ventana de instrucciones sin consumir el cooldown', async () => {

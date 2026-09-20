@@ -68,7 +68,7 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
   const roomRepo = options.roomRepo ?? new InMemoryRoomRepository();
   const roomCreationPolicyRepo =
     options.roomCreationPolicyRepo ?? new InMemoryRoomCreationPolicyRepository();
-  const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository();
+  const submissionRepo = options.submissionRepo ?? new InMemorySubmissionRepository(roomRepo);
   const problemRepo = options.problemRepo ?? new InMemoryProblemRepository();
   const eventRepo = options.eventRepo ?? new InMemoryEventRepository();
   const judgeQueue = options.judgeQueue ?? new InMemoryJudgeQueue();

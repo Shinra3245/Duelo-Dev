@@ -550,6 +550,19 @@ export class InMemoryRoomRepository implements RoomRepository {
 export class InMemorySubmissionRepository implements SubmissionRepository {
   private readonly submissions = new Map<string, SubmissionWithLeaseEntity>();
 
+  constructor(private readonly roomRepo?: Pick<RoomRepository, 'findPlayer'>) {}
+
+  async createSubmissionForActivePlayer(
+    input: CreateSubmissionInput,
+  ): Promise<SubmissionEntity | null> {
+    if (this.roomRepo) {
+      const player = await this.roomRepo.findPlayer(input.match_id, input.user_id);
+      if (!player || player.connection_status === 'left') return null;
+    }
+
+    return this.createSubmission(input);
+  }
+
   async createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity> {
     const now = new Date().toISOString();
     const submission: SubmissionWithLeaseEntity = {

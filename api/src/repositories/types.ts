@@ -230,6 +230,8 @@ export interface PersistSubmissionResultInput {
 
 export interface SubmissionRepository {
   createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity>;
+  /** Crea el envío solo si el jugador sigue activo; null significa inexistente o ya abandonó. */
+  createSubmissionForActivePlayer(input: CreateSubmissionInput): Promise<SubmissionEntity | null>;
   findSubmissionById(id: string): Promise<SubmissionEntity | null>;
   findSubmissionsByMatch(matchId: string): Promise<SubmissionEntity[]>;
   findSubmissionsByUser(matchId: string, userId: string): Promise<SubmissionEntity[]>;

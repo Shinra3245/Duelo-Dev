@@ -921,6 +921,21 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   constructor(private readonly pool: PgPool) {}
 
   async createSubmission(input: CreateSubmissionInput): Promise<SubmissionEntity> {
+    const submission = await this.persistSubmission(input, false);
+    if (!submission) throw new Error('No se pudo persistir el envío');
+    return submission;
+  }
+
+  async createSubmissionForActivePlayer(
+    input: CreateSubmissionInput,
+  ): Promise<SubmissionEntity | null> {
+    return this.persistSubmission(input, true);
+  }
+
+  private async persistSubmission(
+    input: CreateSubmissionInput,
+    requireActivePlayer: boolean,
+  ): Promise<SubmissionEntity | null> {
     const client: PoolClient = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -941,6 +956,20 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
           'UPDATE matches SET admission_seq = GREATEST(admission_seq, $1) WHERE id = $2',
           [admissionSeq, input.match_id],
         );
+      }
+
+      if (requireActivePlayer) {
+        const playerRes = await client.query(
+          `SELECT connection_status
+           FROM match_players
+           WHERE match_id = $1 AND user_id = $2
+           FOR UPDATE`,
+          [input.match_id, input.user_id],
+        );
+        if (playerRes.rows.length === 0 || String(playerRes.rows[0].connection_status) === 'left') {
+          await client.query('ROLLBACK');
+          return null;
+        }
       }
 
       const id = input.id ?? randomUUID();
