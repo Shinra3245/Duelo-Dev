@@ -18,7 +18,7 @@ test.describe('flujo de torneo en navegador', () => {
     const rivalGamertag = `rival-${Date.now().toString(36).slice(-7)}`;
 
     try {
-      await enterAsGuest(host, hostGamertag);
+      await enterAsRegistered(host, hostGamertag);
       await host.getByRole('button', { name: 'Puntos' }).click();
       await expect(host.getByRole('heading', { name: 'Lobby' })).toBeVisible();
 
@@ -149,4 +149,15 @@ async function enterAsGuest(page: Page, gamertag: string) {
   await page.getByLabel('Gamertag').fill(gamertag);
   await page.getByRole('button', { name: 'Jugar como Invitado' }).click();
   await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
+}
+
+async function enterAsRegistered(page: Page, gamertag: string) {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Registrarse', exact: true }).click();
+  await page.getByLabel('Correo electrónico').fill(`${gamertag}@example.test`);
+  await page.getByLabel('Gamertag').fill(gamertag);
+  await page.getByLabel('Contraseña').fill(`E2E-${gamertag}-Only-2026!`);
+  await page.getByRole('button', { name: 'Crear cuenta y entrar' }).click();
+  await expect(page.getByText(gamertag, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Puntos', exact: true })).toBeVisible();
 }
