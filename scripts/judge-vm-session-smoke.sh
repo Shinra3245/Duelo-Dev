@@ -6,7 +6,12 @@ set -euo pipefail
 readonly VM_USER="judge"
 readonly VM_HOST="127.0.0.1"
 readonly VM_PORT="2222"
-readonly REMOTE_DIR="/home/judge/duelodev-session-smoke"
+readonly REMOTE_SUFFIX="${JUDGE_VM_SESSION_SUFFIX:-smoke}"
+if [[ ! "$REMOTE_SUFFIX" =~ ^[a-zA-Z0-9_-]{1,40}$ ]]; then
+  printf 'Error: JUDGE_VM_SESSION_SUFFIX sólo admite letras, números, guion y guion bajo.\n' >&2
+  exit 1
+fi
+readonly REMOTE_DIR="/home/judge/duelodev-session-${REMOTE_SUFFIX}"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
   "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
