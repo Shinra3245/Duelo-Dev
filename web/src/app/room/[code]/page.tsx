@@ -4,6 +4,11 @@ import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
+import {
+  getClosingDelimiterSkipPosition,
+  insertAutoClosePair,
+  isClipboardShortcut,
+} from '@/lib/editor-behavior';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
@@ -865,8 +870,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                               : 'Enviar solución'}
                       </button>
                       <p id="python-editor-help">
-                        Python 3 · El reto permanece accesible desde «Ver reto»; abrirlo no pausa el
-                        reloj.
+                        Python 3 · Copiar y pegar desactivados. El reto permanece accesible desde
+                        «Ver reto»; abrirlo no pausa el reloj.
                       </p>
                     </div>
 
@@ -1282,11 +1287,50 @@ function PythonEditor({
             className="relative h-full w-full resize-none overflow-auto bg-transparent p-5 font-mono text-sm leading-6 text-transparent caret-cyan-300 outline-none placeholder:text-slate-500"
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onCopy={(event) => event.preventDefault()}
+            onCut={(event) => event.preventDefault()}
+            onPaste={(event) => event.preventDefault()}
+            onContextMenu={(event) => event.preventDefault()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => event.preventDefault()}
             onKeyDown={(event) => {
-              if (event.key !== 'Tab') return;
-              event.preventDefault();
               const start = event.currentTarget.selectionStart;
               const end = event.currentTarget.selectionEnd;
+
+              if (
+                isClipboardShortcut(event.key, {
+                  ctrlKey: event.ctrlKey,
+                  metaKey: event.metaKey,
+                  shiftKey: event.shiftKey,
+                })
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
+
+              const pair = insertAutoClosePair(value, start, end, event.key);
+              if (pair) {
+                event.preventDefault();
+                onChange(pair.value);
+                requestAnimationFrame(() => {
+                  if (!editorRef.current) return;
+                  editorRef.current.focus();
+                  editorRef.current.selectionStart = pair.selectionStart;
+                  editorRef.current.selectionEnd = pair.selectionEnd;
+                });
+                return;
+              }
+
+              const closingPosition = getClosingDelimiterSkipPosition(value, start, end, event.key);
+              if (closingPosition !== null) {
+                event.preventDefault();
+                editorRef.current?.setSelectionRange(closingPosition, closingPosition);
+                return;
+              }
+
+              if (event.key !== 'Tab') return;
+              event.preventDefault();
               const nextValue = `${value.slice(0, start)}  ${value.slice(end)}`;
               onChange(nextValue);
               requestAnimationFrame(() => {

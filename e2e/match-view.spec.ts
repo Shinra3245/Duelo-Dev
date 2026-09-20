@@ -82,6 +82,30 @@ test.describe('vista de partida sincronizada', () => {
         ),
       );
 
+      const hostEditor = host.getByLabel('Editor de solución Python');
+      await hostEditor.focus();
+      await hostEditor.press('(');
+      await expect(hostEditor).toHaveValue('()');
+      await hostEditor.press('x');
+      await expect(hostEditor).toHaveValue('(x)');
+      await hostEditor.press('Control+A');
+      await hostEditor.press('[');
+      await expect(hostEditor).toHaveValue('[(x)]');
+      await hostEditor.press('Control+V');
+      await expect(hostEditor).toHaveValue('[(x)]');
+      const blockedEditorEvents = await hostEditor.evaluate((editor) =>
+        ['copy', 'cut', 'paste', 'contextmenu', 'dragover', 'drop'].map((type) => {
+          const event =
+            type.startsWith('drag') || type === 'drop'
+              ? new DragEvent(type, { bubbles: true, cancelable: true })
+              : type === 'contextmenu'
+                ? new MouseEvent(type, { bubbles: true, cancelable: true })
+                : new ClipboardEvent(type, { bubbles: true, cancelable: true });
+          return editor.dispatchEvent(event);
+        }),
+      );
+      expect(blockedEditorEvents).toEqual([false, false, false, false, false, false]);
+
       const hostBoards = host.locator('.duel-code-board-grid .duel-code-board');
       const rivalBoards = rival.locator('.duel-code-board-grid .duel-code-board');
       const thirdBoards = third.locator('.duel-code-board-grid .duel-code-board');
