@@ -484,6 +484,7 @@ export class PostgresRoomRepository implements RoomRepository {
         | 'winner_id'
         | 'winner_ids'
         | 'finish_reason'
+        | 'host_id'
         | 'state_version'
         | 'admission_seq'
       >
@@ -524,6 +525,10 @@ export class PostgresRoomRepository implements RoomRepository {
     if (input.finish_reason !== undefined) {
       fields.push(`finish_reason = $${idx++}`);
       values.push(input.finish_reason);
+    }
+    if (input.host_id !== undefined) {
+      fields.push(`host_id = $${idx++}`);
+      values.push(input.host_id);
     }
     if (input.state_version !== undefined) {
       fields.push(`state_version = $${idx++}`);
@@ -572,6 +577,90 @@ export class PostgresRoomRepository implements RoomRepository {
       ],
     );
     return mapMatchPlayerRow(res.rows[0]!);
+  }
+
+  async joinLobby(input: CreateMatchPlayerInput, maxPlayers: number) {
+    const client: PoolClient = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const matchResult = await client.query('SELECT * FROM matches WHERE id = $1 FOR UPDATE', [
+        input.match_id,
+      ]);
+      if (!matchResult.rows[0] || matchResult.rows[0]['status'] !== 'lobby') {
+        await client.query('COMMIT');
+        return { status: 'not_lobby' as const };
+      }
+
+      const existingResult = await client.query(
+        'SELECT * FROM match_players WHERE match_id = $1 AND user_id = $2',
+        [input.match_id, input.user_id],
+      );
+      if (existingResult.rows[0]) {
+        await client.query('COMMIT');
+        return {
+          status: 'existing' as const,
+          match: mapMatchRow(matchResult.rows[0]),
+          player: mapMatchPlayerRow(existingResult.rows[0]),
+        };
+      }
+
+      const countResult = await client.query(
+        'SELECT count(*)::integer AS count FROM match_players WHERE match_id = $1',
+        [input.match_id],
+      );
+      const playerCount = Number(countResult.rows[0]?.['count'] ?? 0);
+      if (playerCount >= maxPlayers) {
+        await client.query('COMMIT');
+        return { status: 'full' as const };
+      }
+
+      let matchRow = matchResult.rows[0];
+      if (playerCount === 0 && String(matchRow['host_id']) !== input.user_id) {
+        const promoted = await client.query(
+          'UPDATE matches SET host_id = $2 WHERE id = $1 RETURNING *',
+          [input.match_id, input.user_id],
+        );
+        matchRow = promoted.rows[0]!;
+      }
+
+      const playerId = input.id ?? randomUUID();
+      const playerResult = await client.query(
+        `INSERT INTO match_players (
+          id, match_id, user_id, score, cases_total, time_total_ms, current_problem_idx,
+          is_ready, is_revealed, connection_status, joined_at, left_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          COALESCE($11, clock_timestamp()), $12
+        ) RETURNING *`,
+        [
+          playerId,
+          input.match_id,
+          input.user_id,
+          input.score ?? 0,
+          input.cases_total ?? 0,
+          input.time_total_ms ?? 0,
+          input.current_problem_idx ?? 0,
+          input.is_ready ?? true,
+          input.is_revealed ?? false,
+          input.connection_status ?? 'connected',
+          input.joined_at ? new Date(input.joined_at) : null,
+          input.left_at ? new Date(input.left_at) : null,
+        ],
+      );
+
+      await client.query('COMMIT');
+      return {
+        status: 'joined' as const,
+        match: mapMatchRow(matchRow),
+        player: mapMatchPlayerRow(playerResult.rows[0]!),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async findPlayersByMatchId(matchId: string): Promise<MatchPlayerEntity[]> {

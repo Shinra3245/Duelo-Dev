@@ -104,6 +104,7 @@ export async function handleAdminCreateRoom(
     admin.id,
     validated.data,
     `${protocol}://${hostHeader}`,
+    { joinCreator: false },
   );
   sendJson(req, res, 201, result);
 }

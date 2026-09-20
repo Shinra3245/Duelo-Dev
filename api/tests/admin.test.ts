@@ -120,6 +120,46 @@ describe('Panel administrativo protegido', () => {
       }),
     });
     expect(valid.status).toBe(201);
+    const created = (await valid.json()) as { room_code: string };
+    const emptyLobby = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(emptyLobby.status).toBe(200);
+    expect((await emptyLobby.json()).players).toHaveLength(0);
+
+    const cannotStartEmpty = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/start`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    });
+    expect(cannotStartEmpty.status).toBe(400);
+
+    const firstJoin = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/join`, {
+      method: 'POST',
+      headers: { Cookie: userCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamertag: 'player-admin-test' }),
+    });
+    expect(firstJoin.status).toBe(200);
+    expect((await firstJoin.json()).role).toBe('host');
+
+    const stillBelowMinimum = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/start`, {
+      method: 'POST',
+      headers: { Cookie: userCookie },
+    });
+    expect(stillBelowMinimum.status).toBe(400);
+
+    const secondJoin = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/join`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamertag: 'admin-duelodev' }),
+    });
+    expect(secondJoin.status).toBe(200);
+    expect((await secondJoin.json()).role).toBe('player');
+
+    const startWithQuorum = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/start`, {
+      method: 'POST',
+      headers: { Cookie: userCookie },
+    });
+    expect(startWithQuorum.status).toBe(200);
 
     const invalid = await fetch(`${baseUrl}/api/v1/admin/rooms/create`, {
       method: 'POST',
@@ -152,7 +192,68 @@ describe('Panel administrativo protegido', () => {
     expect(inactiveDifficulty.status).toBe(400);
   });
 
+  it('admin puede crear y unirse desde la API principal; el primer jugador del lobby admin queda como host', async () => {
+    const ordinaryRoomResponse = await fetch(`${baseUrl}/api/v1/rooms`, {
+      method: 'POST',
+      headers: { Cookie: userCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(ordinaryRoomResponse.status).toBe(201);
+    const ordinaryRoom = (await ordinaryRoomResponse.json()) as { room_code: string };
+    const adminJoined = await fetch(`${baseUrl}/api/v1/rooms/${ordinaryRoom.room_code}/join`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamertag: 'admin-duelodev' }),
+    });
+    expect(adminJoined.status).toBe(200);
+
+    const adminCreated = await fetch(`${baseUrl}/api/v1/rooms`, {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(adminCreated.status).toBe(201);
+    const mainPageRoom = (await adminCreated.json()) as { room_code: string };
+    const mainPageAccess = await fetch(`${baseUrl}/api/v1/rooms/${mainPageRoom.room_code}`, {
+      headers: { Cookie: adminCookie },
+    });
+    expect(mainPageAccess.status).toBe(200);
+    expect((await mainPageAccess.json()).players).toHaveLength(1);
+  });
+
   it('lista salas, ordena el ranking y audita el ganador manual', async () => {
+    const playerRoomResponse = await fetch(`${baseUrl}/api/v1/rooms`, {
+      method: 'POST',
+      headers: { Cookie: userCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        config: {
+          mode: 'puntos',
+          max_players: 2,
+          num_problems: 1,
+          categories: ['muy_facil'],
+          time_per_problem_s: 60,
+        },
+      }),
+    });
+    expect(playerRoomResponse.status).toBe(201);
+    const playerRoom = (await playerRoomResponse.json()) as { match_id: string };
+
     const roomsResponse = await fetch(`${baseUrl}/api/v1/admin/rooms`, {
       headers: { Cookie: adminCookie },
     });
@@ -160,15 +261,19 @@ describe('Panel administrativo protegido', () => {
     const rooms = (await roomsResponse.json()) as {
       rooms: Array<{ match_id: string; players: Array<{ user_id: string }> }>;
     };
-    expect(rooms.rooms).toHaveLength(1);
-    const room = rooms.rooms[0]!;
-    const adminPlayer = room.players[0]!;
+    const room = rooms.rooms.find((candidate) => candidate.match_id === playerRoom.match_id);
+    expect(room).toBeDefined();
+    const playerRoomDetails = room!;
+    const adminPlayer = playerRoomDetails.players[0]!;
 
-    const result = await fetch(`${baseUrl}/api/v1/admin/rooms/${room.match_id}/result`, {
-      method: 'POST',
-      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ winner_ids: [adminPlayer.user_id] }),
-    });
+    const result = await fetch(
+      `${baseUrl}/api/v1/admin/rooms/${playerRoomDetails.match_id}/result`,
+      {
+        method: 'POST',
+        headers: { Cookie: adminCookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ winner_ids: [adminPlayer.user_id] }),
+      },
+    );
     expect(result.status).toBe(200);
     const resultBody = (await result.json()) as {
       room: { status: string; winner_ids: string[] };
@@ -246,10 +351,15 @@ describe('Panel administrativo protegido', () => {
     expect(closeAllBody.rooms.find((room) => room.match_id === second.match_id)?.status).toBe(
       'abandoned',
     );
-    expect(controlNotifications).toHaveLength(2);
-    expect(controlNotifications.every((notification) => notification.type === 'match_closed')).toBe(
-      true,
+    const closeNotifications = controlNotifications.filter(
+      (notification) => notification.type === 'match_closed',
     );
+    expect(
+      closeNotifications.some((notification) => notification.match_id === first.match_id),
+    ).toBe(true);
+    expect(
+      closeNotifications.some((notification) => notification.match_id === second.match_id),
+    ).toBe(true);
   });
 
   it('administra la política de creación y deja disponibles las uniones', async () => {

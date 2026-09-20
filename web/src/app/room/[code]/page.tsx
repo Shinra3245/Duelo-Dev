@@ -446,7 +446,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     room.status === 'finished' ||
     room.status === 'abandoned';
   const canUseRealtime = isConnected && wsClient !== null;
-  const hasRequiredPlayers = room.players.length >= room.config.max_players;
+  const minPlayersToStart = 2;
+  const readyPlayerCount = room.players.filter((player) => player.is_ready).length;
+  const hasRequiredPlayers = readyPlayerCount >= minPlayersToStart;
   const canStartMatch = canUseRealtime && hasRequiredPlayers && !isStartingMatch;
   const canSubmit =
     room.status === 'running' &&
@@ -609,15 +611,15 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                       ? 'Empezando...'
                       : hasRequiredPlayers
                         ? 'Empezar partida'
-                        : `Esperando jugadores (${room.players.length}/${room.config.max_players})`}
+                        : `Esperando jugadores (${readyPlayerCount}/${minPlayersToStart})`}
                   </button>
                 )}
               </div>
 
               {!hasRequiredPlayers && (
                 <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium leading-6 text-amber-900">
-                  La partida se habilitará cuando estén todos los jugadores: {room.players.length}/
-                  {room.config.max_players}.
+                  Se necesitan al menos {minPlayersToStart} jugadores listos para iniciar. Ahora hay{' '}
+                  {readyPlayerCount}/{minPlayersToStart}.
                 </p>
               )}
             </div>

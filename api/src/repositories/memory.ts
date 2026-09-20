@@ -338,6 +338,7 @@ export class InMemoryRoomRepository implements RoomRepository {
         | 'winner_id'
         | 'winner_ids'
         | 'finish_reason'
+        | 'host_id'
         | 'state_version'
         | 'admission_seq'
       >
@@ -358,6 +359,7 @@ export class InMemoryRoomRepository implements RoomRepository {
       ...(input.winner_id !== undefined ? { winner_id: input.winner_id } : {}),
       ...(input.winner_ids !== undefined ? { winner_ids: input.winner_ids } : {}),
       ...(input.finish_reason !== undefined ? { finish_reason: input.finish_reason } : {}),
+      ...(input.host_id !== undefined ? { host_id: input.host_id } : {}),
       ...(input.state_version !== undefined ? { state_version: input.state_version } : {}),
       ...(input.admission_seq !== undefined ? { admission_seq: input.admission_seq } : {}),
     };
@@ -388,6 +390,28 @@ export class InMemoryRoomRepository implements RoomRepository {
     this.players.set(input.match_id, matchPlayers);
 
     return { ...player };
+  }
+
+  async joinLobby(input: CreateMatchPlayerInput, maxPlayers: number) {
+    const match = this.matches.get(input.match_id);
+    if (!match || match.status !== 'lobby') return { status: 'not_lobby' as const };
+
+    const matchPlayers = this.players.get(input.match_id) ?? [];
+    const existing = matchPlayers.find((player) => player.user_id === input.user_id);
+    if (existing)
+      return { status: 'existing' as const, match: { ...match }, player: { ...existing } };
+    if (matchPlayers.length >= maxPlayers) return { status: 'full' as const };
+
+    if (matchPlayers.length === 0 && match.host_id !== input.user_id) {
+      this.matches.set(match.id, { ...match, host_id: input.user_id });
+    }
+
+    const player = await this.addPlayer(input);
+    return {
+      status: 'joined' as const,
+      match: { ...this.matches.get(match.id)! },
+      player,
+    };
   }
 
   async findPlayersByMatchId(matchId: string): Promise<MatchPlayerEntity[]> {

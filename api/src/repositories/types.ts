@@ -101,6 +101,11 @@ export interface CreateMatchPlayerInput {
   left_at?: string | null;
 }
 
+export type JoinLobbyResult =
+  | { status: 'joined' | 'existing'; match: MatchEntity; player: MatchPlayerEntity }
+  | { status: 'not_lobby' }
+  | { status: 'full' };
+
 export interface RoomRepository {
   createMatch(input: CreateMatchInput): Promise<MatchEntity>;
   findMatchById(id: string): Promise<MatchEntity | null>;
@@ -124,12 +129,15 @@ export interface RoomRepository {
         | 'winner_id'
         | 'winner_ids'
         | 'finish_reason'
+        | 'host_id'
         | 'state_version'
         | 'admission_seq'
       >
     >,
   ): Promise<MatchEntity | null>;
   addPlayer(input: CreateMatchPlayerInput): Promise<MatchPlayerEntity>;
+  /** Inserta un jugador con el lobby bloqueado y asigna host al primer miembro de sala vacía. */
+  joinLobby(input: CreateMatchPlayerInput, maxPlayers: number): Promise<JoinLobbyResult>;
   findPlayersByMatchId(matchId: string): Promise<MatchPlayerEntity[]>;
   findPlayer(matchId: string, userId: string): Promise<MatchPlayerEntity | null>;
   updatePlayer(

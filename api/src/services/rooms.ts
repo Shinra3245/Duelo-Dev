@@ -55,6 +55,11 @@ export interface RoomServiceOptions {
   auditService?: AuditService | undefined;
 }
 
+export interface CreateRoomOptions {
+  /** Permite a administración preparar el lobby sin ocupar un asiento. */
+  joinCreator?: boolean;
+}
+
 /**
  * Servicio de salas y ciclo de vida de partidas en lobby (doc 04 §2).
  */
@@ -88,6 +93,7 @@ export class RoomService {
     userId: string,
     req: CreateRoomRequest,
     baseUrl = 'http://localhost:3000',
+    options: CreateRoomOptions = {},
   ): Promise<RoomCreatedResponse> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
@@ -162,13 +168,14 @@ export class RoomService {
       winner_ids: [],
     });
 
-    // Añadir al host como primer jugador en la sala
-    await this.roomRepo.addPlayer({
-      match_id: match.id,
-      user_id: user.id,
-      is_ready: true,
-      connection_status: 'connected',
-    });
+    if (options.joinCreator !== false) {
+      await this.roomRepo.addPlayer({
+        match_id: match.id,
+        user_id: user.id,
+        is_ready: true,
+        connection_status: 'connected',
+      });
+    }
 
     if (this.auditService) {
       await this.auditService.recordRoomCreated(match.id, user.id, match.room_code, match.mode);
@@ -272,18 +279,32 @@ export class RoomService {
       };
     }
 
-    await this.roomRepo.addPlayer({
-      match_id: match.id,
-      user_id: finalUserId,
-      is_ready: true,
-      connection_status: 'connected',
-    });
+    const joinResult = await this.roomRepo.joinLobby(
+      {
+        match_id: match.id,
+        user_id: finalUserId,
+        is_ready: true,
+        connection_status: 'connected',
+      },
+      match.config.max_players,
+    );
+
+    if (joinResult.status === 'not_lobby') {
+      throw new HttpError(
+        409,
+        ERROR_CODES.ROOM_ALREADY_STARTED,
+        ERROR_MESSAGES.ROOM_ALREADY_STARTED,
+      );
+    }
+    if (joinResult.status === 'full') {
+      throw new HttpError(409, ERROR_CODES.ROOM_FULL, ERROR_MESSAGES.ROOM_FULL);
+    }
 
     if (this.auditService && isGuest) {
       await this.auditService.recordGuestJoined(match.id, finalUserId, finalGamertag);
     }
 
-    const role = match.host_id === finalUserId ? 'host' : 'player';
+    const role = joinResult.match.host_id === finalUserId ? 'host' : 'player';
 
     return {
       response: {
@@ -375,7 +396,7 @@ export class RoomService {
     }
 
     const players = await this.roomRepo.findPlayersByMatchId(match.id);
-    if (players.length < 2) {
+    if (players.filter((player) => player.connection_status !== 'left').length < 2) {
       throw new HttpError(
         400,
         ERROR_CODES.VALIDATION_FAILED,
