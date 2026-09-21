@@ -196,11 +196,18 @@ test.describe('vista de partida sincronizada', () => {
       const blurredCodeOnThird = thirdBoards
         .filter({ hasText: rivalGamertag })
         .locator('.duel-rival-code');
-      await expect(blurredCodeOnThird).toContainText(liveCode);
+      await expect(blurredCodeOnThird).toContainText('Código no compartido');
+      await expect(blurredCodeOnThird).not.toContainText(liveCode);
       await expect(blurredCodeOnThird).toHaveClass(/duel-code-blurred/);
 
       await rival.getByRole('button', { name: 'Mostrar mi código' }).click();
+      await expect(blurredCodeOnThird).toContainText(liveCode);
       await expect(blurredCodeOnThird).not.toHaveClass(/duel-code-blurred/);
+
+      await rival.getByRole('button', { name: 'Ocultar mi código' }).click();
+      await expect(blurredCodeOnThird).toContainText('Código no compartido');
+      await expect(blurredCodeOnThird).not.toContainText(liveCode);
+      await expect(blurredCodeOnThird).toHaveClass(/duel-code-blurred/);
 
       await third.setViewportSize({ width: 390, height: 844 });
       await third.evaluate(() =>

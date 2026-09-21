@@ -311,6 +311,94 @@ describe('Native WebSocket Transport & Adapter (F3 Unidad 6)', () => {
     rival.close();
   });
 
+  it('protege el código rival a nivel de transporte y aplica concesión y revocación en vivo', async () => {
+    const session = createSampleSession('match-ws-consent');
+    await server.ctx.matchStore.saveMatch(session);
+    const ownerToken = createTestToken({ userId: 'user-1', gamertag: 'coder1' });
+    const rivalToken = createTestToken({ userId: 'user-2', gamertag: 'coder2' });
+    const ownerCode = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/yjs/match-ws-consent/user-1?token=${ownerToken}`,
+    );
+    const rivalCode = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/yjs/match-ws-consent/user-1?token=${rivalToken}`,
+    );
+    const open = (socket: WebSocket) =>
+      new Promise<void>((resolve, reject) => {
+        socket.onopen = () => resolve();
+        socket.onerror = (error) => reject(error);
+      });
+    const nextCodeMessage = (socket: WebSocket, type: string) =>
+      new Promise<Record<string, unknown>>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socket.removeEventListener('message', onMessage);
+          reject(new Error(`Timeout esperando mensaje de código ${type}`));
+        }, 3000);
+        const onMessage = (event: MessageEvent) => {
+          const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+          if (message['type'] !== type) return;
+          clearTimeout(timeout);
+          socket.removeEventListener('message', onMessage);
+          resolve(message);
+        };
+        socket.addEventListener('message', onMessage);
+      });
+
+    const ownerInitial = nextCodeMessage(ownerCode, 'sync');
+    const rivalInitial = nextCodeMessage(rivalCode, 'sync');
+    await Promise.all([open(ownerCode), open(rivalCode)]);
+    await ownerInitial;
+    expect((await rivalInitial)['source_code']).toContain('Código no compartido');
+
+    const hiddenUpdate = new Promise<Record<string, unknown> | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        rivalCode.removeEventListener('message', onMessage);
+        resolve(null);
+      }, 40);
+      const onMessage = (event: MessageEvent) => {
+        const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+        if (message['type'] !== 'update') return;
+        clearTimeout(timeout);
+        rivalCode.removeEventListener('message', onMessage);
+        resolve(message);
+      };
+      rivalCode.addEventListener('message', onMessage);
+    });
+    ownerCode.send(
+      JSON.stringify({ type: 'update', generation: 1, source_code: 'private source text' }),
+    );
+    expect(await hiddenUpdate).toBeNull();
+
+    const ownerMatch = new globalThis.WebSocket(
+      `ws://127.0.0.1:${serverPort}/match?token=${ownerToken}`,
+    );
+    await open(ownerMatch);
+    const matchSync = new Promise<void>((resolve) => {
+      const onMessage = (event: MessageEvent) => {
+        const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+        if (message['event'] !== S2C.MATCH_SYNC) return;
+        ownerMatch.removeEventListener('message', onMessage);
+        resolve();
+      };
+      ownerMatch.addEventListener('message', onMessage);
+    });
+    ownerMatch.send(
+      JSON.stringify({ event: C2S.JOIN_MATCH, payload: { match_id: session.match_id } }),
+    );
+    await matchSync;
+
+    const grantedSync = nextCodeMessage(rivalCode, 'sync');
+    ownerMatch.send(JSON.stringify({ event: C2S.TOGGLE_REVEAL, payload: { visible: true } }));
+    expect((await grantedSync)['source_code']).toBe('private source text');
+
+    const revokedSync = nextCodeMessage(rivalCode, 'sync');
+    ownerMatch.send(JSON.stringify({ event: C2S.TOGGLE_REVEAL, payload: { visible: false } }));
+    expect((await revokedSync)['source_code']).toContain('Código no compartido');
+
+    ownerCode.close();
+    rivalCode.close();
+    ownerMatch.close();
+  });
+
   it('rechaza conexión WebSocket a ruta desconocida con 404', async () => {
     const ws = new globalThis.WebSocket(`ws://127.0.0.1:${serverPort}/ruta-inexistente`);
 

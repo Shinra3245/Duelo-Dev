@@ -44,6 +44,8 @@ export interface MatchHubOptions {
   logger?: Logger | undefined;
   /** Periodo de gracia antes de marcar desconexión definitiva (ms). */
   reconnectGraceMs?: number | undefined;
+  /** Notifica al canal de código cuando cambia el consentimiento de un jugador. */
+  onRevealChanged?: ((matchId: string, userId: string) => Promise<void> | void) | undefined;
 }
 
 /**
@@ -61,6 +63,7 @@ export class MatchHub {
   private readonly matchStore: MatchStore;
   private readonly logger: Logger | undefined;
   private readonly reconnectGraceMs: number;
+  private readonly onRevealChanged: MatchHubOptions['onRevealChanged'];
 
   /** Clientes conectados indexados por socket.id. */
   private readonly clients = new Map<string, SocketClient>();
@@ -80,6 +83,7 @@ export class MatchHub {
     this.matchStore = options.matchStore;
     this.logger = options.logger;
     this.reconnectGraceMs = options.reconnectGraceMs ?? RECONNECT_GRACE_MS;
+    this.onRevealChanged = options.onRevealChanged;
   }
 
   // ─────────────────────── Gestión de clientes ────────────────────────────
@@ -335,6 +339,16 @@ export class MatchHub {
     player.is_revealed = payload.visible;
     session.state_version += 1;
     await this.matchStore.saveMatch(session);
+
+    try {
+      await this.onRevealChanged?.(matchId, client.userId);
+    } catch (error) {
+      this.logger?.warn('No se pudo sincronizar el cambio de consentimiento de código', {
+        match_id: matchId,
+        user_id: client.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     const roomName = matchRoom(matchId);
     const room = this.getRoom(roomName);

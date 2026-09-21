@@ -43,17 +43,18 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
   const authSecret =
     options.authSecret ?? process.env['AUTH_SECRET'] ?? 'dev-secret-key-change-in-production';
 
-  const matchHub = new MatchHub({
-    matchStore,
-    logger,
-    reconnectGraceMs: options.reconnectGraceMs,
-  });
-
   const yjsHub = new YjsHub({
     matchStore,
     logger,
     snapshotIntervalMs: options.yjsSnapshotIntervalMs,
     onSnapshotPersist: options.onYjsSnapshotPersist,
+  });
+
+  const matchHub = new MatchHub({
+    matchStore,
+    logger,
+    reconnectGraceMs: options.reconnectGraceMs,
+    onRevealChanged: (matchId, userId) => yjsHub.notifyRevealChanged(matchId, userId),
   });
 
   const processedSubmissionStore =

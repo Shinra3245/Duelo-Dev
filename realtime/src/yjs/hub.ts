@@ -14,7 +14,7 @@ import { createYjsSyncMessage, type Logger } from '@duelodev/shared';
 import type { MatchStore } from '../store/types.js';
 import type { RealtimeMatchSession } from '../types.js';
 import { authorizeYjsAccess, parseYjsPath } from './auth.js';
-import { YjsDocument } from './document.js';
+import { HIDDEN_CODE_PREVIEW, YjsDocument } from './document.js';
 import type { CodeSnapshot, YjsAuthContext, YjsClientConnection } from './types.js';
 
 export interface YjsHubOptions {
@@ -73,7 +73,7 @@ export class YjsHub {
    * 2. Consulta el estado de la partida en el MatchStore.
    * 3. Evalúa la autorización (doc 04 §79-88):
    *    - Escritura: únicamente el dueño (`auth.userId === targetUserId`).
-   *    - Lectura: cualquier miembro para representar el código con desenfoque visual.
+   *    - Lectura: el dueño siempre; los rivales sólo tras consentimiento explícito.
    * 4. Si se autoriza, une al cliente como observador del documento.
    */
   async handleConnection(
@@ -141,7 +141,10 @@ export class YjsHub {
           target_user_id: targetUserId,
           round_id: doc.roundId,
           generation: doc.generation,
-          source_code: doc.getText(),
+          source_code:
+            auth.userId === targetUserId || targetPlayer.is_revealed
+              ? doc.getText()
+              : HIDDEN_CODE_PREVIEW,
         }),
       ),
     );
@@ -199,8 +202,15 @@ export class YjsHub {
     const doc = this.activeDocuments.get(this.docKey(client.matchId, client.targetUserId));
     if (!doc) return { applied: false, reason: 'Documento Yjs no encontrado.' };
 
-    return doc.applyUpdate(update, generation, updatedText, client.id, (observer) =>
-      this.isActivePlayer(session, observer.userId),
+    return doc.applyUpdate(
+      update,
+      generation,
+      updatedText,
+      client.id,
+      (observer) =>
+        this.isActivePlayer(session, observer.userId) &&
+        (observer.userId === client.targetUserId ||
+          (session.players.get(client.targetUserId)?.is_revealed ?? false)),
     );
   }
 
@@ -235,8 +245,31 @@ export class YjsHub {
       return { applied: false, reason: 'Documento Yjs no encontrado.' };
     }
 
-    return doc.applyTextUpdate(sourceCode, generation, client.id, (observer) =>
-      this.isActivePlayer(session, observer.userId),
+    return doc.applyTextUpdate(
+      sourceCode,
+      generation,
+      client.id,
+      (observer) =>
+        this.isActivePlayer(session, observer.userId) &&
+        (observer.userId === client.targetUserId ||
+          (session.players.get(client.targetUserId)?.is_revealed ?? false)),
+    );
+  }
+
+  /**
+   * Aplica de inmediato una concesión o revocación de consentimiento a observadores conectados.
+   * Al revocar, envía una sincronización vacía y nunca vuelve a emitir el código fuente.
+   */
+  async notifyRevealChanged(matchId: string, userId: string): Promise<void> {
+    const session = await this.matchStore.getMatch(matchId);
+    const owner = session?.players.get(userId);
+    const doc = this.activeDocuments.get(this.docKey(matchId, userId));
+    if (!session || !owner || !doc) return;
+
+    doc.syncObservers(
+      (observer) =>
+        this.isActivePlayer(session, observer.userId) &&
+        (observer.userId === userId || owner.is_revealed),
     );
   }
 

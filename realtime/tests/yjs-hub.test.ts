@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
 import { YjsHub } from '../src/yjs/hub.js';
+import { HIDDEN_CODE_PREVIEW } from '../src/yjs/document.js';
 import type { CodeSnapshot, YjsAuthContext, YjsClientConnection } from '../src/yjs/types.js';
 import { InMemoryMatchStore } from '../src/store/memory.js';
 import type { RealtimeMatchSession } from '../src/types.js';
@@ -245,17 +246,22 @@ describe('YjsHub', () => {
       expect(binaryWriteAfterLeaving.reason).toContain('ya no participa');
     });
 
-    it('sincroniza código en vivo a miembros aunque la interfaz aplique desenfoque', async () => {
+    it('omite código rival sin consentimiento y sincroniza cada cambio de consentimiento', async () => {
       const session = createSampleSession('match-1');
       await store.saveMatch(session);
 
       const ownerClient = createMockYjsClient('c1', 'user-1', 'match-1', 'user-1');
       const rivalClient = createMockYjsClient('c2', 'user-2', 'match-1', 'user-1');
-      await hub.handleConnection('/yjs/match-1/user-1', ownerClient, {
-        userId: 'user-1',
-        gamertag: 'coder1',
-        role: 'user',
-      });
+      await hub.handleConnection(
+        '/yjs/match-1/user-1',
+        ownerClient,
+        {
+          userId: 'user-1',
+          gamertag: 'coder1',
+          role: 'user',
+        },
+        'private starter code',
+      );
       await hub.handleConnection('/yjs/match-1/user-1', rivalClient, {
         userId: 'user-2',
         gamertag: 'coder2',
@@ -264,30 +270,43 @@ describe('YjsHub', () => {
 
       expect(JSON.parse(ownerClient.sentText[0] ?? '{}')).toMatchObject({
         type: 'sync',
-        source_code: '',
+        source_code: 'private starter code',
       });
       expect(JSON.parse(rivalClient.sentText[0] ?? '{}')).toMatchObject({
         type: 'sync',
-        target_user_id: 'user-1',
+        source_code: HIDDEN_CODE_PREVIEW,
       });
 
-      const firstUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(1)', 1);
-      expect(firstUpdate.applied).toBe(true);
+      const hiddenMessageCount = rivalClient.sentText.length;
+      const hiddenUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(1)', 1);
+      expect(hiddenUpdate.applied).toBe(true);
+      expect(rivalClient.sentText).toHaveLength(hiddenMessageCount);
+
+      session.players.get('user-1')!.is_revealed = true;
+      await store.saveMatch(session);
+      await hub.notifyRevealChanged('match-1', 'user-1');
       expect(JSON.parse(rivalClient.sentText.at(-1) ?? '{}')).toMatchObject({
-        type: 'update',
+        type: 'sync',
         source_code: 'print(1)',
       });
 
-      session.players.get('user-1')!.is_revealed = false;
-      await store.saveMatch(session);
-      const receivedBeforeHiddenUpdate = rivalClient.sentText.length;
-      const hiddenUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(2)', 1);
-      expect(hiddenUpdate.applied).toBe(true);
-      expect(rivalClient.sentText).toHaveLength(receivedBeforeHiddenUpdate + 1);
+      const revealedUpdate = await hub.handleIncomingTextUpdate(ownerClient, 'print(2)', 1);
+      expect(revealedUpdate.applied).toBe(true);
       expect(JSON.parse(rivalClient.sentText.at(-1) ?? '{}')).toMatchObject({
         type: 'update',
         source_code: 'print(2)',
       });
+
+      session.players.get('user-1')!.is_revealed = false;
+      await store.saveMatch(session);
+      await hub.notifyRevealChanged('match-1', 'user-1');
+      expect(JSON.parse(rivalClient.sentText.at(-1) ?? '{}')).toMatchObject({
+        type: 'sync',
+        source_code: HIDDEN_CODE_PREVIEW,
+      });
+      const hiddenAfterRevokeCount = rivalClient.sentText.length;
+      await hub.handleIncomingTextUpdate(ownerClient, 'print(3)', 1);
+      expect(rivalClient.sentText).toHaveLength(hiddenAfterRevokeCount);
     });
   });
 
@@ -331,6 +350,32 @@ describe('YjsHub', () => {
 
       expect(res.applied).toBe(false);
       expect(res.reason).toContain('Solo el dueño');
+    });
+
+    it('no difunde actualizaciones binarias a rivales sin consentimiento', async () => {
+      const session = createSampleSession('match-binary-private');
+      await store.saveMatch(session);
+      const owner = createMockYjsClient('owner', 'user-1', 'match-binary-private', 'user-1');
+      const rival = createMockYjsClient('rival', 'user-2', 'match-binary-private', 'user-1');
+      await hub.handleConnection('/yjs/match-binary-private/user-1', owner, {
+        userId: 'user-1',
+        gamertag: 'coder1',
+        role: 'user',
+      });
+      await hub.handleConnection('/yjs/match-binary-private/user-1', rival, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+
+      const result = await hub.handleIncomingBinaryUpdate(
+        owner,
+        new Uint8Array([1, 2]),
+        1,
+        'secret',
+      );
+      expect(result.applied).toBe(true);
+      expect(rival.sentData).toHaveLength(0);
     });
   });
 

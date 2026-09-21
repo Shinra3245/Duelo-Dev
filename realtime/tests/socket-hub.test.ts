@@ -289,6 +289,21 @@ describe('MatchHub', () => {
         visible: true,
       });
     });
+
+    it('notifica al sincronizador de código después de persistir el consentimiento', async () => {
+      const session = createSampleSession('match-consent-callback');
+      await store.saveMatch(session);
+      const onRevealChanged = vi.fn();
+      const consentHub = new MatchHub({ matchStore: store, onRevealChanged });
+      const owner = createMockClient('sock-owner', 'user-1', 'coder1', 'match-consent-callback');
+
+      await consentHub.handleToggleReveal(owner, { visible: true });
+
+      expect(onRevealChanged).toHaveBeenCalledWith('match-consent-callback', 'user-1');
+      expect(
+        (await store.getMatch('match-consent-callback'))?.players.get('user-1')?.is_revealed,
+      ).toBe(true);
+    });
   });
 
   describe('C2S: handleReady', () => {

@@ -8,7 +8,7 @@
  * - Rechazo de updates obsoletos pertenecientes a generaciones anteriores.
  */
 
-import { createYjsCodeUpdateMessage, MAX_YDOC_BYTES } from '@duelodev/shared';
+import { createYjsCodeUpdateMessage, createYjsSyncMessage, MAX_YDOC_BYTES } from '@duelodev/shared';
 import type { CodeSnapshot, YjsClientConnection, YjsDocumentMetadata } from './types.js';
 
 export interface YjsDocumentOptions {
@@ -21,6 +21,9 @@ export interface YjsDocumentOptions {
 }
 
 export type YjsObserverFilter = (observer: YjsClientConnection) => boolean;
+
+export const HIDDEN_CODE_PREVIEW =
+  '# Código no compartido\n# El propietario decide cuándo revelarlo.';
 
 export class YjsDocument {
   readonly matchId: string;
@@ -82,6 +85,27 @@ export class YjsDocument {
    */
   removeObserver(clientId: string): void {
     this.observers.delete(clientId);
+  }
+
+  /** Re-sincroniza observadores tras cambiar el consentimiento de lectura del dueño. */
+  syncObservers(canReadSource: (observer: YjsClientConnection) => boolean): void {
+    for (const observer of this.observers.values()) {
+      try {
+        observer.sendText?.(
+          JSON.stringify(
+            createYjsSyncMessage({
+              match_id: this.matchId,
+              target_user_id: this.userId,
+              round_id: this.roundId,
+              generation: this.generation,
+              source_code: canReadSource(observer) ? this.content : HIDDEN_CODE_PREVIEW,
+            }),
+          ),
+        );
+      } catch {
+        // La conexión se retirará cuando el transporte notifique su cierre.
+      }
+    }
   }
 
   /**
