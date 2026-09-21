@@ -14,7 +14,7 @@ import { MatchHub } from '../src/socket/hub.js';
 import type { SocketClient } from '../src/socket/types.js';
 import { InMemoryMatchStore } from '../src/store/memory.js';
 import type { RealtimeMatchSession } from '../src/types.js';
-import { playerRoundId } from '../src/gamemodes/round-id.js';
+import { playerRoundId, sharedRoundId } from '../src/gamemodes/round-id.js';
 
 interface MockSocketClient extends SocketClient {
   emittedEvents: Array<{ event: string; payload: unknown }>;
@@ -610,6 +610,24 @@ describe('MatchHub', () => {
         });
       }
     });
+
+    it('finaliza snapshots al cerrar por administración y reintenta un fallo transitorio', async () => {
+      const session = createSampleSession('match-admin-finalize');
+      await store.saveMatch(session);
+      const finalize = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue(undefined);
+      const finalizationHub = new MatchHub({ matchStore: store, onMatchFinalized: finalize });
+
+      expect(await finalizationHub.closeMatchFromAdmin(session.match_id, 2)).toBe(true);
+      expect(finalize).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(finalize).toHaveBeenCalledTimes(2);
+      expect(await finalizationHub.closeMatchFromAdmin(session.match_id, 3)).toBe(false);
+      finalizationHub.clearAllTimers();
+    });
   });
 
   describe('Orquestación de modos de juego y temporizadores (F3 Unidad 5)', () => {
@@ -646,7 +664,7 @@ describe('MatchHub', () => {
       expect(begin1).toBeDefined();
       expect(begin2).toBeDefined();
       const beginPayload = begin1?.payload as ProblemBeginPayload;
-      expect(beginPayload.round_id).toBe('round-1');
+      expect(beginPayload.round_id).toBe(sharedRoundId('match-puntos', 0));
       expect(beginPayload.problem_id).toBe('p1');
       expect(beginPayload.index).toBe(0);
 
@@ -655,6 +673,95 @@ describe('MatchHub', () => {
       expect(updated?.status).toBe('running');
       expect(updated?.problem_ids).toEqual(['p1', 'p2', 'p3']);
       expect(updated?.round_ends_at).toBeGreaterThan(0);
+    });
+
+    it('sincroniza la generación inicial de código para puntos compartidos y rondas individuales', async () => {
+      const sharedSession = createSampleSession('match-generation-points');
+      sharedSession.status = 'lobby';
+      await store.saveMatch(sharedSession);
+      const sharedAdvance = vi.fn();
+      const sharedHub = new MatchHub({ matchStore: store, onProblemAdvanced: sharedAdvance });
+
+      await sharedHub.startMatch(sharedSession.match_id, ['p1', 'p2']);
+
+      expect(sharedAdvance).toHaveBeenCalledTimes(2);
+      expect(sharedAdvance).toHaveBeenCalledWith(
+        sharedSession.match_id,
+        'user-1',
+        sharedRoundId(sharedSession.match_id, 0),
+        'p1',
+        false,
+        ['user-1', 'user-2'],
+      );
+      expect(sharedAdvance).toHaveBeenCalledWith(
+        sharedSession.match_id,
+        'user-2',
+        sharedRoundId(sharedSession.match_id, 0),
+        'p1',
+        false,
+        ['user-1', 'user-2'],
+      );
+      sharedHub.clearAllTimers();
+
+      const roundsSession = createSampleSession('match-generation-rounds');
+      roundsSession.status = 'lobby';
+      roundsSession.mode = 'rondas';
+      roundsSession.config = {
+        mode: 'rondas',
+        num_problems: 3,
+        categories: ['facil'],
+        max_players: 2,
+        match_duration_s: 300,
+        target: 3,
+      };
+      await store.saveMatch(roundsSession);
+      const roundsAdvance = vi.fn();
+      const roundsHub = new MatchHub({ matchStore: store, onProblemAdvanced: roundsAdvance });
+
+      await roundsHub.startMatch(roundsSession.match_id, ['p1', 'p2']);
+
+      expect(roundsAdvance).toHaveBeenCalledTimes(2);
+      expect(roundsAdvance).toHaveBeenCalledWith(
+        roundsSession.match_id,
+        'user-1',
+        playerRoundId(roundsSession.match_id, 'user-1', 0),
+        'p1',
+        false,
+        ['user-1', 'user-2'],
+      );
+      expect(roundsAdvance).toHaveBeenCalledWith(
+        roundsSession.match_id,
+        'user-2',
+        playerRoundId(roundsSession.match_id, 'user-2', 0),
+        'p1',
+        false,
+        ['user-1', 'user-2'],
+      );
+
+      roundsAdvance.mockClear();
+      await roundsHub.processSubmissionVerdict(roundsSession.match_id, {
+        submission_id: 'rounds-generation-submission',
+        user_id: 'user-1',
+        round_id: playerRoundId(roundsSession.match_id, 'user-1', 0),
+        problem_id: 'p1',
+        admission_seq: 1,
+        received_at: 1000,
+        verdict: 'AC',
+        passed_cases: 12,
+        total_cases: 12,
+        exec_time_ms: 100,
+      });
+
+      expect(roundsAdvance).toHaveBeenCalledOnce();
+      expect(roundsAdvance).toHaveBeenCalledWith(
+        roundsSession.match_id,
+        'user-1',
+        playerRoundId(roundsSession.match_id, 'user-1', 1),
+        'p2',
+        false,
+        ['user-1', 'user-2'],
+      );
+      roundsHub.clearAllTimers();
     });
 
     it('inicia el reloj de juego desde el fin sincronizado de instrucciones ya persistido', async () => {
@@ -821,7 +928,7 @@ describe('MatchHub', () => {
       const submission: SubmissionVerdictContext = {
         submission_id: 'sub-1',
         user_id: 'user-1',
-        round_id: 'round-1',
+        round_id: sharedRoundId('match-puntos-verdict', 0),
         problem_id: 'p1',
         admission_seq: 1,
         received_at: 1000,
@@ -851,7 +958,7 @@ describe('MatchHub', () => {
       const nextRound = client1.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
       expect(nextRound).toBeDefined();
       const nextRoundPayload = nextRound?.payload as ProblemBeginPayload;
-      expect(nextRoundPayload.round_id).toBe('round-2');
+      expect(nextRoundPayload.round_id).toBe(sharedRoundId('match-puntos-verdict', 1));
       expect(nextRoundPayload.problem_id).toBe('p2');
       expect(nextRoundPayload.index).toBe(1);
     });
@@ -924,7 +1031,7 @@ describe('MatchHub', () => {
       const begin = client.emittedEvents.find((e) => e.event === S2C.PROBLEM_BEGIN);
       expect(begin).toBeDefined();
       const beginPayload = begin?.payload as ProblemBeginPayload;
-      expect(beginPayload.round_id).toBe('round-2');
+      expect(beginPayload.round_id).toBe(sharedRoundId('match-timeout-puntos', 1));
       expect(beginPayload.problem_id).toBe('p2');
     });
 

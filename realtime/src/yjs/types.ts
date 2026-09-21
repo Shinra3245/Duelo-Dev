@@ -36,13 +36,20 @@ export interface YjsClientConnection {
 }
 
 export interface CodeSnapshot {
+  id: string;
   matchId: string;
   userId: string;
   roundId: string;
+  problemId: string | null;
   generation: number;
   code: string;
   capturedAt: string;
   isRevealed: boolean;
+}
+
+export interface YjsSnapshotContext {
+  roundId: string;
+  problemId: string | null;
 }
 
 export interface YjsAccessDecision {

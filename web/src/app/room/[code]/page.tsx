@@ -64,6 +64,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const sourceCodeRef = useRef(sourceCode);
   const lastPublishedSourceRef = useRef(sourceCode);
+  const currentRoundIdRef = useRef<string | null>(null);
   const codeSyncClientsRef = useRef<Map<string, CodeSyncClient>>(new Map());
   const challengeButtonRef = useRef<HTMLButtonElement>(null);
   const leaveDialogRef = useRef<HTMLDialogElement>(null);
@@ -114,6 +115,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     setFinishedMatch(null);
     setMatchSummary(null);
     setActionError('');
+    currentRoundIdRef.current = null;
+    sourceCodeRef.current = '';
+    lastPublishedSourceRef.current = '';
+    setSourceCode('');
+    setRivalCode({});
 
     api.rooms
       .get(roomCode)
@@ -146,6 +152,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.MATCH_SYNC, (payload: unknown) => {
           const typedPayload = payload as MatchSyncPayload;
+          if (
+            typedPayload.status === 'running' &&
+            currentRoundIdRef.current &&
+            currentRoundIdRef.current !== typedPayload.round_id
+          ) {
+            sourceCodeRef.current = '';
+            lastPublishedSourceRef.current = '';
+            setSourceCode('');
+            setRivalCode({});
+            setProblem(null);
+            setVerdict(null);
+          }
+          currentRoundIdRef.current = typedPayload.round_id;
           setServerOffsetMs(typedPayload.server_time - Date.now());
           setNow(Date.now());
           if (typedPayload.status !== 'lobby') {
@@ -187,6 +206,11 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.PROBLEM_BEGIN, (payload: unknown) => {
           const typedPayload = payload as ProblemBeginPayload;
+          currentRoundIdRef.current = typedPayload.round_id;
+          sourceCodeRef.current = '';
+          lastPublishedSourceRef.current = '';
+          setSourceCode('');
+          setRivalCode({});
           setProblem(null);
           setVerdict(null);
           setIsAwaitingVerdict(false);

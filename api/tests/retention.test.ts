@@ -566,6 +566,7 @@ describe('Servicio de Retención y Purga de Invitados (doc 04 §5, doc 06 §B04)
           problem_id: problemId,
           language: 'python',
           source_code: guestDraftCode,
+          is_revealed: true,
           version: 1,
         });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchContext, PuntosMatchConfig, SubmissionVerdictContext } from '@duelodev/shared';
 import { PuntosMode } from '../src/gamemodes/puntos.js';
+import { sharedRoundId } from '../src/gamemodes/round-id.js';
 
 function createPuntosContext(overrides?: Partial<MatchContext>): MatchContext {
   const config: PuntosMatchConfig = {
@@ -60,6 +61,7 @@ describe('PuntosMode', () => {
     it('inicia la partida abriendo la primera ronda compartida', () => {
       const ctx = createPuntosContext({ status: 'lobby', current_round: undefined });
       const actions = mode.onMatchStart(ctx);
+      const roundId = sharedRoundId(ctx.match_id, 0);
 
       expect(actions).toEqual([
         { type: 'set_match_status', status: 'running' },
@@ -67,12 +69,12 @@ describe('PuntosMode', () => {
           type: 'advance_round',
           next_problem_id: 'prob-1',
           next_problem_index: 0,
-          next_round_id: 'round-1',
+          next_round_id: roundId,
           ends_at: 10000 + 300 * 1000,
         },
         {
           type: 'set_round_status',
-          round_id: 'round-1',
+          round_id: roundId,
           status: 'open',
         },
       ]);
@@ -96,6 +98,7 @@ describe('PuntosMode', () => {
       };
 
       const actions = mode.onSubmissionVerdict(ctx, submission);
+      const nextRoundId = sharedRoundId(ctx.match_id, 1);
 
       // Adjudicación de 1 punto con solve_elapsed_ms = 20000 - 10000 = 10000ms
       expect(actions).toContainEqual({
@@ -119,14 +122,14 @@ describe('PuntosMode', () => {
         type: 'advance_round',
         next_problem_id: 'prob-2',
         next_problem_index: 1,
-        next_round_id: 'round-2',
+        next_round_id: nextRoundId,
         ends_at: 25000 + 300 * 1000,
       });
 
       // Apertura de round-2
       expect(actions).toContainEqual({
         type: 'set_round_status',
-        round_id: 'round-2',
+        round_id: nextRoundId,
         status: 'open',
       });
     });
@@ -230,6 +233,7 @@ describe('PuntosMode', () => {
     it('cierra la ronda desierta sin asignar ganador y avanza al siguiente problema (J2)', () => {
       const ctx = createPuntosContext({ now: 310000 });
       const actions = mode.onTimeout(ctx);
+      const nextRoundId = sharedRoundId(ctx.match_id, 1);
 
       expect(actions).toEqual([
         { type: 'set_round_status', round_id: 'round-1', status: 'closed' },
@@ -237,10 +241,10 @@ describe('PuntosMode', () => {
           type: 'advance_round',
           next_problem_id: 'prob-2',
           next_problem_index: 1,
-          next_round_id: 'round-2',
+          next_round_id: nextRoundId,
           ends_at: 310000 + 300 * 1000,
         },
-        { type: 'set_round_status', round_id: 'round-2', status: 'open' },
+        { type: 'set_round_status', round_id: nextRoundId, status: 'open' },
       ]);
     });
 

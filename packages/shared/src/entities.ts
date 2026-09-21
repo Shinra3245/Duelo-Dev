@@ -166,6 +166,7 @@ export interface MatchCodeSnapshotEntity {
   problem_id: string;
   language: Language;
   source_code: string;
+  is_revealed: boolean;
   version: number;
   captured_at: string;
 }

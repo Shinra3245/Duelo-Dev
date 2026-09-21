@@ -15,7 +15,13 @@ import type { MatchStore } from '../store/types.js';
 import type { RealtimeMatchSession } from '../types.js';
 import { authorizeYjsAccess, parseYjsPath } from './auth.js';
 import { HIDDEN_CODE_PREVIEW, YjsDocument } from './document.js';
-import type { CodeSnapshot, YjsAuthContext, YjsClientConnection } from './types.js';
+import { playerRoundId } from '../gamemodes/round-id.js';
+import type {
+  CodeSnapshot,
+  YjsAuthContext,
+  YjsClientConnection,
+  YjsSnapshotContext,
+} from './types.js';
 
 export interface YjsHubOptions {
   matchStore: MatchStore;
@@ -36,6 +42,9 @@ export class YjsHub {
   private readonly activeDocuments = new Map<string, YjsDocument>();
   /** Snapshots capturados indexados por `${matchId}:${userId}:${roundId}`. */
   private readonly snapshots = new Map<string, CodeSnapshot>();
+  /** Capturas terminales retenidas sólo mientras se completa un reintento durable. */
+  private readonly pendingTerminalSnapshots = new Map<string, CodeSnapshot[]>();
+  private readonly finalizedMatches = new Set<string>();
 
   private snapshotTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -122,10 +131,12 @@ export class YjsHub {
     let doc = this.activeDocuments.get(key);
 
     if (!doc) {
+      const snapshotContext = this.getSnapshotContext(session, targetUserId);
       doc = new YjsDocument({
         matchId,
         userId: targetUserId,
-        roundId: session.current_round_id || 'initial',
+        roundId: snapshotContext.roundId,
+        problemId: snapshotContext.problemId,
         generation: 1,
         initialCode,
       });
@@ -195,6 +206,10 @@ export class YjsHub {
     const session = await this.matchStore.getMatch(client.matchId);
     if (!session) return { applied: false, reason: 'Partida no encontrada.' };
 
+    if (session.status !== 'running' && session.status !== 'settling') {
+      return { applied: false, reason: 'La partida ya no acepta cambios de código.' };
+    }
+
     if (!this.isActivePlayer(session, client.userId)) {
       return { applied: false, reason: 'El jugador ya no participa activamente en la partida.' };
     }
@@ -233,6 +248,10 @@ export class YjsHub {
     const session = await this.matchStore.getMatch(client.matchId);
     if (!session) {
       return { applied: false, reason: 'Partida no encontrada.' };
+    }
+
+    if (session.status !== 'running' && session.status !== 'settling') {
+      return { applied: false, reason: 'La partida ya no acepta cambios de código.' };
     }
 
     if (!this.isActivePlayer(session, client.userId)) {
@@ -303,9 +322,14 @@ export class YjsHub {
     userId: string,
     newRoundId: string,
     initialCode = '',
+    problemId: string | null = null,
+    isRevealed = false,
+    activeUserIds: readonly string[] = [],
   ): Promise<YjsDocument> {
     const key = this.docKey(matchId, userId);
     const prevDoc = this.activeDocuments.get(key);
+
+    if (prevDoc?.roundId === newRoundId && !prevDoc.isFrozen) return prevDoc;
 
     let nextGen = 1;
     if (prevDoc) {
@@ -313,22 +337,29 @@ export class YjsHub {
       prevDoc.freeze();
 
       // Guardar snapshot de la ronda que termina
-      const snap = prevDoc.captureSnapshot(false);
+      const snap = prevDoc.captureSnapshot(isRevealed);
       this.saveSnapshotInMemory(snap);
-      if (this.onSnapshotPersist) {
-        await this.onSnapshotPersist(snap);
-      }
+      await this.persistSnapshot(snap);
     }
 
     const newDoc = new YjsDocument({
       matchId,
       userId,
       roundId: newRoundId,
+      problemId,
       generation: nextGen,
       initialCode,
     });
 
     this.activeDocuments.set(key, newDoc);
+    if (prevDoc) {
+      for (const observer of prevDoc.getObservers()) newDoc.addObserver(observer);
+      const activeUsers = new Set(activeUserIds);
+      newDoc.syncObservers(
+        (observer) =>
+          activeUsers.has(observer.userId) && (observer.userId === userId || isRevealed),
+      );
+    }
 
     this.logger?.info('Generación Yjs avanzada', {
       match_id: matchId,
@@ -345,24 +376,34 @@ export class YjsHub {
    * Congela los documentos y captura snapshots terminales para PostgreSQL.
    */
   async finalizeMatch(matchId: string): Promise<CodeSnapshot[]> {
-    const finalSnapshots: CodeSnapshot[] = [];
+    if (this.finalizedMatches.has(matchId)) return [];
 
-    const session = await this.matchStore.getMatch(matchId);
+    let persistenceFailed = false;
 
-    for (const [, doc] of this.activeDocuments) {
-      if (doc.matchId === matchId) {
-        doc.freeze();
-        const player = session?.players.get(doc.userId);
-        const isRevealed = player?.is_revealed ?? false;
+    let finalSnapshots = this.pendingTerminalSnapshots.get(matchId);
+    if (!finalSnapshots) {
+      finalSnapshots = [];
+      const session = await this.matchStore.getMatch(matchId);
 
-        const snap = doc.captureSnapshot(isRevealed);
-        this.saveSnapshotInMemory(snap);
-        finalSnapshots.push(snap);
+      for (const [, doc] of this.activeDocuments) {
+        if (doc.matchId === matchId) {
+          doc.freeze();
+          const player = session?.players.get(doc.userId);
+          const isRevealed = player?.is_revealed ?? false;
 
-        if (this.onSnapshotPersist) {
-          await this.onSnapshotPersist(snap);
+          const snapshotContext = session
+            ? this.getSnapshotContext(session, doc.userId)
+            : undefined;
+          const snap = doc.captureSnapshot(isRevealed, snapshotContext);
+          this.saveSnapshotInMemory(snap);
+          finalSnapshots.push(snap);
         }
       }
+      this.pendingTerminalSnapshots.set(matchId, finalSnapshots);
+    }
+
+    for (const snapshot of finalSnapshots) {
+      if (!(await this.persistSnapshot(snapshot))) persistenceFailed = true;
     }
 
     this.logger?.info('Documentos Yjs de partida finalizados', {
@@ -370,6 +411,11 @@ export class YjsHub {
       snapshots_count: finalSnapshots.length,
     });
 
+    if (persistenceFailed)
+      throw new Error('No se pudieron persistir todos los snapshots terminales.');
+
+    this.pendingTerminalSnapshots.delete(matchId);
+    this.finalizedMatches.add(matchId);
     return finalSnapshots;
   }
 
@@ -379,20 +425,47 @@ export class YjsHub {
   async runPeriodicSnapshots(): Promise<void> {
     for (const [, doc] of this.activeDocuments) {
       if (!doc.isFrozen) {
-        const snap = doc.captureSnapshot(false);
+        const session = await this.matchStore.getMatch(doc.matchId);
+        if (!session || (session.status !== 'running' && session.status !== 'settling')) continue;
+        const snap = doc.captureSnapshot(
+          session.players.get(doc.userId)?.is_revealed ?? false,
+          this.getSnapshotContext(session, doc.userId),
+        );
         this.saveSnapshotInMemory(snap);
-        if (this.onSnapshotPersist) {
-          try {
-            await this.onSnapshotPersist(snap);
-          } catch (err) {
-            this.logger?.warn('Error persistiendo snapshot periódico Yjs', {
-              match_id: doc.matchId,
-              user_id: doc.userId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
+        await this.persistSnapshot(snap);
       }
+    }
+  }
+
+  private getSnapshotContext(session: RealtimeMatchSession, userId: string): YjsSnapshotContext {
+    if (session.status === 'lobby') {
+      return { roundId: session.current_round_id || session.match_id, problemId: null };
+    }
+
+    const player = session.players.get(userId);
+    const problemIndex =
+      session.mode === 'puntos' ? session.current_round_idx : (player?.current_problem_idx ?? 0);
+    return {
+      roundId:
+        session.mode === 'puntos'
+          ? session.current_round_id
+          : playerRoundId(session.match_id, userId, problemIndex),
+      problemId: session.problem_ids?.[problemIndex] ?? null,
+    };
+  }
+
+  private async persistSnapshot(snapshot: CodeSnapshot): Promise<boolean> {
+    if (!this.onSnapshotPersist || !snapshot.problemId) return true;
+    try {
+      await this.onSnapshotPersist(snapshot);
+      return true;
+    } catch {
+      this.logger?.warn('No se pudo persistir un snapshot Yjs', {
+        match_id: snapshot.matchId,
+        user_id: snapshot.userId,
+        round_id: snapshot.roundId,
+      });
+      return false;
     }
   }
 

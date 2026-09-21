@@ -18,6 +18,7 @@ import type {
   SubmissionVerdictContext,
 } from '@duelodev/shared';
 import { determineWinners, resolveWinnerId } from '@duelodev/shared';
+import { sharedRoundId } from './round-id.js';
 
 export class PuntosMode implements PureGameMode {
   readonly modeName = 'puntos' as const;
@@ -35,7 +36,7 @@ export class PuntosMode implements PureGameMode {
 
     const config = ctx.config as PuntosMatchConfig;
     const durationMs = config.time_per_problem_s * 1000;
-    const initialRoundId = 'round-1';
+    const initialRoundId = sharedRoundId(ctx.match_id, 0);
     const firstProblemId = ctx.problem_ids[0]!;
 
     return [
@@ -102,7 +103,7 @@ export class PuntosMode implements PureGameMode {
 
       // Verificar si hay más problemas
       if (nextIndex < ctx.problem_ids.length && nextIndex < config.num_problems) {
-        const nextRoundId = `round-${nextIndex + 1}`;
+        const nextRoundId = sharedRoundId(ctx.match_id, nextIndex);
         const nextProblemId = ctx.problem_ids[nextIndex]!;
         const durationMs = config.time_per_problem_s * 1000;
 
@@ -183,7 +184,7 @@ export class PuntosMode implements PureGameMode {
 
     if (nextIndex < ctx.problem_ids.length && nextIndex < config.num_problems) {
       // Avanzar al siguiente problema
-      const nextRoundId = `round-${nextIndex + 1}`;
+      const nextRoundId = sharedRoundId(ctx.match_id, nextIndex);
       const nextProblemId = ctx.problem_ids[nextIndex]!;
       const durationMs = config.time_per_problem_s * 1000;
 

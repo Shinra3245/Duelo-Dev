@@ -101,6 +101,7 @@ function createSampleSession(matchId: string): RealtimeMatchSession {
     players,
     scores: [],
     created_at: new Date(1000).toISOString(),
+    problem_ids: ['problem-1', 'problem-2', 'problem-3'],
   };
 }
 
@@ -439,6 +440,86 @@ describe('YjsHub', () => {
       const doc2 = hub.getDocument('match-1', 'user-2');
       expect(doc1?.isFrozen).toBe(true);
       expect(doc2?.isFrozen).toBe(true);
+      expect(finalSnaps.every((snapshot) => snapshot.problemId === 'problem-1')).toBe(true);
+    });
+
+    it('rechaza escrituras nuevas cuando la partida ya terminó aunque el documento no se haya congelado', async () => {
+      const session = createSampleSession('match-1');
+      await store.saveMatch(session);
+      const owner = createMockYjsClient('owner', 'user-1', 'match-1', 'user-1');
+      await hub.handleConnection('/yjs/match-1/user-1', owner, {
+        userId: 'user-1',
+        gamertag: 'coder1',
+        role: 'user',
+      });
+
+      session.status = 'finished';
+      await store.saveMatch(session);
+      const result = await hub.handleIncomingTextUpdate(owner, 'late = True', 1);
+
+      expect(result).toEqual({
+        applied: false,
+        reason: 'La partida ya no acepta cambios de código.',
+      });
+    });
+
+    it('captura el consentimiento vigente en el snapshot terminal', async () => {
+      const session = createSampleSession('match-1');
+      session.players.get('user-1')!.is_revealed = true;
+      await store.saveMatch(session);
+      const owner = createMockYjsClient('owner', 'user-1', 'match-1', 'user-1');
+      await hub.handleConnection(
+        '/yjs/match-1/user-1',
+        owner,
+        {
+          userId: 'user-1',
+          gamertag: 'coder1',
+          role: 'user',
+        },
+        'final draft',
+      );
+
+      const finalSnapshots = await hub.finalizeMatch('match-1');
+
+      expect(finalSnapshots[0]).toMatchObject({
+        problemId: 'problem-1',
+        isRevealed: true,
+        code: 'final draft',
+      });
+    });
+
+    it('reutiliza el mismo ID al reintentar un snapshot terminal parcialmente fallido', async () => {
+      const session = createSampleSession('match-retry-snapshot');
+      await store.saveMatch(session);
+      const persist = vi.fn().mockRejectedValueOnce(new Error('temporary database failure'));
+      const retryHub = new YjsHub({
+        matchStore: store,
+        snapshotIntervalMs: 0,
+        onSnapshotPersist: persist,
+      });
+      const owner = createMockYjsClient('retry-owner', 'user-1', 'match-retry-snapshot', 'user-1');
+      await retryHub.handleConnection(
+        '/yjs/match-retry-snapshot/user-1',
+        owner,
+        {
+          userId: 'user-1',
+          gamertag: 'coder1',
+          role: 'user',
+        },
+        'persist once',
+      );
+
+      await expect(retryHub.finalizeMatch(session.match_id)).rejects.toThrow(
+        'No se pudieron persistir todos los snapshots terminales.',
+      );
+      const persisted = await retryHub.finalizeMatch(session.match_id);
+
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(persist.mock.calls[0]?.[0].id).toBe(persist.mock.calls[1]?.[0].id);
+      expect(persisted[0]?.code).toBe('persist once');
+      expect(await retryHub.finalizeMatch(session.match_id)).toEqual([]);
+      expect(persist).toHaveBeenCalledTimes(2);
+      retryHub.close();
     });
   });
 
@@ -448,6 +529,9 @@ describe('YjsHub', () => {
       await store.saveMatch(session);
 
       const client = createMockYjsClient('c1', 'user-1', 'match-1', 'user-1');
+      const sessionWithConsent = await store.getMatch('match-1');
+      sessionWithConsent!.players.get('user-1')!.is_revealed = true;
+      await store.saveMatch(sessionWithConsent!);
       await hub.handleConnection(
         '/yjs/match-1/user-1',
         client,
@@ -460,6 +544,56 @@ describe('YjsHub', () => {
 
       expect(persistedSnapshots.length).toBeGreaterThanOrEqual(1);
       expect(persistedSnapshots[0]?.code).toBe('periodic code');
+      expect(persistedSnapshots[0]?.problemId).toBe('problem-1');
+      expect(persistedSnapshots[0]?.isRevealed).toBe(true);
+    });
+  });
+
+  describe('Rotación de generación al avanzar de reto', () => {
+    it('archiva el código anterior, aumenta la generación y resincroniza a los observadores', async () => {
+      const session = createSampleSession('match-1');
+      session.players.get('user-1')!.is_revealed = true;
+      await store.saveMatch(session);
+      const owner = createMockYjsClient('owner', 'user-1', 'match-1', 'user-1');
+      const rival = createMockYjsClient('rival', 'user-2', 'match-1', 'user-1');
+      await hub.handleConnection(
+        '/yjs/match-1/user-1',
+        owner,
+        {
+          userId: 'user-1',
+          gamertag: 'coder1',
+          role: 'user',
+        },
+        'previous answer',
+      );
+      await hub.handleConnection('/yjs/match-1/user-1', rival, {
+        userId: 'user-2',
+        gamertag: 'coder2',
+        role: 'user',
+      });
+
+      const nextDoc = await hub.advanceGeneration(
+        'match-1',
+        'user-1',
+        'round-2',
+        '',
+        'problem-2',
+        true,
+        ['user-1', 'user-2'],
+      );
+
+      expect(nextDoc.generation).toBe(2);
+      expect(nextDoc.roundId).toBe('round-2');
+      expect(nextDoc.problemId).toBe('problem-2');
+      expect(nextDoc.observerCount).toBe(2);
+      expect(persistedSnapshots[0]).toMatchObject({
+        roundId: 'round-1',
+        problemId: 'problem-1',
+        isRevealed: true,
+        code: 'previous answer',
+      });
+      expect(JSON.parse(owner.sentText.at(-1)!).generation).toBe(2);
+      expect(JSON.parse(rival.sentText.at(-1)!).generation).toBe(2);
     });
   });
 });

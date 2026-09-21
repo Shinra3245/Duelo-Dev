@@ -31,6 +31,14 @@ describe('PostgreSQL Database Migrations (001_initial_schema)', () => {
     );
   });
 
+  it('guarda consentimiento por snapshot sin borrar código o historial existente', () => {
+    const up = getMigrationSql('007_snapshot_reveal_consent', 'up');
+    const down = getMigrationSql('007_snapshot_reveal_consent', 'down');
+    expect(up).toMatch(/ADD COLUMN IF NOT EXISTS is_revealed BOOLEAN NOT NULL DEFAULT false/i);
+    expect(up).not.toMatch(/DELETE\s+FROM/i);
+    expect(down).toMatch(/DROP COLUMN IF EXISTS is_revealed/i);
+  });
+
   it('el script UP define todas las 13 tablas requeridas por los contratos de datos', () => {
     const sql = getMigrationSql('001_initial_schema', 'up');
 

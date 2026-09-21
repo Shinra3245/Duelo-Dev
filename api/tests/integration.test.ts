@@ -13,7 +13,13 @@ import {
   type SubmissionAcceptedResponse,
 } from '@duelodev/shared';
 import { createProductionApp, type ApiApp } from '../src/index.js';
-import { createProductionRealtimeServer, type RealtimeServer } from '../../realtime/src/index.js';
+import {
+  createProductionRealtimeServer,
+  PostgresYjsSnapshotStore,
+  type RealtimeServer,
+} from '../../realtime/src/index.js';
+import type { CodeSnapshot, YjsClientConnection } from '../../realtime/src/yjs/types.js';
+import { sharedRoundId } from '../../realtime/src/gamemodes/round-id.js';
 import { runMigrations, rollbackMigrations } from '../src/services/migrations.js';
 import { seedProblems } from '../src/seeds/seeder.js';
 import {
@@ -232,6 +238,105 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     ]);
     expect((await roomRepo.findSnapshotsByMatch(recent.matchId))[0]?.source_code).toBe(
       'recent private code',
+    );
+  });
+
+  it('persiste snapshots Yjs consentidos, valida membresía y tolera reintentos sin duplicar', async () => {
+    const fixture = await createRunningMatchFixture(pool, 'yjsnap');
+    const problemRepo = new PostgresProblemRepository(pool);
+    const problem = (await problemRepo.findAllProblems())[0];
+    expect(problem).toBeDefined();
+
+    const snapshot: CodeSnapshot = {
+      id: randomUUID(),
+      matchId: fixture.matchId,
+      roundId: randomUUID(),
+      userId: fixture.userId,
+      problemId: problem!.id,
+      generation: 2,
+      code: 'print("snapshot integrado")',
+      capturedAt: new Date().toISOString(),
+      isRevealed: true,
+    };
+    const store = new PostgresYjsSnapshotStore(pool);
+
+    await store.persist(snapshot);
+    await store.persist(snapshot);
+
+    const stored = await pool.query(
+      'SELECT source_code, is_revealed, version FROM match_code_snapshots WHERE id = $1',
+      [snapshot.id],
+    );
+    expect(stored.rowCount).toBe(1);
+    expect(stored.rows[0]).toMatchObject({
+      source_code: snapshot.code,
+      is_revealed: true,
+      version: snapshot.generation,
+    });
+
+    const outsiderSnapshot = { ...snapshot, id: randomUUID(), userId: randomUUID() };
+    await store.persist(outsiderSnapshot);
+    const outsider = await pool.query('SELECT id FROM match_code_snapshots WHERE id = $1', [
+      outsiderSnapshot.id,
+    ]);
+    expect(outsider.rowCount).toBe(0);
+  });
+
+  it('el Realtime de producción congela y persiste Yjs al cerrar una partida', async () => {
+    const fixture = await createRunningMatchFixture(pool, 'yjsprod');
+    const roomRepo = new PostgresRoomRepository(pool);
+    const problemRepo = new PostgresProblemRepository(pool);
+    const problem = (await problemRepo.findAllProblems())[0];
+    expect(problem).toBeDefined();
+    await roomRepo.updateMatch(fixture.matchId, { status: 'lobby' });
+
+    const durableRealtime = realtimeServer!;
+    await durableRealtime.matchHub.startMatch(fixture.matchId, [problem!.id]);
+    const session = await durableRealtime.ctx.matchStore.getMatch(fixture.matchId);
+    expect(session?.status).toBe('running');
+    session!.players.get(fixture.userId)!.is_revealed = true;
+    await durableRealtime.ctx.matchStore.saveMatch(session!);
+
+    const connection: YjsClientConnection = {
+      id: 'integration-yjs-owner',
+      userId: fixture.userId,
+      matchId: fixture.matchId,
+      targetUserId: fixture.userId,
+      isOwner: true,
+      send: () => undefined,
+      sendText: () => undefined,
+      close: () => undefined,
+    };
+    const result = await durableRealtime.yjsHub.handleConnection(
+      `/yjs/${fixture.matchId}/${fixture.userId}`,
+      connection,
+      { userId: fixture.userId, gamertag: 'yjs-prod', role: 'user' },
+    );
+    expect(result.authorized).toBe(true);
+    expect(
+      await durableRealtime.yjsHub.handleIncomingTextUpdate(
+        connection,
+        'print("production lifecycle")',
+        result.document!.generation,
+      ),
+    ).toMatchObject({ applied: true });
+
+    await durableRealtime.matchHub.closeMatchFromAdmin(fixture.matchId, 2);
+
+    const rows = await pool.query(
+      `SELECT round_id, problem_id, source_code, is_revealed
+       FROM match_code_snapshots WHERE match_id = $1 AND user_id = $2`,
+      [fixture.matchId, fixture.userId],
+    );
+    expect(rows.rowCount).toBe(1);
+    expect(rows.rows[0]).toMatchObject({
+      round_id: sharedRoundId(fixture.matchId, 0),
+      problem_id: problem!.id,
+      source_code: 'print("production lifecycle")',
+      is_revealed: true,
+    });
+    expect(durableRealtime.yjsHub.getDocument(fixture.matchId, fixture.userId)?.isFrozen).toBe(
+      true,
     );
   });
 

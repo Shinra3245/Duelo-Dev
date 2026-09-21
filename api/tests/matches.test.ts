@@ -256,6 +256,7 @@ describe('Matches REST API (/api/v1/matches)', () => {
         problem_id: problemId,
         language: 'python',
         source_code: 'print("host code")',
+        is_revealed: true,
       });
 
       await app.ctx.roomRepo.saveSnapshot({
@@ -265,6 +266,7 @@ describe('Matches REST API (/api/v1/matches)', () => {
         problem_id: problemId,
         language: 'python',
         source_code: 'print("playerA code")',
+        is_revealed: true,
       });
 
       await app.ctx.roomRepo.saveSnapshot({
@@ -274,6 +276,7 @@ describe('Matches REST API (/api/v1/matches)', () => {
         problem_id: problemId,
         language: 'cpp',
         source_code: 'int main() { return 0; }',
+        is_revealed: false,
       });
 
       // Snapshot vaciado por retención: conserva metadata, pero no expone código vacío.

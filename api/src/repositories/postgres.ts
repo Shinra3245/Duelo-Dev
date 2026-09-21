@@ -196,6 +196,7 @@ function mapSnapshotRow(row: Record<string, unknown>): MatchCodeSnapshotEntity {
     problem_id: String(row['problem_id']),
     language: row['language'] as MatchCodeSnapshotEntity['language'],
     source_code: String(row['source_code']),
+    is_revealed: Boolean(row['is_revealed']),
     version: Number(row['version'] ?? 1),
     captured_at: new Date(row['captured_at'] as string | Date).toISOString(),
   };
@@ -750,8 +751,8 @@ export class PostgresRoomRepository implements RoomRepository {
     const id = input.id ?? randomUUID();
     const res = await this.pool.query(
       `INSERT INTO match_code_snapshots (
-        id, match_id, round_id, user_id, problem_id, language, source_code, version, captured_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, clock_timestamp()))
+        id, match_id, round_id, user_id, problem_id, language, source_code, is_revealed, version, captured_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, clock_timestamp()))
       RETURNING *`,
       [
         id,
@@ -761,6 +762,7 @@ export class PostgresRoomRepository implements RoomRepository {
         input.problem_id,
         input.language,
         input.source_code,
+        input.is_revealed ?? false,
         input.version ?? 1,
         input.captured_at ? new Date(input.captured_at) : null,
       ],

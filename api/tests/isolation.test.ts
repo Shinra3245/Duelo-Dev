@@ -638,7 +638,7 @@ describe('Aislamiento y Seguridad Multijugador (doc 04 §2, §5 y doc 06)', () =
   // 5. Confidencialidad de Snapshots de Código (Privacidad entre Rivales)
   // =========================================================================
   describe('5. Confidencialidad de Snapshots de Código (Privacidad entre Rivales)', () => {
-    it('Guest A solo ve su propio código si Guest B tiene is_revealed: false; al activar is_revealed: true se comparte con rivales pero no terceros', async () => {
+    it('el consentimiento sólo revela snapshots capturados después de autorizarlo', async () => {
       const host = await registerUser('host-snap-iso@test.com', 'host-snap-iso');
       const roomRes = await fetch(`${baseUrl}/api/v1/rooms`, {
         method: 'POST',
@@ -662,6 +662,7 @@ describe('Aislamiento y Seguridad Multijugador (doc 04 §2, §5 y doc 06)', () =
         problem_id: testProblemId,
         language: 'python',
         source_code: 'print("codigo de guest A")',
+        is_revealed: false,
       });
 
       await app.ctx.roomRepo.saveSnapshot({
@@ -671,6 +672,7 @@ describe('Aislamiento y Seguridad Multijugador (doc 04 §2, §5 y doc 06)', () =
         problem_id: testProblemId,
         language: 'cpp',
         source_code: 'int main() { /* secreto B */ return 0; }',
+        is_revealed: false,
       });
 
       // Configurar estado de revelado inicial:
@@ -712,20 +714,37 @@ describe('Aislamiento y Seguridad Multijugador (doc 04 §2, §5 y doc 06)', () =
       expect(summaryB.snapshots[0]!.user_id).toBe(guestB.userId);
       expect(summaryB.snapshots[0]!.source_code).toContain('/* secreto B */');
 
-      // 3. Guest B otorga consentimiento (is_revealed = true)
+      // 3. El consentimiento no revela código capturado antes de otorgarlo.
       await app.ctx.roomRepo.updatePlayer(playerB!.id, { is_revealed: true });
-
-      // Ahora Guest A vuelve a consultar el resumen:
-      // El snapshot de Guest B ahora SÍ es visible para Guest A
       const resAAfterReveal = await fetch(`${baseUrl}/api/v1/matches/${room.match_id}/summary`, {
         headers: { Authorization: `Bearer ${guestA.accessToken}` },
       });
       expect(resAAfterReveal.status).toBe(200);
-      const summaryAAfterReveal = (await resAAfterReveal.json()) as MatchSummaryResponse;
-      expect(summaryAAfterReveal.snapshots).toHaveLength(2);
-      const visibleUsers = summaryAAfterReveal.snapshots.map((s) => s.user_id);
-      expect(visibleUsers).toContain(guestA.userId);
-      expect(visibleUsers).toContain(guestB.userId);
+      const summaryBeforeNewCapture = (await resAAfterReveal.json()) as MatchSummaryResponse;
+      expect(summaryBeforeNewCapture.snapshots.map((s) => s.user_id)).toEqual([guestA.userId]);
+
+      await app.ctx.roomRepo.saveSnapshot({
+        match_id: room.match_id,
+        round_id: testRoundId,
+        user_id: guestB.userId,
+        problem_id: testProblemId,
+        language: 'python',
+        source_code: 'print("capturado con consentimiento")',
+        is_revealed: true,
+      });
+
+      const resAAfterConsentedCapture = await fetch(
+        `${baseUrl}/api/v1/matches/${room.match_id}/summary`,
+        { headers: { Authorization: `Bearer ${guestA.accessToken}` } },
+      );
+      const summaryAfterConsentedCapture =
+        (await resAAfterConsentedCapture.json()) as MatchSummaryResponse;
+      expect(summaryAfterConsentedCapture.snapshots).toHaveLength(2);
+      const visibleGuestBSnapshots = summaryAfterConsentedCapture.snapshots.filter(
+        (snapshot) => snapshot.user_id === guestB.userId,
+      );
+      expect(visibleGuestBSnapshots).toHaveLength(1);
+      expect(visibleGuestBSnapshots[0]?.source_code).toBe('print("capturado con consentimiento")');
 
       // 4. Usuario C ajeno a la partida intenta consultar el resumen -> 403 NOT_A_PLAYER
       const resStranger = await fetch(`${baseUrl}/api/v1/matches/${room.match_id}/summary`, {

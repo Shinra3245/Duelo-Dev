@@ -8,13 +8,20 @@
  * - Rechazo de updates obsoletos pertenecientes a generaciones anteriores.
  */
 
+import { randomUUID } from 'node:crypto';
 import { createYjsCodeUpdateMessage, createYjsSyncMessage, MAX_YDOC_BYTES } from '@duelodev/shared';
-import type { CodeSnapshot, YjsClientConnection, YjsDocumentMetadata } from './types.js';
+import type {
+  CodeSnapshot,
+  YjsClientConnection,
+  YjsDocumentMetadata,
+  YjsSnapshotContext,
+} from './types.js';
 
 export interface YjsDocumentOptions {
   matchId: string;
   userId: string;
   roundId: string;
+  problemId?: string | null | undefined;
   generation?: number | undefined;
   initialCode?: string | undefined;
   maxBytes?: number | undefined;
@@ -29,6 +36,7 @@ export class YjsDocument {
   readonly matchId: string;
   readonly userId: string;
   readonly roundId: string;
+  readonly problemId: string | null;
   readonly generation: number;
   private readonly maxBytes: number;
 
@@ -46,6 +54,7 @@ export class YjsDocument {
     this.matchId = options.matchId;
     this.userId = options.userId;
     this.roundId = options.roundId;
+    this.problemId = options.problemId ?? null;
     this.generation = options.generation ?? 1;
     this.content = options.initialCode ?? '';
     this.maxBytes = options.maxBytes ?? MAX_YDOC_BYTES;
@@ -71,6 +80,10 @@ export class YjsDocument {
 
   get observerCount(): number {
     return this.observers.size;
+  }
+
+  getObservers(): YjsClientConnection[] {
+    return [...this.observers.values()];
   }
 
   /**
@@ -233,12 +246,14 @@ export class YjsDocument {
   /**
    * Captura un snapshot de código inmutable para persistencia en Redis o PostgreSQL.
    */
-  captureSnapshot(isRevealed: boolean): CodeSnapshot {
+  captureSnapshot(isRevealed: boolean, context?: YjsSnapshotContext): CodeSnapshot {
     this.lastSnapshotAt = Date.now();
     return {
+      id: randomUUID(),
       matchId: this.matchId,
       userId: this.userId,
-      roundId: this.roundId,
+      roundId: context?.roundId ?? this.roundId,
+      problemId: context ? context.problemId : this.problemId,
       generation: this.generation,
       code: this.content,
       capturedAt: new Date(this.lastSnapshotAt).toISOString(),

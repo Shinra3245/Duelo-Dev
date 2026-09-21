@@ -46,6 +46,17 @@ export interface MatchHubOptions {
   reconnectGraceMs?: number | undefined;
   /** Notifica al canal de código cuando cambia el consentimiento de un jugador. */
   onRevealChanged?: ((matchId: string, userId: string) => Promise<void> | void) | undefined;
+  /** Rota la generación de código cuando un problema avanza. */
+  onProblemAdvanced?: (
+    matchId: string,
+    userId: string,
+    roundId: string,
+    problemId: string,
+    isRevealed: boolean,
+    activeUserIds: string[],
+  ) => Promise<void> | void;
+  /** Congela y persiste los documentos cuando la partida alcanza un estado terminal. */
+  onMatchFinalized?: ((matchId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -64,6 +75,8 @@ export class MatchHub {
   private readonly logger: Logger | undefined;
   private readonly reconnectGraceMs: number;
   private readonly onRevealChanged: MatchHubOptions['onRevealChanged'];
+  private readonly onProblemAdvanced: MatchHubOptions['onProblemAdvanced'];
+  private readonly onMatchFinalized: MatchHubOptions['onMatchFinalized'];
 
   /** Clientes conectados indexados por socket.id. */
   private readonly clients = new Map<string, SocketClient>();
@@ -78,12 +91,18 @@ export class MatchHub {
   /** Timers de fin de partida global (modo Rondas) indexados por matchId. */
   private readonly matchTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly initializedMatches = new Set<string>();
+  private readonly finalizedMatches = new Set<string>();
+  private readonly finalizingMatches = new Set<string>();
+  private readonly finalizationRetryCounts = new Map<string, number>();
+  private readonly finalizationRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(options: MatchHubOptions) {
     this.matchStore = options.matchStore;
     this.logger = options.logger;
     this.reconnectGraceMs = options.reconnectGraceMs ?? RECONNECT_GRACE_MS;
     this.onRevealChanged = options.onRevealChanged;
+    this.onProblemAdvanced = options.onProblemAdvanced;
+    this.onMatchFinalized = options.onMatchFinalized;
   }
 
   // ─────────────────────── Gestión de clientes ────────────────────────────
@@ -613,6 +632,7 @@ export class MatchHub {
     session.finished_at = new Date(now).toISOString();
     session.state_version = Math.max(session.state_version + 1, stateVersion);
     await this.matchStore.saveMatch(session);
+    await this.finalizeTerminalMatch(session);
     this.cancelRoundTimeout(matchId);
     this.cancelMatchTimeout(matchId);
 
@@ -712,6 +732,8 @@ export class MatchHub {
     applyModeActions(session, actions);
     try {
       await this.matchStore.saveMatch(session);
+      await this.advanceCodeGenerations(session, actions);
+      await this.finalizeTerminalMatch(session);
     } catch (error) {
       this.initializedMatches.delete(matchId);
       throw error;
@@ -816,6 +838,8 @@ export class MatchHub {
 
     applyModeActions(session, actions);
     await this.matchStore.saveMatch(session);
+    await this.advanceCodeGenerations(session, actions);
+    await this.finalizeTerminalMatch(session);
 
     // Si hubo award_score: difunde SCORE_UPDATE
     const hasAward = actions.some((a) => a.type === 'award_score');
@@ -912,6 +936,8 @@ export class MatchHub {
 
     applyModeActions(session, actions);
     await this.matchStore.saveMatch(session);
+    await this.advanceCodeGenerations(session, actions);
+    await this.finalizeTerminalMatch(session);
 
     // Si hubo advance_round: difunde PROBLEM_BEGIN y programa nuevo timeout
     const advanceRound = actions.find(
@@ -1011,6 +1037,8 @@ export class MatchHub {
       clearTimeout(timer);
     }
     this.matchTimers.clear();
+    for (const timer of this.finalizationRetryTimers.values()) clearTimeout(timer);
+    this.finalizationRetryTimers.clear();
   }
 
   // ─────────────────────── Métodos internos ───────────────────────────────
@@ -1139,6 +1167,8 @@ export class MatchHub {
     if (actions.length > 0) {
       applyModeActions(session, actions);
       await this.matchStore.saveMatch(session);
+      await this.advanceCodeGenerations(session, actions);
+      await this.finalizeTerminalMatch(session);
 
       const finishAct = actions.find(
         (a): a is Extract<ModeAction, { type: 'finish_match' | 'abandon_match' }> =>
@@ -1163,6 +1193,123 @@ export class MatchHub {
         };
         this.broadcastMatchFinished(matchId, matchFinishedPayload);
       }
+    }
+  }
+
+  private async advanceCodeGenerations(
+    session: RealtimeMatchSession,
+    actions: ModeAction[],
+  ): Promise<void> {
+    if (!this.onProblemAdvanced) return;
+
+    const transitions = new Map<
+      string,
+      { roundId: string; problemId: string; isRevealed: boolean }
+    >();
+    const activeUserIds = [...session.players.values()]
+      .filter((player) => player.connection !== 'left')
+      .map((player) => player.user_id);
+    for (const action of actions) {
+      if (action.type === 'advance_round') {
+        for (const player of session.players.values()) {
+          if (player.connection === 'left') continue;
+          transitions.set(player.user_id, {
+            roundId: action.next_round_id,
+            problemId: action.next_problem_id,
+            isRevealed: player.is_revealed,
+          });
+        }
+      } else if (action.type === 'advance_player') {
+        const player = session.players.get(action.user_id);
+        if (player && player.connection !== 'left') {
+          transitions.set(action.user_id, {
+            roundId: action.next_round_id,
+            problemId: action.next_problem_id,
+            isRevealed: player.is_revealed,
+          });
+        }
+      }
+    }
+
+    for (const [userId, transition] of transitions) {
+      try {
+        await this.onProblemAdvanced(
+          session.match_id,
+          userId,
+          transition.roundId,
+          transition.problemId,
+          transition.isRevealed,
+          activeUserIds,
+        );
+      } catch {
+        this.logger?.warn('No se pudo rotar la generación del editor', {
+          match_id: session.match_id,
+          user_id: userId,
+          round_id: transition.roundId,
+        });
+      }
+    }
+  }
+
+  private async finalizeTerminalMatch(session: RealtimeMatchSession): Promise<void> {
+    const matchId = session.match_id;
+    if (
+      !this.onMatchFinalized ||
+      (session.status !== 'finished' && session.status !== 'abandoned') ||
+      this.finalizedMatches.has(matchId) ||
+      this.finalizingMatches.has(matchId)
+    ) {
+      return;
+    }
+
+    this.finalizingMatches.add(matchId);
+    try {
+      await this.onMatchFinalized(matchId);
+      this.finalizedMatches.add(matchId);
+      this.finalizationRetryCounts.delete(matchId);
+      const retryTimer = this.finalizationRetryTimers.get(matchId);
+      if (retryTimer) clearTimeout(retryTimer);
+      this.finalizationRetryTimers.delete(matchId);
+    } catch {
+      this.logger?.warn('No se pudo completar la persistencia terminal de código', {
+        match_id: matchId,
+        status: session.status,
+      });
+      this.scheduleFinalizationRetry(matchId);
+    } finally {
+      this.finalizingMatches.delete(matchId);
+    }
+  }
+
+  private scheduleFinalizationRetry(matchId: string): void {
+    if (this.finalizationRetryTimers.has(matchId)) return;
+    const attempt = (this.finalizationRetryCounts.get(matchId) ?? 0) + 1;
+    if (attempt > 5) {
+      this.logger?.error('Se agotaron los reintentos de persistencia terminal', {
+        match_id: matchId,
+        attempts: attempt - 1,
+      });
+      return;
+    }
+
+    this.finalizationRetryCounts.set(matchId, attempt);
+    const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+    const timer = setTimeout(() => {
+      this.finalizationRetryTimers.delete(matchId);
+      void this.retryTerminalFinalization(matchId);
+    }, delayMs);
+    this.finalizationRetryTimers.set(matchId, timer);
+  }
+
+  private async retryTerminalFinalization(matchId: string): Promise<void> {
+    try {
+      const session = await this.matchStore.getMatch(matchId);
+      if (session) await this.finalizeTerminalMatch(session);
+    } catch {
+      this.logger?.warn('No se pudo recuperar la sesión terminal para reintentar snapshots', {
+        match_id: matchId,
+      });
+      this.scheduleFinalizationRetry(matchId);
     }
   }
 

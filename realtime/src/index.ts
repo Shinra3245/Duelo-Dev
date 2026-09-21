@@ -9,6 +9,7 @@ import { PostgresMatchStore } from './store/postgres.js';
 import { PostgresProcessedSubmissionStore, PostgresSubmissionProvider } from './queue/postgres.js';
 import { RedisResultSubscriber } from './queue/redis.js';
 import { RedisMatchControlSubscriber } from './queue/control.js';
+import { PostgresYjsSnapshotStore } from './yjs/postgres-snapshots.js';
 import type { ReadinessProbe } from './types.js';
 
 export * from './types.js';
@@ -64,6 +65,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
   const submissionProvider = new PostgresSubmissionProvider(pool);
   const resultSubscriber = new RedisResultSubscriber({ redis });
   const matchControlSubscriber = new RedisMatchControlSubscriber({ redis });
+  const yjsSnapshotStore = new PostgresYjsSnapshotStore(pool);
 
   const readinessProbes: ReadinessProbe[] = [
     {
@@ -86,6 +88,7 @@ export async function createProductionRealtimeServer(config: ProductionRealtimeC
     submissionProvider,
     resultSubscriber,
     matchControlSubscriber,
+    onYjsSnapshotPersist: (snapshot) => yjsSnapshotStore.persist(snapshot),
     authSecret: config.authSecret,
     readinessProbes,
     ...(config.reconnectGraceMs !== undefined ? { reconnectGraceMs: config.reconnectGraceMs } : {}),

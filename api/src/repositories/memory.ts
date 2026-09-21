@@ -479,6 +479,7 @@ export class InMemoryRoomRepository implements RoomRepository {
       problem_id: input.problem_id,
       language: input.language,
       source_code: input.source_code,
+      is_revealed: input.is_revealed ?? false,
       version: input.version ?? 1,
       captured_at: input.captured_at ?? now,
     };

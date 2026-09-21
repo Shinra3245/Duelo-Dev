@@ -55,6 +55,20 @@ export function createRealtimeServer(options: RealtimeAppOptions = {}): Realtime
     logger,
     reconnectGraceMs: options.reconnectGraceMs,
     onRevealChanged: (matchId, userId) => yjsHub.notifyRevealChanged(matchId, userId),
+    onProblemAdvanced: async (matchId, userId, roundId, problemId, isRevealed, activeUserIds) => {
+      await yjsHub.advanceGeneration(
+        matchId,
+        userId,
+        roundId,
+        '',
+        problemId,
+        isRevealed,
+        activeUserIds,
+      );
+    },
+    onMatchFinalized: async (matchId) => {
+      await yjsHub.finalizeMatch(matchId);
+    },
   });
 
   const processedSubmissionStore =

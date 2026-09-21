@@ -512,7 +512,7 @@ export class RoomService {
       .filter(
         (s) =>
           s.source_code.length > 0 &&
-          (s.user_id === requestingUserId || revealedUserIds.has(s.user_id)),
+          (s.user_id === requestingUserId || (s.is_revealed && revealedUserIds.has(s.user_id))),
       )
       .map((s) => ({
         user_id: s.user_id,
