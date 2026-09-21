@@ -1,12 +1,15 @@
-"""Backend de compilación para el daemon Docker rootless del juez.
+"""Backend Docker rootless para compilar y empaquetar artefactos del juez.
 
-La compilación ocurre en un contenedor limitado y con red deshabilitada. Después se crea una
-imagen por envío mediante un Dockerfile fijo que solo copia la fuente y el artefacto; esa fase
-no ejecuta contenido del jugador.
+La compilación ocurre en un contenedor limitado y sin red. El empaquetado copia únicamente
+archivos regulares, validados y de solo lectura a un contenedor detenido de la imagen base;
+Docker lo confirma como imagen sin ejecutar el código del jugador.
 """
 
-from pathlib import Path
+from io import BytesIO
+from pathlib import Path, PurePosixPath
 import re
+import stat
+import tarfile
 import tempfile
 from typing import Mapping
 from uuid import uuid4
@@ -18,15 +21,19 @@ from judge.sandbox import RUNNER_GID, RUNNER_UID
 
 
 ARTIFACT_BUILD_TIMEOUT_MS = 30_000
+MAX_ARTIFACT_BYTES = BOX_TMPFS_MB * 1024 * 1024
+MAX_ARTIFACT_FILES = 4096
 DOCKER_INFRASTRUCTURE_EXIT_CODES = frozenset((125, 126, 127))
 _PINNED_IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 _LOCAL_IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
+_CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
+_TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _ARTIFACT_TAG = re.compile(r"^duelodev-artifact-[0-9a-f]{32}$")
 _RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 class DockerCompilationBackend(CompilationBackend):
-    """Compila y empaqueta una fuente sin ejecutar comandos mediante shell."""
+    """Compila y empaqueta una fuente sin interpolarla en comandos."""
 
     def __init__(
         self,
@@ -51,6 +58,7 @@ class DockerCompilationBackend(CompilationBackend):
     def prepare(self, request: CompilationRequest) -> CompilationObservation:
         base_image = self._base_images[request.language]
         artifact_tag = f"duelodev-artifact-{uuid4().hex}"
+        staging_token = uuid4().hex
         with tempfile.TemporaryDirectory(prefix="duelodev-compile-") as directory:
             context = Path(directory)
             app_dir = context / "app"
@@ -80,30 +88,59 @@ class DockerCompilationBackend(CompilationBackend):
                         or compile_observation.exit_code in DOCKER_INFRASTRUCTURE_EXIT_CODES,
                     )
 
-            dockerfile = context / "Dockerfile"
-            dockerfile.write_text(artifact_dockerfile(base_image), encoding="utf-8")
-            dockerfile.chmod(0o600)
-            build = self._invoker.invoke(
-                docker_build_argv(context, artifact_tag, self._resource_owner),
+            try:
+                archive = _artifact_archive(
+                    app_dir,
+                    out_dir,
+                    executable_output="main" if request.language == "cpp" else None,
+                )
+            except (OSError, ValueError, tarfile.TarError):
+                return CompilationObservation(
+                    None,
+                    compile_observation.stdout,
+                    compile_observation.stderr,
+                    compile_observation.exit_code,
+                    system_error=True,
+                )
+
+            created = self._invoker.invoke(
+                artifact_staging_create_argv(base_image, staging_token, self._resource_owner),
                 b"",
                 ARTIFACT_BUILD_TIMEOUT_MS,
             )
-            artifact_reference = build.stdout.decode("ascii", errors="ignore").strip()
-            if (
-                build.system_error
-                or build.timed_out
-                or build.output_exceeded
-                or build.exit_code != 0
-                or not _LOCAL_IMAGE_ID.fullmatch(artifact_reference)
-            ):
+            staging_id = created.stdout.decode("ascii", errors="ignore").strip()
+            if not _successful(created) or not _CONTAINER_ID.fullmatch(staging_id):
+                self._remove_staging_by_label(staging_token)
+                self._remove_image(artifact_tag)
+                return _packaging_failure(created)
+
+            copied = self._invoker.invoke(
+                artifact_copy_argv(staging_id), archive, ARTIFACT_BUILD_TIMEOUT_MS
+            )
+            if not _successful(copied):
+                self._remove_staging(staging_id, staging_token)
+                self._remove_image(artifact_tag)
+                return _packaging_failure(copied)
+
+            committed = self._invoker.invoke(
+                artifact_commit_argv(staging_id, artifact_tag, self._resource_owner),
+                b"",
+                ARTIFACT_BUILD_TIMEOUT_MS,
+            )
+            artifact_reference = committed.stdout.decode("ascii", errors="ignore").strip()
+            if not _successful(committed) or not _LOCAL_IMAGE_ID.fullmatch(artifact_reference):
+                self._remove_staging(staging_id, staging_token)
+                self._remove_image(artifact_tag)
+                return _packaging_failure(committed)
+
+            if not self._remove_staging(staging_id, staging_token):
+                self._remove_image(artifact_reference)
                 self._remove_image(artifact_tag)
                 return CompilationObservation(
                     None,
-                    build.stdout,
-                    build.stderr,
-                    build.exit_code,
-                    build.timed_out,
-                    build.output_exceeded,
+                    committed.stdout,
+                    committed.stderr,
+                    committed.exit_code,
                     system_error=True,
                 )
 
@@ -126,7 +163,42 @@ class DockerCompilationBackend(CompilationBackend):
         observation = self._invoker.invoke(
             ("docker", "image", "rm", "--force", reference), b"", ARTIFACT_BUILD_TIMEOUT_MS
         )
-        return not observation.system_error and observation.exit_code == 0
+        return _successful(observation)
+
+    def _remove_staging(self, container_id: str, token: str) -> bool:
+        if not _CONTAINER_ID.fullmatch(container_id) or not _TOKEN.fullmatch(token):
+            return False
+        removed = self._invoker.invoke(
+            ("docker", "rm", "--force", container_id), b"", ARTIFACT_BUILD_TIMEOUT_MS
+        )
+        return _successful(removed) or self._remove_staging_by_label(token)
+
+    def _remove_staging_by_label(self, token: str) -> bool:
+        if not _TOKEN.fullmatch(token):
+            return False
+        listed = self._invoker.invoke(
+            (
+                "docker",
+                "ps",
+                "--all",
+                "--quiet",
+                "--filter",
+                f"label=duelodev.judge.artifact-staging={token}",
+            ),
+            b"",
+            ARTIFACT_BUILD_TIMEOUT_MS,
+        )
+        if not _successful(listed):
+            return False
+        identifiers = listed.stdout.decode("ascii", errors="ignore").split()
+        if any(not re.fullmatch(r"[0-9a-f]{12,64}", value) for value in identifiers):
+            return False
+        if not identifiers:
+            return True
+        removed = self._invoker.invoke(
+            ("docker", "rm", "--force", *identifiers), b"", ARTIFACT_BUILD_TIMEOUT_MS
+        )
+        return _successful(removed)
 
 
 def compile_container_argv(
@@ -175,38 +247,126 @@ def compile_container_argv(
     )
 
 
-def docker_build_argv(
-    context: Path, artifact_tag: str, resource_owner: str | None = None
+def artifact_staging_create_argv(
+    base_image: str, token: str, resource_owner: str | None = None
 ) -> tuple[str, ...]:
-    if not _ARTIFACT_TAG.fullmatch(artifact_tag):
-        raise ValueError("Etiqueta temporal inválida")
+    if not _PINNED_IMAGE.fullmatch(base_image):
+        raise ValueError("La imagen base debe estar fijada por digest")
+    if not _TOKEN.fullmatch(token):
+        raise ValueError("El token de staging es inválido")
     if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
         raise ValueError("resource_owner tiene un formato inválido")
     return (
         "docker",
-        "build",
+        "create",
         "--network",
         "none",
-        "--pull=false",
-        "--no-cache",
-        "--quiet",
-        "--tag",
-        artifact_tag,
+        "--label",
+        f"duelodev.judge.artifact-staging={token}",
         *(("--label", f"duelodev.judge.worker={resource_owner}") if resource_owner else ()),
-        str(context.resolve()),
+        base_image,
     )
 
 
-def artifact_dockerfile(base_image: str) -> str:
-    """Dockerfile fijo: copia datos; no contiene RUN, ARG ni interpolación de fuente."""
-    if not _PINNED_IMAGE.fullmatch(base_image):
-        raise ValueError("La imagen base debe estar fijada por digest")
+def artifact_copy_argv(container_id: str) -> tuple[str, ...]:
+    if not _CONTAINER_ID.fullmatch(container_id):
+        raise ValueError("El identificador de staging es inválido")
+    return "docker", "cp", "--archive", "-", f"{container_id}:/"
+
+
+def artifact_commit_argv(
+    container_id: str, artifact_tag: str, resource_owner: str | None = None
+) -> tuple[str, ...]:
+    if not _CONTAINER_ID.fullmatch(container_id):
+        raise ValueError("El identificador de staging es inválido")
+    if not _ARTIFACT_TAG.fullmatch(artifact_tag):
+        raise ValueError("La etiqueta temporal es inválida")
+    if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
+        raise ValueError("resource_owner tiene un formato inválido")
     return (
-        f"FROM {base_image}\n"
-        f"COPY --chown={RUNNER_UID}:{RUNNER_GID} app/ /app/\n"
-        f"COPY --chown={RUNNER_UID}:{RUNNER_GID} out/ /out/\n"
-        "WORKDIR /app\n"
-        f"USER {RUNNER_UID}:{RUNNER_GID}\n"
+        "docker",
+        "commit",
+        "--change",
+        "WORKDIR /app",
+        "--change",
+        f"USER {RUNNER_UID}:{RUNNER_GID}",
+        *(("--change", f"LABEL duelodev.judge.worker={resource_owner}") if resource_owner else ()),
+        container_id,
+        artifact_tag,
+    )
+
+
+def _artifact_archive(app_dir: Path, out_dir: Path, executable_output: str | None = None) -> bytes:
+    """Empaqueta datos acotados: sin symlinks, hardlinks, traversal ni permisos de escritura."""
+    buffer = BytesIO()
+    file_count = 0
+    total_file_bytes = 0
+
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for root_name, root in (("app", app_dir), ("out", out_dir)):
+            _add_directory(archive, root_name)
+            paths = sorted(root.rglob("*"), key=lambda path: path.as_posix())
+            for path in paths:
+                relative = PurePosixPath(path.relative_to(root).as_posix())
+                if relative.is_absolute() or any(
+                    part in {"", ".", ".."} for part in relative.parts
+                ):
+                    raise ValueError("La ruta del artefacto es inválida")
+                metadata = path.lstat()
+                archive_name = f"{root_name}/{relative.as_posix()}"
+
+                if stat.S_ISDIR(metadata.st_mode):
+                    _add_directory(archive, archive_name)
+                    continue
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                    raise ValueError("El artefacto contiene un archivo no regular")
+                if metadata.st_size < 0 or metadata.st_size > MAX_ARTIFACT_BYTES:
+                    raise ValueError("El artefacto excede el límite permitido")
+                total_file_bytes += metadata.st_size
+                file_count += 1
+                if total_file_bytes > MAX_ARTIFACT_BYTES or file_count > MAX_ARTIFACT_FILES:
+                    raise ValueError("El artefacto excede el límite permitido")
+
+                contents = path.read_bytes()
+                if len(contents) != metadata.st_size:
+                    raise ValueError("El artefacto cambió durante su lectura")
+                item = tarfile.TarInfo(archive_name)
+                item.size = len(contents)
+                item.mode = (
+                    0o555
+                    if root_name == "out" and relative.as_posix() == executable_output
+                    else 0o444
+                )
+                item.uid = RUNNER_UID
+                item.gid = RUNNER_GID
+                item.mtime = 0
+                archive.addfile(item, BytesIO(contents))
+
+    archive_bytes = buffer.getvalue()
+    if len(archive_bytes) > MAX_ARTIFACT_BYTES:
+        raise ValueError("El artefacto excede el límite permitido")
+    return archive_bytes
+
+
+def _add_directory(archive: tarfile.TarFile, name: str) -> None:
+    item = tarfile.TarInfo(name)
+    item.type = tarfile.DIRTYPE
+    item.mode = 0o555
+    item.uid = RUNNER_UID
+    item.gid = RUNNER_GID
+    item.mtime = 0
+    archive.addfile(item)
+
+
+def _packaging_failure(observation: RuntimeObservation) -> CompilationObservation:
+    return CompilationObservation(
+        None,
+        observation.stdout,
+        observation.stderr,
+        observation.exit_code,
+        observation.timed_out,
+        observation.output_exceeded,
+        system_error=True,
     )
 
 
@@ -216,4 +376,13 @@ def _compile_failed(observation: RuntimeObservation) -> bool:
         or observation.timed_out
         or observation.output_exceeded
         or observation.exit_code != 0
+    )
+
+
+def _successful(observation: RuntimeObservation) -> bool:
+    return (
+        not observation.system_error
+        and not observation.timed_out
+        and not observation.output_exceeded
+        and observation.exit_code == 0
     )
