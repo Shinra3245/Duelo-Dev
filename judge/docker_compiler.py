@@ -17,7 +17,7 @@ from uuid import uuid4
 from judge.compiler import CompilationBackend, CompilationObservation, CompilationRequest
 from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, MEMORY_LIMIT_MB, PIDS_LIMIT, Language
 from judge.runtime import DockerInvoker, RuntimeObservation
-from judge.sandbox import RUNNER_GID, RUNNER_UID
+from judge.sandbox import RUNNER_GID, RUNNER_UID, container_id_from_reference
 
 
 ARTIFACT_BUILD_TIMEOUT_MS = 30_000
@@ -30,6 +30,7 @@ _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _ARTIFACT_TAG = re.compile(r"^duelodev-artifact-[0-9a-f]{32}$")
 _RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_KEEPALIVE = "while :; do sleep 3600; done"
 
 
 class DockerCompilationBackend(CompilationBackend):
@@ -104,23 +105,46 @@ class DockerCompilationBackend(CompilationBackend):
                 )
 
             created = self._invoker.invoke(
-                artifact_staging_create_argv(base_image, staging_token, self._resource_owner),
+                artifact_staging_create_argv(
+                    base_image,
+                    staging_token,
+                    self._resource_owner,
+                    direct_session=request.language == "python",
+                ),
                 b"",
                 ARTIFACT_BUILD_TIMEOUT_MS,
             )
             staging_id = created.stdout.decode("ascii", errors="ignore").strip()
             if not _successful(created) or not _CONTAINER_ID.fullmatch(staging_id):
                 self._remove_staging_by_label(staging_token)
-                self._remove_image(artifact_tag)
+                if request.language != "python":
+                    self._remove_image(artifact_tag)
                 return _packaging_failure(created)
 
-            copied = self._invoker.invoke(
-                artifact_copy_argv(staging_id), archive, ARTIFACT_BUILD_TIMEOUT_MS
-            )
+            if request.language == "python":
+                started = self._invoker.invoke(
+                    artifact_staging_start_argv(staging_id), b"", ARTIFACT_BUILD_TIMEOUT_MS
+                )
+                if not _successful(started):
+                    self._remove_staging(staging_id, staging_token)
+                    return _packaging_failure(started)
+                copy_argv = artifact_copy_to_running_session_argv(staging_id)
+            else:
+                copy_argv = artifact_copy_argv(staging_id)
+            copied = self._invoker.invoke(copy_argv, archive, ARTIFACT_BUILD_TIMEOUT_MS)
             if not _successful(copied):
                 self._remove_staging(staging_id, staging_token)
-                self._remove_image(artifact_tag)
+                if request.language != "python":
+                    self._remove_image(artifact_tag)
                 return _packaging_failure(copied)
+
+            if request.language == "python":
+                return CompilationObservation(
+                    f"container:{staging_id}",
+                    compile_observation.stdout,
+                    compile_observation.stderr,
+                    compile_observation.exit_code,
+                )
 
             committed = self._invoker.invoke(
                 artifact_commit_argv(staging_id, artifact_tag, self._resource_owner),
@@ -152,9 +176,30 @@ class DockerCompilationBackend(CompilationBackend):
             )
 
     def cleanup(self, artifact_reference: str) -> bool:
-        """Elimina la imagen efímera al terminar el juicio."""
+        """Elimina la imagen o contenedor efímero al terminar el juicio."""
         if not _LOCAL_IMAGE_ID.fullmatch(artifact_reference):
-            raise ValueError("La referencia de limpieza debe ser un digest local")
+            container_id = container_id_from_reference(artifact_reference)
+            if container_id is None:
+                raise ValueError("La referencia de limpieza debe ser un digest local")
+            removed = self._invoker.invoke(
+                ("docker", "rm", "--force", container_id), b"", ARTIFACT_BUILD_TIMEOUT_MS
+            )
+            if _successful(removed):
+                return True
+            listed = self._invoker.invoke(
+                (
+                    "docker",
+                    "ps",
+                    "--all",
+                    "--quiet",
+                    "--no-trunc",
+                    "--filter",
+                    f"id={container_id}",
+                ),
+                b"",
+                ARTIFACT_BUILD_TIMEOUT_MS,
+            )
+            return _successful(listed) and not listed.stdout.strip()
         return self._remove_image(artifact_reference)
 
     def _remove_image(self, reference: str) -> bool:
@@ -248,7 +293,11 @@ def compile_container_argv(
 
 
 def artifact_staging_create_argv(
-    base_image: str, token: str, resource_owner: str | None = None
+    base_image: str,
+    token: str,
+    resource_owner: str | None = None,
+    *,
+    direct_session: bool = False,
 ) -> tuple[str, ...]:
     if not _PINNED_IMAGE.fullmatch(base_image):
         raise ValueError("La imagen base debe estar fijada por digest")
@@ -256,6 +305,50 @@ def artifact_staging_create_argv(
         raise ValueError("El token de staging es inválido")
     if resource_owner is not None and not _RESOURCE_OWNER.fullmatch(resource_owner):
         raise ValueError("resource_owner tiene un formato inválido")
+    if direct_session:
+        return (
+            "docker",
+            "create",
+            "--init",
+            "--label",
+            f"duelodev.judge.artifact-staging={token}",
+            "--label",
+            f"duelodev.judge.session={token}",
+            *(("--label", f"duelodev.judge.worker={resource_owner}") if resource_owner else ()),
+            "--network",
+            "none",
+            "--read-only",
+            "--tmpfs",
+            f"/app:rw,nosuid,nodev,size={BOX_TMPFS_MB}m,mode=755",
+            "--tmpfs",
+            f"/out:rw,nosuid,nodev,size={BOX_TMPFS_MB}m,mode=755",
+            "--tmpfs",
+            f"/tmp:rw,noexec,nosuid,size={BOX_TMPFS_MB}m,mode=1777",
+            "--user",
+            "0:0",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--cap-add",
+            "KILL",
+            "--security-opt",
+            "no-new-privileges",
+            "--memory",
+            f"{MEMORY_LIMIT_MB}m",
+            "--memory-swap",
+            f"{MEMORY_LIMIT_MB}m",
+            "--cpus",
+            str(CPU_LIMIT),
+            "--pids-limit",
+            str(PIDS_LIMIT),
+            base_image,
+            "/bin/sh",
+            "-c",
+            _KEEPALIVE,
+        )
     return (
         "docker",
         "create",
@@ -265,6 +358,33 @@ def artifact_staging_create_argv(
         f"duelodev.judge.artifact-staging={token}",
         *(("--label", f"duelodev.judge.worker={resource_owner}") if resource_owner else ()),
         base_image,
+    )
+
+
+def artifact_staging_start_argv(container_id: str) -> tuple[str, ...]:
+    if not _CONTAINER_ID.fullmatch(container_id):
+        raise ValueError("El identificador de staging es inválido")
+    return "docker", "start", container_id
+
+
+def artifact_copy_to_running_session_argv(container_id: str) -> tuple[str, ...]:
+    if not _CONTAINER_ID.fullmatch(container_id):
+        raise ValueError("El identificador de staging es inválido")
+    return (
+        "docker",
+        "exec",
+        "--interactive",
+        "--user",
+        "0:0",
+        container_id,
+        "tar",
+        "--extract",
+        "--file",
+        "-",
+        "--directory",
+        "/",
+        "--no-same-owner",
+        "--no-same-permissions",
     )
 
 

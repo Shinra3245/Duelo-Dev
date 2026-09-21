@@ -1,14 +1,20 @@
 """Backend Docker rootless para una sesión aislada por envío."""
 
 from dataclasses import dataclass
+import base64
+import binascii
+import json
 import re
 import threading
+from collections.abc import Sequence
 from typing import Callable
 from uuid import uuid4
 
-from judge.limits import BOX_TMPFS_MB, CPU_LIMIT
-from judge.runtime import DockerInvoker, RuntimeObservation
-from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec
+from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, OUTPUT_LIMIT_BYTES
+from judge.evaluation import CaseExecution
+from judge.runtime import DockerInvoker, RuntimeObservation, SubprocessDockerInvoker
+from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec, container_id_from_reference
+from judge.supervisor import CaseInput
 
 
 CONTROL_TIMEOUT_MS = 10_000
@@ -17,6 +23,123 @@ _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _KEEPALIVE = "while :; do sleep 3600; done"
+_BATCH_CONTROLLER = r"""import base64,binascii,json,os,selectors,shutil,signal,subprocess,sys,time
+MAX_OUTPUT=1048576
+command=tuple(sys.argv[3:])
+
+def oom_count():
+    try:
+        with open('/sys/fs/cgroup/memory.events', encoding='ascii') as file:
+            for line in file:
+                key,value=line.split()[:2]
+                if key == 'oom_kill':
+                    return int(value)
+    except (OSError,ValueError):
+        return None
+    return None
+
+def kill_group(process):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError,PermissionError):
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+
+def clean_processes():
+    for _ in range(20):
+        found=False
+        for entry in os.listdir('/proc'):
+            if not entry.isdigit() or int(entry) == os.getpid():
+                continue
+            try:
+                status=open('/proc/'+entry+'/status', encoding='ascii').read()
+                uid_line=next(line for line in status.splitlines() if line.startswith('Uid:'))
+                if int(uid_line.split()[1]) == os.getuid():
+                    os.kill(int(entry), signal.SIGKILL)
+                    found=True
+            except (OSError,StopIteration,ValueError):
+                pass
+        if not found:
+            return True
+        time.sleep(0.01)
+    return False
+
+def clean_tmp():
+    clean=True
+    try:
+        for name in os.listdir('/tmp'):
+            path=os.path.join('/tmp',name)
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    os.chmod(path, 0o700)
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+            except OSError:
+                clean=False
+    except OSError:
+        return False
+    return clean
+
+def run_case(encoded, timeout_ms):
+    before=oom_count()
+    try:
+        stdin=base64.b64decode(encoded, validate=True)
+    except (ValueError,binascii.Error):
+        return {'exit_code':-1,'stderr':'','stdout':'','time_ms':0,'timed_out':False,'oom_killed':False,'output_exceeded':False,'clean':False}
+    started=time.monotonic()
+    process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+    assert process.stdin is not None and process.stdout is not None and process.stderr is not None
+    def feed():
+        try:
+            process.stdin.write(stdin)
+            process.stdin.close()
+        except (BrokenPipeError,OSError):
+            pass
+    threading=__import__('threading')
+    writer=threading.Thread(target=feed,daemon=True)
+    writer.start()
+    selector=selectors.DefaultSelector()
+    selector.register(process.stdout,selectors.EVENT_READ,'stdout')
+    selector.register(process.stderr,selectors.EVENT_READ,'stderr')
+    outputs={'stdout':bytearray(),'stderr':bytearray()}
+    exceeded=False
+    timed_out=False
+    deadline=started+timeout_ms/1000
+    while selector.get_map() or process.poll() is None:
+        remaining=max(0,min(0.05,deadline-time.monotonic()))
+        if time.monotonic() >= deadline and process.poll() is None:
+            timed_out=True
+            kill_group(process)
+        for key,_ in selector.select(remaining):
+            try:
+                chunk=os.read(key.fileobj.fileno(),65536)
+            except OSError:
+                chunk=b''
+            if not chunk:
+                selector.unregister(key.fileobj)
+                continue
+            target=outputs[key.data]
+            if len(target) < MAX_OUTPUT+1:
+                target.extend(chunk[:MAX_OUTPUT+1-len(target)])
+            if len(target) > MAX_OUTPUT:
+                exceeded=True
+                kill_group(process)
+    returncode=process.wait()
+    writer.join(timeout=1)
+    clean=clean_processes() and clean_tmp()
+    after=oom_count()
+    return {'exit_code':returncode,'stderr':base64.b64encode(bytes(outputs['stderr'])).decode(),'stdout':base64.b64encode(bytes(outputs['stdout'])).decode(),'time_ms':round((time.monotonic()-started)*1000),'timed_out':timed_out,'oom_killed':before is not None and after is not None and after > before,'output_exceeded':exceeded,'clean':clean}
+
+timeout_ms=int(sys.argv[2])
+for line in sys.stdin:
+    result=run_case(line.strip(),timeout_ms)
+    print(json.dumps(result,separators=(',',':')),flush=True)
+    if not result['clean']:
+        break
+"""
 _EXECUTE_AND_RESET = (
     'exec 3<&0; "$@" <&3 3<&- & child=$!; wait "$child"; result=$?; '
     "attempt=0; sleeper=; "
@@ -87,6 +210,7 @@ _RESET = (
 class _Session:
     token: str
     oom_count: int
+    direct_container: bool = False
 
 
 class DockerSessionBackend:
@@ -110,6 +234,14 @@ class DockerSessionBackend:
         token = self._token_factory()
         if not _TOKEN.fullmatch(token):
             raise ValueError("El token de sesión es inválido")
+        direct_container = container_id_from_reference(sandbox.image)
+        if direct_container is not None:
+            with self._lock:
+                if direct_container in self._sessions:
+                    raise ValueError("La sesión Docker ya está registrada")
+                self._sessions[direct_container] = _Session(token, 0, direct_container=True)
+            return direct_container
+
         created = self._invoker.invoke(
             session_create_argv(sandbox, token, self._resource_owner),
             b"",
@@ -130,6 +262,85 @@ class DockerSessionBackend:
         with self._lock:
             self._sessions[session_id] = _Session(token, oom_count)
         return session_id
+
+    def supports_batch(self, sandbox: SandboxSpec) -> bool:
+        """El controlador por lotes sólo se activa para Python directo."""
+        return (
+            container_id_from_reference(sandbox.image) is not None
+            and bool(sandbox.command)
+            and sandbox.command[0] in {"python", "python3"}
+        )
+
+    def run_cases_batch(
+        self,
+        sandbox: SandboxSpec,
+        cases: Sequence[CaseInput],
+        timeout_ms: int,
+    ) -> list[CaseExecution]:
+        """Ejecuta Python en una sola sesión Docker con limpieza por caso."""
+        if not self.supports_batch(sandbox):
+            raise ValueError("El controlador por lotes sólo admite Python directo")
+        if not cases:
+            raise ValueError("Se requiere al menos un caso")
+        session_id = self.start(sandbox)
+        encoded_inputs = b"".join(base64.b64encode(case.stdin) + b"\n" for case in cases)
+        batch_invoker: DockerInvoker = self._invoker
+        if isinstance(self._invoker, SubprocessDockerInvoker):
+            batch_invoker = SubprocessDockerInvoker(
+                OUTPUT_LIMIT_BYTES * len(cases) + 64 * 1024,
+                self._resource_owner,
+            )
+        try:
+            observation = batch_invoker.invoke(
+                (
+                    "docker",
+                    "exec",
+                    "--interactive",
+                    "--user",
+                    f"{RUNNER_UID}:{RUNNER_GID}",
+                    session_id,
+                    "python3",
+                    "-c",
+                    _BATCH_CONTROLLER,
+                    "duelodev-batch",
+                    str(timeout_ms),
+                    *sandbox.command,
+                ),
+                encoded_inputs,
+                timeout_ms * len(cases) + CONTROL_TIMEOUT_MS,
+            )
+            if observation.system_error or observation.timed_out or observation.output_exceeded:
+                raise RuntimeError("El controlador del juez no completó el lote")
+            records = [json.loads(line) for line in observation.stdout.splitlines()]
+            if len(records) != len(cases):
+                raise RuntimeError("El controlador del juez devolvió casos incompletos")
+            executions: list[CaseExecution] = []
+            for case, record in zip(cases, records, strict=True):
+                if not isinstance(record, dict) or not record.get("clean"):
+                    raise RuntimeError("El controlador del juez no confirmó la limpieza")
+                try:
+                    stdout = base64.b64decode(record["stdout"], validate=True)
+                    stderr = base64.b64decode(record["stderr"], validate=True)
+                    exit_code = int(record["exit_code"])
+                    time_ms = int(record["time_ms"])
+                except (KeyError, TypeError, ValueError, binascii.Error) as error:
+                    raise RuntimeError("Respuesta inválida del controlador del juez") from error
+                executions.append(
+                    CaseExecution(
+                        ordinal=case.ordinal,
+                        stdout=stdout,
+                        stderr=stderr,
+                        exit_code=exit_code,
+                        time_ms=time_ms,
+                        timed_out=bool(record.get("timed_out")),
+                        oom_killed=bool(record.get("oom_killed")),
+                        output_exceeded=bool(record.get("output_exceeded")),
+                    )
+                )
+            return executions
+        finally:
+            if not self.close(session_id):
+                raise RuntimeError("No se pudo cerrar la sesión por lotes")
 
     def execute(
         self,
@@ -296,6 +507,13 @@ class DockerSessionBackend:
         return value if _successful(observation) and value >= 0 else None
 
     def _remove(self, session_id: str, token: str) -> bool:
+        with self._lock:
+            session = self._sessions.get(session_id)
+        if session is not None and session.direct_container:
+            removed = self._invoker.invoke(
+                ("docker", "rm", "--force", session_id), b"", CONTROL_TIMEOUT_MS
+            )
+            return _successful(removed)
         observation = self._invoker.invoke(
             ("docker", "rm", "--force", session_id), b"", CONTROL_TIMEOUT_MS
         )

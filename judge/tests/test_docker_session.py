@@ -1,12 +1,15 @@
 """Pruebas del backend persistente con un invocador Docker falso."""
 
 from dataclasses import dataclass, field
+import base64
+import json
 
 import pytest
 
 from judge.docker_session import DockerSessionBackend, session_create_argv
 from judge.runtime import RuntimeObservation
 from judge.sandbox import SandboxSpec
+from judge.supervisor import CaseInput
 
 
 CONTAINER_ID = "a" * 64
@@ -234,6 +237,70 @@ def test_start_uses_new_cgroups_zero_oom_baseline_without_extra_exec() -> None:
     assert backend.start(spec()) == CONTAINER_ID
     assert len(invoker.calls) == 2
     assert all(call[0][:2] != ("docker", "exec") for call in invoker.calls)
+
+
+def test_direct_container_session_reuses_prepared_read_only_container() -> None:
+    invoker = FakeInvoker([observation()])
+    direct_spec = SandboxSpec(
+        f"container:{CONTAINER_ID}",
+        ("python3", "/app/main.py"),
+        1000,
+    )
+    backend = DockerSessionBackend(invoker, lambda: TOKEN)
+
+    assert backend.start(direct_spec) == CONTAINER_ID
+    assert invoker.calls == []
+    assert backend.close(CONTAINER_ID)
+    assert invoker.calls[-1][0] == ("docker", "rm", "--force", CONTAINER_ID)
+
+
+def test_batch_session_decodes_each_execution_and_closes_container() -> None:
+    records = (
+        b"\n".join(
+            json.dumps(
+                {
+                    "stdout": base64.b64encode(value).decode(),
+                    "stderr": "",
+                    "exit_code": 0,
+                    "time_ms": 7,
+                    "timed_out": False,
+                    "oom_killed": False,
+                    "output_exceeded": False,
+                    "clean": True,
+                }
+            ).encode()
+            for value in (b"one\n", b"two\n")
+        )
+        + b"\n"
+    )
+    invoker = FakeInvoker([observation(records), observation()])
+    direct_spec = SandboxSpec(
+        f"container:{CONTAINER_ID}",
+        ("python3", "/app/main.py"),
+        1000,
+    )
+    backend = DockerSessionBackend(invoker, lambda: TOKEN)
+
+    executions = backend.run_cases_batch(
+        direct_spec,
+        [CaseInput(1, b"one"), CaseInput(2, b"two")],
+        1500,
+    )
+
+    assert [execution.stdout for execution in executions] == [b"one\n", b"two\n"]
+    assert invoker.calls[0][0][:8] == (
+        "docker",
+        "exec",
+        "--interactive",
+        "--user",
+        "65532:65532",
+        CONTAINER_ID,
+        "python3",
+        "-c",
+    )
+    assert invoker.calls[0][1] == b"b25l\ndHdv\n"
+    assert invoker.calls[0][2] == 13000
+    assert invoker.calls[1][0] == ("docker", "rm", "--force", CONTAINER_ID)
 
 
 def test_close_falls_back_to_label_and_forgets_only_after_removal() -> None:

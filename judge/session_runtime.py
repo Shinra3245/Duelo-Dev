@@ -6,7 +6,7 @@ frontera.
 """
 
 from math import ceil
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence, cast
 
 from judge.evaluation import CaseExecution
 from judge.limits import WALL_CLOCK_MARGIN
@@ -57,6 +57,19 @@ class DockerSubmissionRunner:
             raise ValueError("El artefacto debe coincidir con la imagen fijada del sandbox")
         if not cases or [case.ordinal for case in cases] != list(range(1, len(cases) + 1)):
             raise ValueError("Las entradas deben ser consecutivas y estar ordenadas")
+
+        supports_batch = getattr(self._backend, "supports_batch", None)
+        run_cases_batch = getattr(self._backend, "run_cases_batch", None)
+        if callable(supports_batch) and callable(run_cases_batch) and supports_batch(sandbox):
+            batch_runner = cast(
+                Callable[[SandboxSpec, Sequence[CaseInput], int], Sequence[CaseExecution]],
+                run_cases_batch,
+            )
+            return batch_runner(
+                sandbox,
+                cases,
+                ceil(sandbox.time_limit_ms * WALL_CLOCK_MARGIN),
+            )
 
         session_id: str | None = None
         completed = False

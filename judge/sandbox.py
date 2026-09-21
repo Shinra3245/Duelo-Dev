@@ -13,6 +13,13 @@ from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, MEMORY_LIMIT_MB, PIDS_LIMIT
 RUNNER_UID: Final[int] = 65532
 RUNNER_GID: Final[int] = 65532
 _LOCAL_DIGEST: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
+_CONTAINER_REFERENCE: Final[re.Pattern[str]] = re.compile(r"^container:([0-9a-f]{64})$")
+
+
+def container_id_from_reference(reference: str) -> str | None:
+    """Obtiene el ID de una sesión efímera preparada sin imagen intermedia."""
+    match = _CONTAINER_REFERENCE.fullmatch(reference)
+    return match.group(1) if match else None
 
 
 @dataclass(frozen=True)
@@ -27,7 +34,9 @@ class SandboxSpec:
 
     def __post_init__(self) -> None:
         if not self.image or (
-            "@sha256:" not in self.image and not _LOCAL_DIGEST.fullmatch(self.image)
+            "@sha256:" not in self.image
+            and not _LOCAL_DIGEST.fullmatch(self.image)
+            and container_id_from_reference(self.image) is None
         ):
             raise ValueError("La imagen del runner debe estar fijada por digest")
         if not self.command or any(not isinstance(part, str) or not part for part in self.command):

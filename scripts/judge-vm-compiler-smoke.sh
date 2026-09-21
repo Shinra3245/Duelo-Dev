@@ -28,7 +28,8 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p
 REMOTE_DIR_CREATED=1
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/case_store.py judge/compiler.py \
   judge/docker_compiler.py judge/evaluation.py judge/languages.py judge/limits.py \
-  judge/pipeline.py judge/runtime.py judge/sandbox.py judge/supervisor.py judge/verdicts.py \
+  judge/docker_session.py judge/pipeline.py judge/runtime.py judge/sandbox.py \
+  judge/session_runtime.py judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
@@ -48,10 +49,12 @@ import judge
 from judge.case_store import DirectoryCasesProvider
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, prepare_submission
 from judge.docker_compiler import DockerCompilationBackend
+from judge.docker_session import DockerSessionBackend
 from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
+from judge.session_runtime import DockerSubmissionRunner
 from judge.sandbox import SandboxSpec
-from judge.supervisor import JudgeCase, judge_cases
+from judge.supervisor import JudgeCase, judge_cases_in_session
 from judge.verdicts import Verdict
 
 assert Path(judge.__file__).resolve().parent == Path.cwd() / 'judge'
@@ -72,6 +75,7 @@ base_images = {
 invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES)
 backend = DockerCompilationBackend(invoker, base_images)
 runner = DockerCaseRunner(invoker)
+submission_runner = DockerSubmissionRunner(DockerSessionBackend(invoker))
 case_store = tempfile.TemporaryDirectory(prefix='duelodev-cases-')
 case_root = Path(case_store.name)
 case_directory = case_root / 'cases' / 'sum-one' / 'v1'
@@ -88,6 +92,7 @@ pipeline = JudgePipeline(
     runner,
     backend,
     lambda: int(time.time() * 1000),
+    submission_runner=submission_runner,
 )
 solutions = {
     'python': 'value = int(input())\nprint(value + 1)\n',
@@ -132,8 +137,8 @@ first_source = '# ' + marker + '\nprint(' + repr('first') + ')\n'
 first = prepare_submission(backend, 'python', first_source)
 assert first.succeeded and first.artifact is not None
 try:
-    first_result = judge_cases(
-        runner,
+    first_result = judge_cases_in_session(
+        submission_runner,
         first.artifact,
         SandboxSpec(first.artifact.reference, first.run_argv, 2000),
         [JudgeCase(1, b'', b'first\n')],
@@ -152,8 +157,8 @@ second = prepare_submission(backend, 'python', scanner_source)
 assert marker not in scanner_source
 assert second.succeeded and second.artifact is not None
 try:
-    second_result = judge_cases(
-        runner,
+    second_result = judge_cases_in_session(
+        submission_runner,
         second.artifact,
         SandboxSpec(second.artifact.reference, second.run_argv, 2000),
         [JudgeCase(1, b'', b'isolated\n')],

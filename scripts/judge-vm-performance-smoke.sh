@@ -237,6 +237,24 @@ with tempfile.TemporaryDirectory(prefix="duelodev-performance-cases-") as case_r
                     def close(self, session_id):
                         return self._measure("close", self._backend.close, session_id)
 
+                    def supports_batch(self, sandbox):
+                        return self._backend.supports_batch(sandbox)
+
+                    def run_cases_batch(self, sandbox, cases, timeout_ms):
+                        result = self._measure(
+                            "batch",
+                            self._backend.run_cases_batch,
+                            sandbox,
+                            cases,
+                            timeout_ms,
+                        )
+                        phase.setdefault("session_start_docker_ms", 0)
+                        phase["session_case_docker_ms"] = phase.get(
+                            "session_case_docker_ms", 0
+                        ) + phase["session_batch_docker_ms"]
+                        phase.setdefault("session_close_docker_ms", 0)
+                        return result
+
                 result = DockerSubmissionRunner(
                     TimedSessionBackend(DockerSessionBackend(invoker))
                 ).run_cases(artifact, sandbox, cases)
@@ -347,6 +365,12 @@ summary = {
     ),
     "session_case_docker_p95_ms": percentile(
         [item["session_case_docker_ms"] for item in measurements], 0.95
+    ),
+    "session_batch_docker_p50_ms": percentile(
+        [item.get("session_batch_docker_ms", 0) for item in measurements], 0.50
+    ),
+    "session_batch_docker_p95_ms": percentile(
+        [item.get("session_batch_docker_ms", 0) for item in measurements], 0.95
     ),
     "session_close_docker_p50_ms": percentile(
         [item["session_close_docker_ms"] for item in measurements], 0.50

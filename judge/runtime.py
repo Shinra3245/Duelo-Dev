@@ -18,7 +18,7 @@ from uuid import uuid4
 from judge.capture import BoundedCapture
 from judge.evaluation import CaseExecution
 from judge.limits import BOX_TMPFS_MB, CPU_LIMIT, OUTPUT_LIMIT_BYTES, WALL_CLOCK_MARGIN
-from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec
+from judge.sandbox import RUNNER_GID, RUNNER_UID, SandboxSpec, container_id_from_reference
 from judge.supervisor import CompiledArtifact
 
 
@@ -267,6 +267,8 @@ class DockerCaseRunner:
     ) -> CaseExecution:
         if artifact.reference != sandbox.image:
             raise ValueError("El artefacto debe coincidir con la imagen fijada del sandbox")
+        if container_id_from_reference(sandbox.image) is not None:
+            raise ValueError("Una sesión directa requiere DockerSubmissionRunner")
         observation = self._invoker.invoke(
             docker_run_argv(sandbox), stdin, ceil(sandbox.time_limit_ms * WALL_CLOCK_MARGIN)
         )

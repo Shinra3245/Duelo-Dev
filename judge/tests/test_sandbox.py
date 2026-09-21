@@ -32,6 +32,7 @@ def test_docker_options_are_closed_and_derived_from_limits() -> None:
 
 def test_local_content_digest_is_accepted_but_a_mutable_tag_is_not() -> None:
     SandboxSpec("sha256:" + "a" * 64, ("/app/run",), 1000)
+    SandboxSpec("container:" + "b" * 64, ("/app/run",), 1000)
     with pytest.raises(ValueError):
         SandboxSpec("runner:latest", ("/app/run",), 1000)
 

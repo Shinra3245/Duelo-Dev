@@ -14,8 +14,10 @@ from judge.docker_compiler import (
     DockerCompilationBackend,
     _artifact_archive,
     artifact_commit_argv,
+    artifact_copy_to_running_session_argv,
     artifact_copy_argv,
     artifact_staging_create_argv,
+    artifact_staging_start_argv,
     compile_container_argv,
 )
 from judge.limits import Language
@@ -105,7 +107,6 @@ def test_python_packs_without_compilation_and_cpp_output_is_executable(tmp_path:
         [
             observation((CONTAINER_ID + "\n").encode()),
             observation(),
-            observation((ARTIFACT_ID + "\n").encode()),
             observation(),
         ]
     )
@@ -114,14 +115,16 @@ def test_python_packs_without_compilation_and_cpp_output_is_executable(tmp_path:
         compilation_request("python", "print('ok')")
     )
 
-    assert result.artifact_reference == ARTIFACT_ID
-    assert len(invoker.calls) == 4
+    assert result.artifact_reference == f"container:{CONTAINER_ID}"
+    assert len(invoker.calls) == 3
     assert invoker.calls[0][0][:2] == ("docker", "create")
-    with tarfile.open(fileobj=BytesIO(invoker.calls[1][1])) as archive:
+    assert invoker.calls[1][0] == artifact_staging_start_argv(CONTAINER_ID)
+    with tarfile.open(fileobj=BytesIO(invoker.calls[2][1])) as archive:
         source = archive.getmember("app/main.py")
         assert source.mode == 0o444
         source_file = archive.extractfile(source)
         assert source_file is not None and source_file.read() == b"print('ok')"
+    assert invoker.calls[2][0] == artifact_copy_to_running_session_argv(CONTAINER_ID)
 
     app = tmp_path / "app"
     out = tmp_path / "out"
@@ -188,7 +191,7 @@ def test_docker_compile_failures_are_system_errors(exit_code: int) -> None:
 
 
 def test_failed_staging_create_is_cleaned_by_its_unique_label() -> None:
-    invoker = FakeInvoker([observation(exit_code=125), observation(), observation()])
+    invoker = FakeInvoker([observation(exit_code=125), observation()])
 
     result = DockerCompilationBackend(invoker, BASE_IMAGES).prepare(
         compilation_request("python", "print('ok')")
@@ -202,35 +205,15 @@ def test_failed_staging_create_is_cleaned_by_its_unique_label() -> None:
         "--quiet",
         "--filter",
     )
-    assert invoker.calls[2][0][:4] == ("docker", "image", "rm", "--force")
+    assert len(invoker.calls) == 2
 
 
 def test_copy_failure_removes_staging_container_and_artifact_tag() -> None:
     invoker = FakeInvoker(
         [
             observation((CONTAINER_ID + "\n").encode()),
-            observation(exit_code=1),
-            observation(),
-            observation(),
-        ]
-    )
-
-    result = DockerCompilationBackend(invoker, BASE_IMAGES).prepare(
-        compilation_request("python", "print('ok')")
-    )
-
-    assert result.system_error
-    assert invoker.calls[2][0] == ("docker", "rm", "--force", CONTAINER_ID)
-    assert invoker.calls[3][0][:4] == ("docker", "image", "rm", "--force")
-
-
-def test_commit_failure_cleans_container_and_tag() -> None:
-    invoker = FakeInvoker(
-        [
-            observation((CONTAINER_ID + "\n").encode()),
             observation(),
             observation(exit_code=1),
-            observation(),
             observation(),
         ]
     )
@@ -241,7 +224,36 @@ def test_commit_failure_cleans_container_and_tag() -> None:
 
     assert result.system_error
     assert invoker.calls[3][0] == ("docker", "rm", "--force", CONTAINER_ID)
-    assert invoker.calls[4][0][:4] == ("docker", "image", "rm", "--force")
+
+
+def test_commit_failure_cleans_container_and_tag() -> None:
+    invoker = FakeInvoker(
+        [
+            observation(),
+            observation((CONTAINER_ID + "\n").encode()),
+            observation(),
+            observation(exit_code=1),
+            observation(),
+            observation(),
+        ]
+    )
+
+    result = DockerCompilationBackend(invoker, BASE_IMAGES).prepare(
+        compilation_request("cpp", "int main(){}")
+    )
+
+    assert result.system_error
+    assert invoker.calls[4][0] == ("docker", "rm", "--force", CONTAINER_ID)
+    assert invoker.calls[5][0][:4] == ("docker", "image", "rm", "--force")
+
+
+def test_direct_container_cleanup_is_idempotent_after_session_close() -> None:
+    invoker = FakeInvoker([observation(exit_code=1), observation()])
+    backend = DockerCompilationBackend(invoker, BASE_IMAGES)
+
+    assert backend.cleanup(f"container:{CONTAINER_ID}")
+    assert invoker.calls[0][0] == ("docker", "rm", "--force", CONTAINER_ID)
+    assert invoker.calls[1][0][-1] == f"id={CONTAINER_ID}"
 
 
 def test_cleanup_only_accepts_local_digest() -> None:
@@ -272,6 +284,11 @@ def test_command_builders_reject_untrusted_identifiers_and_keep_fixed_inputs() -
     assert compile_argv[-len(request.compile_argv or ()) :] == request.compile_argv
     assert "--network" in compile_argv and "none" in compile_argv
     assert artifact_staging_create_argv(BASE_IMAGES["cpp"], "a" * 32)[-1] == BASE_IMAGES["cpp"]
+    direct_argv = artifact_staging_create_argv(BASE_IMAGES["python"], "a" * 32, direct_session=True)
+    assert "--read-only" in direct_argv
+    assert "--network" in direct_argv and "none" in direct_argv
+    assert artifact_staging_start_argv(CONTAINER_ID) == ("docker", "start", CONTAINER_ID)
+    assert artifact_copy_to_running_session_argv(CONTAINER_ID)[:2] == ("docker", "exec")
     assert artifact_copy_argv(CONTAINER_ID) == (
         "docker",
         "cp",

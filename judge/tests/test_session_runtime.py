@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from judge.evaluation import CaseExecution
 from judge.runtime import RuntimeObservation
 from judge.sandbox import SandboxSpec
 from judge.session_runtime import DockerSubmissionRunner
@@ -53,6 +54,18 @@ class FakeBackend:
         return self.close_results.pop(0) if self.close_results else True
 
 
+class BatchBackend(FakeBackend):
+    def supports_batch(self, sandbox: SandboxSpec) -> bool:
+        self.calls.append(("supports_batch", sandbox.image))
+        return True
+
+    def run_cases_batch(
+        self, sandbox: SandboxSpec, cases: list[CaseInput], timeout_ms: int
+    ) -> list[CaseExecution]:
+        self.calls.append(("run_cases_batch", sandbox.image, cases, timeout_ms))
+        return [CaseExecution(case.ordinal, b"batch", b"", 0, 3) for case in cases]
+
+
 def spec() -> SandboxSpec:
     return SandboxSpec("sha256:" + "a" * 64, ("python3", "/app/main.py"), 1000)
 
@@ -75,6 +88,23 @@ def test_reuses_a_clean_session_and_closes_it() -> None:
         ("reset", "session-1"),
         ("execute", "session-1", spec().command, b"input-two", 1500),
         ("close", "session-1"),
+    ]
+
+
+def test_uses_batch_backend_when_available() -> None:
+    direct_spec = SandboxSpec("container:" + "a" * 64, ("python3", "/app/main.py"), 1000)
+    backend = BatchBackend([])
+
+    executions = DockerSubmissionRunner(backend).run_cases(
+        CompiledArtifact(direct_spec.image),
+        direct_spec,
+        [CaseInput(1, b"one"), CaseInput(2, b"two")],
+    )
+
+    assert [execution.stdout for execution in executions] == [b"batch", b"batch"]
+    assert backend.calls == [
+        ("supports_batch", direct_spec.image),
+        ("run_cases_batch", direct_spec.image, [CaseInput(1, b"one"), CaseInput(2, b"two")], 1500),
     ]
 
 
