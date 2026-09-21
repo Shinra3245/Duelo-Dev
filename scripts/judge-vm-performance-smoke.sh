@@ -7,7 +7,12 @@ set -euo pipefail
 readonly VM_USER="${JUDGE_VM_USER:-judge}"
 readonly VM_HOST="${JUDGE_VM_HOST:-127.0.0.1}"
 readonly VM_PORT="${JUDGE_VM_PORT:-2222}"
-readonly REMOTE_DIR="${JUDGE_VM_PERF_REMOTE_DIR:-/home/judge/duelodev-performance-smoke}"
+PERF_SUFFIX="${JUDGE_VM_PERF_SUFFIX:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+if [[ ! "$PERF_SUFFIX" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$ ]]; then
+  printf 'Error: JUDGE_VM_PERF_SUFFIX debe tener hasta 48 caracteres seguros.\n' >&2
+  exit 2
+fi
+readonly REMOTE_DIR="${JUDGE_VM_PERF_REMOTE_DIR:-/home/judge/duelodev-performance-${PERF_SUFFIX}}"
 readonly LANGUAGE="${JUDGE_PERF_LANGUAGE:-python}"
 readonly SAMPLES="${JUDGE_PERF_SAMPLES:-100}"
 readonly WARMUP="${JUDGE_PERF_WARMUP:-10}"
@@ -41,6 +46,14 @@ ssh_base=(
   -p "$VM_PORT"
   "${VM_USER}@${VM_HOST}"
 )
+REMOTE_DIR_CREATED=0
+
+cleanup() {
+  if [[ "$REMOTE_DIR_CREATED" == 1 ]]; then
+    "${ssh_base[@]}" "rm -rf -- ${remote_dir_quoted}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
 if ! command -v VBoxManage >/dev/null 2>&1; then
   printf 'Error: VBoxManage no está disponible.\n' >&2
@@ -70,9 +83,11 @@ for attempt in $(seq 1 120); do
   sleep 1
 done
 
-"${ssh_base[@]}" "rm -rf -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases; mkdir -p -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases"
+"${ssh_base[@]}" \
+  "set -euo pipefail; test ! -e ${remote_dir_quoted} && test ! -L ${remote_dir_quoted}; mkdir -- ${remote_dir_quoted}; if ! mkdir -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases; then rmdir -- ${remote_dir_quoted}/judge ${remote_dir_quoted}/cases ${remote_dir_quoted} 2>/dev/null || true; exit 1; fi"
+REMOTE_DIR_CREATED=1
 scp -P "$VM_PORT" \
-  judge/__init__.py judge/case_store.py judge/compiler.py judge/docker_compiler.py \
+  judge/__init__.py judge/capture.py judge/case_store.py judge/compiler.py judge/docker_compiler.py \
   judge/evaluation.py judge/languages.py judge/limits.py judge/docker_session.py \
   judge/pipeline.py judge/runtime.py judge/sandbox.py judge/session_runtime.py \
   judge/supervisor.py judge/verdicts.py \
@@ -83,6 +98,7 @@ tar -C problems -czf - cases | "${ssh_base[@]}" "tar -xzf - -C ${remote_dir_quot
 "${ssh_base[@]}" \
   "REMOTE_DIR=${remote_dir_quoted} LANGUAGE=${LANGUAGE} SAMPLES=${SAMPLES} WARMUP=${WARMUP} WORKERS=${WORKERS} PERF_BURST_SIZE=${BURST_SIZE} bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
+cd "$REMOTE_DIR"
 
 docker pull python:3.12-slim-bookworm >/dev/null
 docker pull gcc:14-bookworm >/dev/null
@@ -105,6 +121,7 @@ import subprocess
 import tempfile
 from time import monotonic, time
 
+import judge
 from judge.case_store import DirectoryCasesProvider
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES
 from judge.docker_compiler import DockerCompilationBackend
@@ -113,6 +130,10 @@ from judge.pipeline import JudgeJob, JudgePipeline
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
 from judge.session_runtime import DockerSubmissionRunner
 from judge.verdicts import Verdict
+
+expected_package = Path(os.environ["REMOTE_DIR"]).resolve() / "judge"
+if Path(judge.__file__).resolve().parent != expected_package:
+    raise RuntimeError("El benchmark importó judge desde una ruta distinta a su directorio aislado")
 
 
 def percentile(values, fraction):
@@ -194,6 +215,16 @@ with tempfile.TemporaryDirectory(prefix="duelodev-performance-cases-") as case_r
                         return self._measure(
                             "execute",
                             self._backend.execute,
+                            session_id,
+                            command,
+                            stdin,
+                            timeout_ms,
+                        )
+
+                    def execute_and_reset(self, session_id, command, stdin, timeout_ms):
+                        return self._measure(
+                            "case",
+                            self._backend.execute_and_reset,
                             session_id,
                             command,
                             stdin,
@@ -311,17 +342,11 @@ summary = {
     "session_start_docker_p95_ms": percentile(
         [item["session_start_docker_ms"] for item in measurements], 0.95
     ),
-    "session_execute_docker_p50_ms": percentile(
-        [item["session_execute_docker_ms"] for item in measurements], 0.50
+    "session_case_docker_p50_ms": percentile(
+        [item["session_case_docker_ms"] for item in measurements], 0.50
     ),
-    "session_execute_docker_p95_ms": percentile(
-        [item["session_execute_docker_ms"] for item in measurements], 0.95
-    ),
-    "session_reset_docker_p50_ms": percentile(
-        [item["session_reset_docker_ms"] for item in measurements], 0.50
-    ),
-    "session_reset_docker_p95_ms": percentile(
-        [item["session_reset_docker_ms"] for item in measurements], 0.95
+    "session_case_docker_p95_ms": percentile(
+        [item["session_case_docker_ms"] for item in measurements], 0.95
     ),
     "session_close_docker_p50_ms": percentile(
         [item["session_close_docker_ms"] for item in measurements], 0.50

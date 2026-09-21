@@ -17,6 +17,38 @@ _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[0-9a-f]{32}$")
 _RESOURCE_OWNER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _KEEPALIVE = "while :; do sleep 3600; done"
+_EXECUTE_AND_RESET = (
+    'exec 3<&0; "$@" <&3 3<&- & child=$!; wait "$child"; result=$?; '
+    "attempt=0; sleeper=; "
+    'while [ "$attempt" -lt 20 ]; do '
+    "found=0; "
+    "for status in /proc/[0-9]*/status; do "
+    '[ -r "$status" ] || continue; uid=; '
+    "while read key value rest; do "
+    '[ "$key" = "Uid:" ] && { uid=$value; break; }; '
+    'done < "$status"; '
+    f'[ "$uid" = "{RUNNER_UID}" ] && '
+    '[ "${status#/proc/}" != "$$/status" ] && '
+    '[ "${status#/proc/}" != "${sleeper}/status" ] && '
+    '{ pid=${status#/proc/}; pid=${pid%/status}; kill -KILL "$pid" 2>/dev/null || true; found=1; }; '
+    "done; "
+    '[ "$found" -eq 0 ] && break; '
+    "attempt=$((attempt + 1)); sleep 0.01 & sleeper=$!; done; "
+    '[ -n "$sleeper" ] && wait "$sleeper" 2>/dev/null || true; '
+    "clean=1; "
+    "for status in /proc/[0-9]*/status; do "
+    '[ -r "$status" ] || continue; uid=; '
+    "while read key value rest; do "
+    '[ "$key" = "Uid:" ] && { uid=$value; break; }; '
+    'done < "$status"; '
+    f'[ "$uid" = "{RUNNER_UID}" ] && '
+    '[ "${status#/proc/}" != "$$/status" ] && clean=0; '
+    "done; "
+    "rm -rf /tmp/..?* /tmp/.[!.]* /tmp/* 2>/dev/null || clean=0; "
+    'if [ "$clean" -eq 1 ]; then '
+    'case "$result" in 0) exit 255;; 137) exit 253;; *) exit 254;; esac; '
+    'else case "$result" in 0) exit 252;; 137) exit 250;; *) exit 251;; esac; fi'
+)
 _OOM_COUNT = (
     "while read key value; do "
     '[ "$key" = "oom_kill" ] && { printf "%s\\n" "$value"; exit 0; }; '
@@ -121,6 +153,78 @@ class DockerSessionBackend:
             stdin,
             timeout_ms,
         )
+        return self._track_oom(session_id, session, before_oom, observation)
+
+    def execute_and_reset(
+        self,
+        session_id: str,
+        command: tuple[str, ...],
+        stdin: bytes,
+        timeout_ms: int,
+    ) -> tuple[RuntimeObservation, bool]:
+        """Ejecuta sin privilegios y evita otra llamada Docker si prueba la limpieza."""
+        session = self._known(session_id)
+        before_oom = session.oom_count
+        observation = self._invoker.invoke(
+            (
+                "docker",
+                "exec",
+                "--interactive",
+                "--user",
+                f"{RUNNER_UID}:{RUNNER_GID}",
+                session_id,
+                "/bin/sh",
+                "-c",
+                _EXECUTE_AND_RESET,
+                "duelodev-session",
+                *command,
+            ),
+            stdin,
+            timeout_ms,
+        )
+        mapped_exit_code = {250: 137, 251: 1, 252: 0, 253: 137, 254: 1, 255: 0}.get(
+            observation.exit_code
+        )
+        cleanup_proven = (
+            observation.exit_code in {253, 254, 255}
+            and not observation.timed_out
+            and not observation.output_exceeded
+            and not observation.system_error
+        )
+        if cleanup_proven:
+            assert mapped_exit_code is not None
+            completed = RuntimeObservation(
+                observation.stdout,
+                observation.stderr,
+                mapped_exit_code,
+                observation.time_ms,
+                oom_killed=observation.oom_killed,
+            )
+            return self._track_oom(session_id, session, before_oom, completed), True
+
+        # Timeout, salida excesiva o intento de matar al controlador: el borrado
+        # privilegiado existente sigue siendo la barrera de recuperación.
+        if mapped_exit_code is not None:
+            observation = RuntimeObservation(
+                observation.stdout,
+                observation.stderr,
+                mapped_exit_code,
+                observation.time_ms,
+                timed_out=observation.timed_out,
+                oom_killed=observation.oom_killed,
+                output_exceeded=observation.output_exceeded,
+                system_error=observation.system_error,
+            )
+        completed = self._track_oom(session_id, session, before_oom, observation)
+        return completed, self.reset(session_id)
+
+    def _track_oom(
+        self,
+        session_id: str,
+        session: _Session,
+        before_oom: int,
+        observation: RuntimeObservation,
+    ) -> RuntimeObservation:
         oom_killed = observation.oom_killed
         if observation.exit_code == 137 and not observation.timed_out:
             after_oom = self._read_oom_count(session_id)
@@ -130,6 +234,8 @@ class DockerSessionBackend:
                     observation.stderr,
                     observation.exit_code,
                     observation.time_ms,
+                    timed_out=observation.timed_out,
+                    output_exceeded=observation.output_exceeded,
                     system_error=True,
                 )
             oom_killed = after_oom > before_oom

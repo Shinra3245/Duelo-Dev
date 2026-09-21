@@ -106,13 +106,16 @@ for attempt in $(seq 1 30); do
 done
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
-  "set -euo pipefail; \
+  "set -euo pipefail; cd '${REMOTE_DIR}'; \
 PYTHONPATH='${REMOTE_DIR}' '${REMOTE_DIR}/.venv/bin/python' - <<'PY'
 import json
 from pathlib import Path
 from time import sleep
 
+import judge
 import psycopg
+
+assert Path(judge.__file__).resolve().parent == Path.cwd() / 'judge'
 
 
 root = Path('${REMOTE_DIR}')

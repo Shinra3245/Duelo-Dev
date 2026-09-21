@@ -37,13 +37,14 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" 
    docker pull eclipse-temurin:21-jdk-jammy"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
-  "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
+  "cd '${REMOTE_DIR}' && PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
 import subprocess
 import time
 import json
 from pathlib import Path
 import tempfile
 
+import judge
 from judge.case_store import DirectoryCasesProvider
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, prepare_submission
 from judge.docker_compiler import DockerCompilationBackend
@@ -52,6 +53,8 @@ from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
 from judge.sandbox import SandboxSpec
 from judge.supervisor import JudgeCase, judge_cases
 from judge.verdicts import Verdict
+
+assert Path(judge.__file__).resolve().parent == Path.cwd() / 'judge'
 
 
 def repo_digest(tag):

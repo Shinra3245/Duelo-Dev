@@ -38,6 +38,16 @@ class FakeBackend:
         self.calls.append(("reset", session_id))
         return self.reset_results.pop(0) if self.reset_results else True
 
+    def execute_and_reset(
+        self,
+        session_id: str,
+        command: tuple[str, ...],
+        stdin: bytes,
+        timeout_ms: int,
+    ) -> tuple[RuntimeObservation, bool]:
+        observation = self.execute(session_id, command, stdin, timeout_ms)
+        return observation, self.reset(session_id)
+
     def close(self, session_id: str) -> bool:
         self.calls.append(("close", session_id))
         return self.close_results.pop(0) if self.close_results else True

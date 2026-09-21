@@ -28,6 +28,14 @@ class SessionBackend(Protocol):
         timeout_ms: int,
     ) -> RuntimeObservation: ...
 
+    def execute_and_reset(
+        self,
+        session_id: str,
+        command: tuple[str, ...],
+        stdin: bytes,
+        timeout_ms: int,
+    ) -> tuple[RuntimeObservation, bool]: ...
+
     def reset(self, session_id: str) -> bool: ...
 
     def close(self, session_id: str) -> bool: ...
@@ -59,15 +67,19 @@ class DockerSubmissionRunner:
                     session_id = self._backend.start(sandbox)
                     if not session_id:
                         raise RuntimeError("El backend no devolvió una sesión")
-                observation = self._backend.execute(
-                    session_id,
-                    sandbox.command,
-                    case.stdin,
-                    ceil(sandbox.time_limit_ms * WALL_CLOCK_MARGIN),
-                )
+                timeout_ms = ceil(sandbox.time_limit_ms * WALL_CLOCK_MARGIN)
+                if index < len(cases) - 1:
+                    observation, clean = self._backend.execute_and_reset(
+                        session_id, sandbox.command, case.stdin, timeout_ms
+                    )
+                else:
+                    observation = self._backend.execute(
+                        session_id, sandbox.command, case.stdin, timeout_ms
+                    )
+                    clean = True
                 executions.append(_case_execution(case.ordinal, observation))
 
-                if index < len(cases) - 1 and not self._backend.reset(session_id):
+                if index < len(cases) - 1 and not clean:
                     closed = self._backend.close(session_id)
                     session_id = None
                     if not closed:

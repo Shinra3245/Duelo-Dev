@@ -6,25 +6,46 @@ set -euo pipefail
 readonly VM_USER="judge"
 readonly VM_HOST="127.0.0.1"
 readonly VM_PORT="2222"
-readonly REMOTE_SUFFIX="${JUDGE_VM_SESSION_SUFFIX:-smoke}"
-if [[ ! "$REMOTE_SUFFIX" =~ ^[a-zA-Z0-9_-]{1,40}$ ]]; then
-  printf 'Error: JUDGE_VM_SESSION_SUFFIX sólo admite letras, números, guion y guion bajo.\n' >&2
-  exit 1
+REMOTE_SUFFIX="${JUDGE_VM_SESSION_SUFFIX:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+if [[ ! "$REMOTE_SUFFIX" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$ ]]; then
+  printf 'Error: JUDGE_VM_SESSION_SUFFIX debe tener hasta 48 caracteres seguros.\n' >&2
+  exit 2
 fi
 readonly REMOTE_DIR="/home/judge/duelodev-session-${REMOTE_SUFFIX}"
+REMOTE_DIR_CREATED=0
+
+cleanup() {
+  if [[ "$REMOTE_DIR_CREATED" == 1 ]]; then
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" \
+      "${VM_USER}@${VM_HOST}" "rm -rf -- '${REMOTE_DIR}'" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -p "$VM_PORT" \
-  "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/judge'"
+  "${VM_USER}@${VM_HOST}" \
+  "mkdir '${REMOTE_DIR}' || exit 1; if ! mkdir '${REMOTE_DIR}/judge'; then rmdir '${REMOTE_DIR}' || true; exit 1; fi"
+REMOTE_DIR_CREATED=1
 scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/compiler.py judge/docker_compiler.py \
   judge/docker_session.py judge/evaluation.py judge/languages.py judge/limits.py judge/runtime.py \
   judge/sandbox.py judge/session_runtime.py judge/supervisor.py judge/verdicts.py \
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
-  "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
+  "docker pull python:3.12-slim-bookworm >/dev/null"
+
+readonly RESOURCE_OWNER="session-smoke-${REMOTE_SUFFIX}"
+ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
+  "test -z \$(docker ps --all --quiet --filter label=duelodev.judge.worker=${RESOURCE_OWNER}) && test -z \$(docker image ls --quiet --filter label=duelodev.judge.worker=${RESOURCE_OWNER})"
+
+ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
+  "cd '${REMOTE_DIR}' && REMOTE_DIR='${REMOTE_DIR}' REMOTE_SUFFIX='${REMOTE_SUFFIX}' PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
+import os
 import json
 import subprocess
+from pathlib import Path
 
+import judge
 from judge.compiler import MAX_COMPILE_OUTPUT_BYTES, prepare_submission
 from judge.docker_compiler import DockerCompilationBackend
 from judge.docker_session import DockerSessionBackend
@@ -34,6 +55,9 @@ from judge.sandbox import SandboxSpec
 from judge.session_runtime import DockerSubmissionRunner
 from judge.supervisor import CaseInput
 from judge.verdicts import Verdict
+
+expected_package = Path(os.environ['REMOTE_DIR']).resolve() / 'judge'
+assert Path(judge.__file__).resolve().parent == expected_package
 
 
 source = r'''
@@ -72,6 +96,7 @@ if mode == 'dirty':
 elif mode == 'check':
     assert not Path('/tmp/locked').exists()
     own = 0
+    trusted_pids = {os.getpid(), os.getppid()}
     for status_path in Path('/proc').glob('[0-9]*/status'):
         try:
             uid_line = next(
@@ -79,9 +104,10 @@ elif mode == 'check':
             )
         except (OSError, StopIteration):
             continue
-        if int(uid_line.split()[1]) == os.getuid():
+        pid = int(status_path.parent.name)
+        if int(uid_line.split()[1]) == os.getuid() and pid not in trusted_pids:
             own += 1
-    assert own == 1, own
+    assert own == 0, own
     print('clean')
 elif mode == 'tle':
     while True:
@@ -103,9 +129,11 @@ base_image = subprocess.check_output(
     text=True,
 ).strip()
 invoker = SubprocessDockerInvoker(MAX_COMPILE_OUTPUT_BYTES)
+resource_owner = 'session-smoke-' + os.environ['REMOTE_SUFFIX']
 compiler = DockerCompilationBackend(
     invoker,
     {'python': base_image, 'cpp': base_image, 'java': base_image},
+    resource_owner,
 )
 prepared = prepare_submission(compiler, 'python', source)
 assert prepared.succeeded and prepared.artifact is not None, prepared
@@ -135,7 +163,9 @@ try:
         Verdict.MLE,
         Verdict.AC,
     ]
-    executions = DockerSubmissionRunner(DockerSessionBackend(invoker)).run_cases(
+    executions = DockerSubmissionRunner(
+        DockerSessionBackend(invoker, resource_owner=resource_owner)
+    ).run_cases(
         prepared.artifact, sandbox, inputs
     )
     results = [
@@ -153,7 +183,24 @@ finally:
     assert compiler.cleanup(prepared.artifact.reference)
 
 leftovers = subprocess.check_output(
-    ['docker', 'ps', '--all', '--quiet', '--filter', 'label=duelodev.judge.session'], text=True
+    [
+        'docker',
+        'ps',
+        '--all',
+        '--quiet',
+        '--filter', f'label=duelodev.judge.worker={resource_owner}',
+    ],
+    text=True,
 ).split()
-assert not leftovers, leftovers
+artifact_leftovers = subprocess.check_output(
+    [
+        'docker',
+        'image',
+        'ls',
+        '--quiet',
+        '--filter', f'label=duelodev.judge.worker={resource_owner}',
+    ],
+    text=True,
+).split()
+assert not leftovers and not artifact_leftovers, (leftovers, artifact_leftovers)
 PY"

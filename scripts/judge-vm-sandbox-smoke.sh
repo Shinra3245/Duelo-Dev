@@ -31,15 +31,19 @@ scp -P "$VM_PORT" judge/__init__.py judge/capture.py judge/evaluation.py judge/l
   "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/judge/"
 
 ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$VM_PORT" "${VM_USER}@${VM_HOST}" \
-  "PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
+  "cd '${REMOTE_DIR}' && PYTHONPATH='${REMOTE_DIR}' python3 - <<'PY'
 import os
 import subprocess
+from pathlib import Path
 
+import judge
 from judge.evaluation import evaluate_case
 from judge.runtime import DockerCaseRunner, SubprocessDockerInvoker
 from judge.sandbox import SandboxSpec
 from judge.supervisor import CompiledArtifact
 from judge.verdicts import Verdict
+
+assert Path(judge.__file__).resolve().parent == Path.cwd() / 'judge'
 
 image = subprocess.check_output(
     ['docker', 'image', 'inspect', 'alpine:3.20', '--format', '{{.Id}}'], text=True

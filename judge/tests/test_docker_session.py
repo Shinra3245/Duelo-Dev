@@ -82,6 +82,111 @@ def test_execute_uses_unprivileged_uid_and_forwards_only_stdin() -> None:
     assert execution[2] == 1500
 
 
+def test_execute_and_reset_proves_clean_exit_without_root_reset() -> None:
+    backend, invoker = started_backend(observation(b"answer\n", 255))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"private-input", 1500)
+
+    assert clean
+    assert result.stdout == b"answer\n"
+    assert result.exit_code == 0
+    assert len(invoker.calls) == 3
+    argv, stdin, timeout_ms = invoker.calls[-1]
+    assert argv[:6] == (
+        "docker",
+        "exec",
+        "--interactive",
+        "--user",
+        "65532:65532",
+        CONTAINER_ID,
+    )
+    assert argv[6:8] == ("/bin/sh", "-c")
+    assert '"$@"' in argv[8]
+    assert "<&3 3<&-" in argv[8]
+    assert argv[9:12] == ("duelodev-session", *spec().command)
+    assert stdin == b"private-input"
+    assert timeout_ms == 1500
+
+
+def test_execute_and_reset_maps_nonzero_exit_without_confusing_cleanup() -> None:
+    backend, _ = started_backend(observation(b"diagnostic", 254))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 1
+    assert result.stdout == b"diagnostic"
+
+
+def test_execute_and_reset_attributes_clean_oom_exit() -> None:
+    backend, _ = started_backend(observation(exit_code=253), observation(b"1\n"))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 137
+    assert result.oom_killed
+
+
+def test_execute_and_reset_preserves_oom_when_root_fallback_is_needed() -> None:
+    backend, _ = started_backend(
+        observation(exit_code=250), observation(b"1\n"), observation(b"clean 1\n")
+    )
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 137
+    assert result.oom_killed
+
+
+def test_execute_and_reset_falls_back_to_root_for_unproven_cleanup() -> None:
+    backend, invoker = started_backend(observation(b"partial", 143), observation(b"clean 0\n"))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 143
+    assert invoker.calls[-1][0][:6] == (
+        "docker",
+        "exec",
+        "--user",
+        "0:0",
+        CONTAINER_ID,
+        "/bin/sh",
+    )
+
+
+def test_execute_and_reset_preserves_success_after_root_fallback() -> None:
+    backend, _ = started_backend(observation(exit_code=252), observation(b"clean 0\n"))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 0
+
+
+def test_execute_and_reset_preserves_nonzero_after_root_fallback() -> None:
+    backend, _ = started_backend(observation(exit_code=251), observation(b"clean 0\n"))
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 1
+
+
+def test_execute_and_reset_tracks_oom_when_root_fallback_is_needed() -> None:
+    backend, _ = started_backend(
+        observation(exit_code=250), observation(b"1\n"), observation(b"clean 1\n")
+    )
+
+    result, clean = backend.execute_and_reset(CONTAINER_ID, spec().command, b"", 1500)
+
+    assert clean
+    assert result.exit_code == 137
+    assert result.oom_killed
+
+
 def test_oom_is_attributed_from_cgroup_counter() -> None:
     backend, _ = started_backend(observation(exit_code=137), observation(b"1\n"))
 
