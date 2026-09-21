@@ -84,13 +84,6 @@ tar -C problems -czf - cases | "${ssh_base[@]}" "tar -xzf - -C ${remote_dir_quot
   "REMOTE_DIR=${remote_dir_quoted} LANGUAGE=${LANGUAGE} SAMPLES=${SAMPLES} WARMUP=${WARMUP} WORKERS=${WORKERS} PERF_BURST_SIZE=${BURST_SIZE} bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
-if [[ "${LANGUAGE}" == python ]]; then
-  docker pull python:3.12-slim-bookworm >/dev/null
-elif [[ "${LANGUAGE}" == cpp ]]; then
-  docker pull gcc:14-bookworm >/dev/null
-else
-  docker pull eclipse-temurin:21-jdk-jammy >/dev/null
-fi
 docker pull python:3.12-slim-bookworm >/dev/null
 docker pull gcc:14-bookworm >/dev/null
 docker pull eclipse-temurin:21-jdk-jammy >/dev/null
