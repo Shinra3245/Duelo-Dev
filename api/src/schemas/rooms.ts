@@ -1,5 +1,6 @@
 import {
   ACTIVE_PROBLEM_CATEGORIES,
+  MAX_MATCH_DURATION_S,
   MAX_ACTIVE_PROBLEMS,
   SUPPORTED_PLAYER_COUNTS,
   isMatchConfig,
@@ -38,7 +39,7 @@ export const createRoomRequestSchema = {
         // Puntos
         time_per_problem_s: { type: 'integer', minimum: 1 },
         // Rondas
-        match_duration_s: { type: 'integer', minimum: 1 },
+        match_duration_s: { type: 'integer', minimum: 1, maximum: MAX_MATCH_DURATION_S },
         num_problems: { type: 'integer', minimum: 1, maximum: MAX_ACTIVE_PROBLEMS },
         target: { type: 'integer', enum: [3, 6, 9, 10] },
       },
@@ -102,6 +103,14 @@ export function validateCreateRoomRequest(input: unknown): ValidationResult<Crea
       message:
         'Solo se pueden seleccionar las dificultades Junior (Fácil), Semi-senior (Medio) y Senior (Difícil).',
       code: 'INACTIVE_DIFFICULTY',
+    });
+  }
+
+  if (config.mode === 'rondas' && config.match_duration_s > MAX_MATCH_DURATION_S) {
+    errors.push({
+      field: 'config.match_duration_s',
+      message: `La duración máxima para una sala nueva de Rondas es ${MAX_MATCH_DURATION_S / 60} minutos.`,
+      code: 'DURATION_LIMIT',
     });
   }
 

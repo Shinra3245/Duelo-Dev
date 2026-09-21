@@ -3,6 +3,7 @@ import {
   ACTIVE_PROBLEM_CATEGORIES,
   ACTIVE_PROBLEMS_PER_CATEGORY,
   MAX_ACTIVE_PROBLEMS,
+  MAX_MATCH_DURATION_S,
   C2S,
   HOST_LOBBY_TIMEOUT_MS,
   MATCH_FINISH_REASONS,
@@ -198,6 +199,7 @@ describe('contrato de eventos y estado de partida', () => {
       false,
     );
     expect(isRoomCreationConfig({ ...puntosConfig, categories: ['facil', 'facil'] })).toBe(false);
+    expect(MAX_MATCH_DURATION_S).toBe(900);
     expect(SUPPORTED_PLAYER_COUNTS).toEqual([2, 3]);
     expect(ACTIVE_PROBLEMS_PER_CATEGORY).toBe(10);
   });
@@ -214,6 +216,16 @@ describe('contrato de eventos y estado de partida', () => {
 
     expect(isMatchConfig(rondasConfig)).toBe(true);
     expect(isRoomCreationConfig(rondasConfig)).toBe(false);
+    const activeRondasConfig = { ...rondasConfig, categories: ['facil'] as const };
+    expect(isMatchConfig({ ...rondasConfig, match_duration_s: MAX_MATCH_DURATION_S * 2 })).toBe(
+      true,
+    );
+    expect(
+      isRoomCreationConfig({ ...activeRondasConfig, match_duration_s: MAX_MATCH_DURATION_S }),
+    ).toBe(true);
+    expect(
+      isRoomCreationConfig({ ...activeRondasConfig, match_duration_s: MAX_MATCH_DURATION_S + 1 }),
+    ).toBe(false);
     expect(isRondasConfig(rondasConfig)).toBe(true);
     expect(isPuntosConfig(rondasConfig)).toBe(false);
 

@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ACTIVE_PROBLEM_CATEGORIES, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
+import {
+  ACTIVE_PROBLEM_CATEGORIES,
+  MAX_MATCH_DURATION_S,
+  PROBLEM_CATEGORY_LABELS,
+} from '@duelodev/shared';
 import type {
   AdminPlayerSummary,
   AdminRankingEntry,
@@ -557,6 +561,32 @@ export default function AdminPage() {
                 <option value={3}>3</option>
               </select>
             </label>
+            {config.config.mode === 'rondas' && (
+              <label>
+                Duración de Rondas
+                <select
+                  aria-label="Duración de Rondas"
+                  value={config.config.match_duration_s}
+                  onChange={(event) => {
+                    const matchDuration = Number(event.target.value);
+                    setConfig((current) =>
+                      current.config.mode === 'rondas'
+                        ? {
+                            config: { ...current.config, match_duration_s: matchDuration },
+                          }
+                        : current,
+                    );
+                  }}
+                >
+                  {[300, 600, MAX_MATCH_DURATION_S].map((duration) => (
+                    <option key={duration} value={duration}>
+                      {duration / 60} minutos
+                    </option>
+                  ))}
+                </select>
+                <small>El máximo operativo para nuevas salas es 15 minutos.</small>
+              </label>
+            )}
             <label>
               Problemas
               <input

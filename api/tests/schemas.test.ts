@@ -8,7 +8,8 @@ import {
   validateRegisterRequest,
   validateRoomCode,
 } from '../src/schemas/index.js';
-import { SOURCE_CODE_MAX_BYTES } from '@duelodev/shared';
+import { createRoomRequestSchema } from '../src/schemas/rooms.js';
+import { MAX_MATCH_DURATION_S, SOURCE_CODE_MAX_BYTES } from '@duelodev/shared';
 
 describe('API Runtime Schemas & Validation', () => {
   describe('validateRegisterRequest', () => {
@@ -126,6 +127,12 @@ describe('API Runtime Schemas & Validation', () => {
   });
 
   describe('validateCreateRoomRequest', () => {
+    it('expone la misma duración máxima en el contrato JSON Schema', () => {
+      expect(createRoomRequestSchema.properties.config.properties.match_duration_s.maximum).toBe(
+        MAX_MATCH_DURATION_S,
+      );
+    });
+
     it('acepta configuración válida para modo Puntos', () => {
       const res = validateCreateRoomRequest({
         config: {
@@ -151,6 +158,47 @@ describe('API Runtime Schemas & Validation', () => {
         },
       });
       expect(res.ok).toBe(true);
+    });
+
+    it('acepta la duración máxima aprobada y rechaza excederla sin invalidar el legado', () => {
+      const atLimit = validateCreateRoomRequest({
+        config: {
+          mode: 'rondas',
+          max_players: 2,
+          categories: ['facil'],
+          match_duration_s: MAX_MATCH_DURATION_S,
+          num_problems: 3,
+          target: 3,
+        },
+      });
+      expect(atLimit.ok).toBe(true);
+
+      const overLimit = validateCreateRoomRequest({
+        config: {
+          mode: 'rondas',
+          max_players: 2,
+          categories: ['facil'],
+          match_duration_s: MAX_MATCH_DURATION_S + 1,
+          num_problems: 3,
+          target: 3,
+        },
+      });
+      expect(overLimit.ok).toBe(false);
+      if (!overLimit.ok) {
+        expect(overLimit.errors.some((error) => error.code === 'DURATION_LIMIT')).toBe(true);
+      }
+
+      const historicalDuration = validateCreateRoomRequest({
+        config: {
+          mode: 'rondas',
+          max_players: 2,
+          categories: ['facil'],
+          match_duration_s: 1800,
+          num_problems: 3,
+          target: 3,
+        },
+      });
+      expect(historicalDuration.ok).toBe(false);
     });
 
     it('permite la categoría Senior (Difícil)', () => {

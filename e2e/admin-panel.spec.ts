@@ -95,8 +95,12 @@ test.describe('panel administrativo en navegador', () => {
 
   test('configura una sala de tres jugadores desde el panel', async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByLabel('Modo').selectOption('rondas');
+    await page.getByLabel('Duración de Rondas').selectOption('900');
     const room = await createRoom(page, 3);
     expect(room.config.max_players).toBe(3);
+    expect(room.config.mode).toBe('rondas');
+    expect(room.config.match_duration_s).toBe(900);
 
     const roomCard = page.locator('article.admin-room-card').filter({ hasText: room.room_code });
     await expect(roomCard).toContainText('Lobby');
@@ -152,7 +156,11 @@ async function loginAsAdmin(page: Page) {
 async function createRoom(
   page: Page,
   maxPlayers = 2,
-): Promise<{ match_id: string; room_code: string; config: { max_players: number } }> {
+): Promise<{
+  match_id: string;
+  room_code: string;
+  config: { max_players: number; mode: string; match_duration_s?: number };
+}> {
   if (maxPlayers !== 2) {
     await page.getByLabel('Jugadores').selectOption(String(maxPlayers));
   }
@@ -168,7 +176,7 @@ async function createRoom(
   const body = (await response.json()) as {
     match_id: string;
     room_code: string;
-    config: { max_players: number };
+    config: { max_players: number; mode: string; match_duration_s?: number };
   };
   await expect(
     page.locator('article.admin-room-card').filter({ hasText: body.room_code }),

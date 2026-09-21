@@ -110,6 +110,9 @@ export type ActiveProblemCategory = (typeof ACTIVE_PROBLEM_CATEGORIES)[number];
 export const ACTIVE_PROBLEMS_PER_CATEGORY = 10;
 export const MAX_ACTIVE_PROBLEMS = ACTIVE_PROBLEM_CATEGORIES.length * ACTIVE_PROBLEMS_PER_CATEGORY;
 
+/** Duración máxima de nuevas partidas Rondas; configuraciones históricas siguen siendo legibles. */
+export const MAX_MATCH_DURATION_S = 15 * 60;
+
 /** Capacidades habilitadas para las salas del MVP. */
 export const SUPPORTED_PLAYER_COUNTS = [2, 3] as const;
 
@@ -273,6 +276,7 @@ export function isRoomCreationConfig(value: unknown): value is MatchConfig {
     isMatchConfig(value) &&
     SUPPORTED_PLAYER_COUNTS.some((count) => count === value.max_players) &&
     value.num_problems <= MAX_ACTIVE_PROBLEMS &&
+    (value.mode !== 'rondas' || value.match_duration_s <= MAX_MATCH_DURATION_S) &&
     new Set(value.categories).size === value.categories.length &&
     value.categories.every((category) =>
       ACTIVE_PROBLEM_CATEGORIES.some((activeCategory) => activeCategory === category),
