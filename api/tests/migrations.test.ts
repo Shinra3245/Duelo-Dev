@@ -21,6 +21,16 @@ describe('PostgreSQL Database Migrations (001_initial_schema)', () => {
     expect(existsSync(join(MIGRATIONS_DIR, '001_initial_schema.down.sql'))).toBe(true);
   });
 
+  it('añade un índice acotado para ejecutar la retención de snapshots sin borrar partidas', () => {
+    const sql = getMigrationSql('006_code_snapshot_retention', 'up');
+    expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS idx_matches_finished_terminal/i);
+    expect(sql).toMatch(/status IN \('finished', 'abandoned'\)/i);
+    expect(sql).not.toMatch(/DELETE\s+FROM\s+(matches|match_players|match_code_snapshots)/i);
+    expect(getMigrationSql('006_code_snapshot_retention', 'down')).toContain(
+      'DROP INDEX IF EXISTS idx_matches_finished_terminal',
+    );
+  });
+
   it('el script UP define todas las 13 tablas requeridas por los contratos de datos', () => {
     const sql = getMigrationSql('001_initial_schema', 'up');
 

@@ -509,7 +509,11 @@ export class RoomService {
 
     // Filtrar: un jugador ve sus propios snapshots y los de rivales que tengan is_revealed: true
     const visibleSnapshots: MatchCodeSnapshot[] = allSnapshots
-      .filter((s) => s.user_id === requestingUserId || revealedUserIds.has(s.user_id))
+      .filter(
+        (s) =>
+          s.source_code.length > 0 &&
+          (s.user_id === requestingUserId || revealedUserIds.has(s.user_id)),
+      )
       .map((s) => ({
         user_id: s.user_id,
         round_id: s.round_id,

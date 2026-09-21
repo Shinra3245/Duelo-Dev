@@ -158,6 +158,8 @@ export interface RoomRepository {
   ): Promise<MatchPlayerEntity | null>;
   saveSnapshot(input: CreateMatchCodeSnapshotInput): Promise<MatchCodeSnapshotEntity>;
   findSnapshotsByMatch(matchId: string): Promise<MatchCodeSnapshotEntity[]>;
+  /** Borra sólo el contenido de snapshots de partidas terminales anteriores al corte. */
+  scrubExpiredCodeSnapshots?(finishedBefore: string): Promise<number>;
   deleteSnapshotsByUser?(userId: string, onlyUnrevealed?: boolean): Promise<number>;
   countActiveRooms?(): Promise<number>;
   allocateNextAdmissionSeq?(matchId: string): Promise<number>;

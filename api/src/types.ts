@@ -104,6 +104,8 @@ export interface ApiAppOptions {
   retentionService?: RetentionService;
   /** Opciones de configuración para el servicio de retención y purga de invitados. */
   retentionOptions?: RetentionServiceOptions;
+  /** Intervalo de ejecución de la purga de snapshots vencidos; 0/omitido la desactiva. */
+  matchCodeRetentionIntervalMs?: number;
   /** Opciones de verificación de origen y CSRF. */
   csrfOptions?: CsrfOptions;
   /** Opciones CORS para clientes web en otro origen permitido. */

@@ -494,6 +494,32 @@ export class InMemoryRoomRepository implements RoomRepository {
     return list.map((s) => ({ ...s }));
   }
 
+  async scrubExpiredCodeSnapshots(finishedBefore: string): Promise<number> {
+    const cutoff = new Date(finishedBefore).getTime();
+    let scrubbed = 0;
+
+    for (const match of this.matches.values()) {
+      const finishedAt = match.finished_at ? new Date(match.finished_at).getTime() : Number.NaN;
+      if (
+        (match.status !== 'finished' && match.status !== 'abandoned') ||
+        !Number.isFinite(finishedAt) ||
+        finishedAt > cutoff
+      ) {
+        continue;
+      }
+
+      const snapshots = this.snapshots.get(match.id) ?? [];
+      for (const snapshot of snapshots) {
+        if (snapshot.source_code !== '') {
+          snapshot.source_code = '';
+          scrubbed++;
+        }
+      }
+    }
+
+    return scrubbed;
+  }
+
   async deleteSnapshotsByUser(userId: string, onlyUnrevealed = false): Promise<number> {
     let deleted = 0;
     for (const [matchId, snapshotList] of this.snapshots.entries()) {

@@ -165,6 +165,26 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
       logger,
       auditService,
     );
+  let codeSnapshotRetentionTimer: NodeJS.Timeout | null = null;
+  let codeSnapshotPurgePromise: Promise<void> | null = null;
+
+  const runCodeSnapshotRetention = (): Promise<void> => {
+    if (codeSnapshotPurgePromise) return codeSnapshotPurgePromise;
+    const purgePromise = (async (): Promise<void> => {
+      try {
+        await retentionService.purgeExpiredMatchCodeSnapshots();
+      } catch (error) {
+        logger.error('Falló la purga programada de snapshots de código', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+    const trackedPurgePromise = purgePromise.finally(() => {
+      codeSnapshotPurgePromise = null;
+    });
+    codeSnapshotPurgePromise = trackedPurgePromise;
+    return trackedPurgePromise;
+  };
 
   const ctx: ApiContext = {
     serviceName,
@@ -259,14 +279,27 @@ export function createApp(options: ApiAppOptions = {}): ApiApp {
           version,
         });
         submissionReconciler.start();
+        const retentionIntervalMs = options.matchCodeRetentionIntervalMs ?? 0;
+        if (retentionIntervalMs > 0 && codeSnapshotRetentionTimer === null) {
+          void runCodeSnapshotRetention();
+          codeSnapshotRetentionTimer = setInterval(() => {
+            void runCodeSnapshotRetention();
+          }, retentionIntervalMs);
+          codeSnapshotRetentionTimer.unref();
+        }
         resolve({ port: actualPort, host });
       });
     });
   };
 
-  const close = (): Promise<void> => {
+  const close = async (): Promise<void> => {
     submissionReconciler.stop();
-    return new Promise((resolve, reject) => {
+    if (codeSnapshotRetentionTimer !== null) {
+      clearInterval(codeSnapshotRetentionTimer);
+      codeSnapshotRetentionTimer = null;
+    }
+    await codeSnapshotPurgePromise;
+    await new Promise<void>((resolve, reject) => {
       server.close((err) => {
         if (err) {
           reject(err);

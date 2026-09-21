@@ -776,6 +776,21 @@ export class PostgresRoomRepository implements RoomRepository {
     return res.rows.map(mapSnapshotRow);
   }
 
+  async scrubExpiredCodeSnapshots(finishedBefore: string): Promise<number> {
+    const res = await this.pool.query(
+      `UPDATE match_code_snapshots AS snapshot
+       SET source_code = ''
+       FROM matches AS match
+       WHERE snapshot.match_id = match.id
+         AND match.status IN ('finished', 'abandoned')
+         AND match.finished_at IS NOT NULL
+         AND match.finished_at <= $1
+         AND snapshot.source_code <> ''`,
+      [new Date(finishedBefore)],
+    );
+    return res.rowCount ?? 0;
+  }
+
   async deleteSnapshotsByUser(userId: string, onlyUnrevealed = false): Promise<number> {
     if (onlyUnrevealed) {
       const res = await this.pool.query(

@@ -45,6 +45,7 @@ export interface ProductionApiAppConfig {
   runMigrations?: boolean;
   corsOrigins?: string[];
   roomInstructionsDurationMs?: number;
+  matchCodeRetentionIntervalMs?: number;
 }
 
 /**
@@ -99,6 +100,7 @@ export async function createProductionApp(
     roomCreationPolicyRepo,
     validateRoomProblemAvailability: true,
     roomInstructionsDurationMs: config.roomInstructionsDurationMs ?? MATCH_INSTRUCTIONS_DURATION_MS,
+    matchCodeRetentionIntervalMs: config.matchCodeRetentionIntervalMs ?? 86_400_000,
     problemRepo,
     submissionRepo,
     eventRepo,

@@ -216,6 +216,81 @@ describe('Servicio de Retención y Purga de Invitados (doc 04 §5, doc 06 §B04)
   });
 
   describe('RetentionService', () => {
+    it('vacía sólo el código de snapshots terminales vencidos y conserva el historial', async () => {
+      const userRepo = new InMemoryUserRepository();
+      const refreshTokenRepo = new InMemoryRefreshTokenRepository();
+      const roomRepo = new InMemoryRoomRepository();
+      const service = new RetentionService(userRepo, refreshTokenRepo, roomRepo);
+      const snapshots = new Map<string, string>();
+      const testUserId = 'retention-player';
+
+      const oldFinished = await roomRepo.createMatch({
+        room_code: 'OLD001',
+        mode: 'puntos',
+        status: 'finished',
+        finished_at: '2026-08-01T12:00:00.000Z',
+        config: { max_players: 2, problems_count: 1, round_duration_s: 300 },
+        host_id: testUserId,
+      });
+      const oldAbandoned = await roomRepo.createMatch({
+        room_code: 'OLD002',
+        mode: 'puntos',
+        status: 'abandoned',
+        finished_at: '2026-08-01T12:00:00.000Z',
+        config: { max_players: 2, problems_count: 1, round_duration_s: 300 },
+        host_id: testUserId,
+      });
+      const recentFinished = await roomRepo.createMatch({
+        room_code: 'NEW001',
+        mode: 'puntos',
+        status: 'finished',
+        finished_at: '2026-09-01T12:00:00.000Z',
+        config: { max_players: 2, problems_count: 1, round_duration_s: 300 },
+        host_id: testUserId,
+      });
+      const activeMatch = await roomRepo.createMatch({
+        room_code: 'LIVE01',
+        mode: 'puntos',
+        status: 'running',
+        config: { max_players: 2, problems_count: 1, round_duration_s: 300 },
+        host_id: testUserId,
+      });
+
+      for (const match of [oldFinished, oldAbandoned, recentFinished, activeMatch]) {
+        const snapshot = await roomRepo.saveSnapshot({
+          match_id: match.id,
+          round_id: 'retention-round',
+          user_id: testUserId,
+          problem_id: 'retention-problem',
+          language: 'python',
+          source_code: `private code ${match.room_code}`,
+        });
+        snapshots.set(match.id, snapshot.id);
+      }
+
+      const result = await service.purgeExpiredMatchCodeSnapshots(
+        new Date('2026-09-15T12:00:00.000Z'),
+      );
+
+      expect(result.cutoff_iso).toBe('2026-08-16T12:00:00.000Z');
+      expect(result.scrubbed_snapshots).toBe(2);
+      for (const match of [oldFinished, oldAbandoned]) {
+        const retained = await roomRepo.findSnapshotsByMatch(match.id);
+        expect(retained).toHaveLength(1);
+        expect(retained[0]).toMatchObject({ id: snapshots.get(match.id), source_code: '' });
+        expect(await roomRepo.findMatchById(match.id)).not.toBeNull();
+      }
+      for (const match of [recentFinished, activeMatch]) {
+        const retained = await roomRepo.findSnapshotsByMatch(match.id);
+        expect(retained[0]?.source_code).toBe(`private code ${match.room_code}`);
+      }
+
+      const repeated = await service.purgeExpiredMatchCodeSnapshots(
+        new Date('2026-09-15T12:00:00.000Z'),
+      );
+      expect(repeated.scrubbed_snapshots).toBe(0);
+    });
+
     it('purgeInactiveGuests purga adecuadamente cuentas guest con más de 30 días de inactividad', async () => {
       const userRepo = new InMemoryUserRepository();
       const refreshTokenRepo = new InMemoryRefreshTokenRepository();
@@ -375,6 +450,38 @@ describe('Servicio de Retención y Purga de Invitados (doc 04 §5, doc 06 §B04)
     it('createApp integra correctamente retentionService en ApiContext', () => {
       const app = createApp();
       expect(app.ctx.retentionService).toBeInstanceOf(RetentionService);
+    });
+
+    it('programa la purga en el arranque y limpia su timer al cerrar la API', async () => {
+      const roomRepo = new InMemoryRoomRepository();
+      const match = await roomRepo.createMatch({
+        room_code: 'SCHED1',
+        mode: 'puntos',
+        status: 'finished',
+        finished_at: '2026-07-01T12:00:00.000Z',
+        config: { max_players: 2, problems_count: 1, round_duration_s: 300 },
+        host_id: 'retention-scheduler-user',
+      });
+      await roomRepo.saveSnapshot({
+        match_id: match.id,
+        round_id: 'scheduler-round',
+        user_id: 'retention-scheduler-user',
+        problem_id: 'scheduler-problem',
+        language: 'python',
+        source_code: 'old private code',
+      });
+      const app = createApp({ roomRepo, matchCodeRetentionIntervalMs: 60_000 });
+      const { port } = await app.start(0, '127.0.0.1');
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect((await roomRepo.findSnapshotsByMatch(match.id))[0]?.source_code).toBe('');
+      } finally {
+        await app.close();
+      }
+
+      expect(app.server.listening).toBe(false);
+      expect(port).toBeGreaterThan(0);
     });
   });
 

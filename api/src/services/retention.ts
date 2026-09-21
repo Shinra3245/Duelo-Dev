@@ -11,6 +11,8 @@ import type { AuditService } from './audit.js';
 export interface RetentionServiceOptions {
   /** Días de inactividad antes de purgar un invitado (por defecto: 30, según doc 04 §5). */
   guestRetentionDays?: number;
+  /** Días tras el fin de partida para conservar el contenido de snapshots (por defecto: 30). */
+  codeSnapshotRetentionDays?: number;
   /** Prefijo para el gamertag de lápida / tombstone (por defecto: 'anon'). */
   tombstonePrefix?: string;
   /** Servicio opcional de auditoría para registro de eventos de purga. */
@@ -33,6 +35,12 @@ export interface RetentionPurgeResult {
   revoked_sessions: number;
   scrubbed_snapshots: number;
   purged_user_ids: string[];
+}
+
+/** Resultado de la retención de código, sin borrar snapshots ni historial de partidas. */
+export interface CodeSnapshotPurgeResult {
+  cutoff_iso: string;
+  scrubbed_snapshots: number;
 }
 
 /**
@@ -67,6 +75,7 @@ export class RetentionService {
   private readonly refreshTokenRepo: RefreshTokenRepository;
   private readonly roomRepo?: RoomRepository | undefined;
   private readonly guestRetentionDays: number;
+  private readonly codeSnapshotRetentionDays: number;
   private readonly tombstonePrefix: string;
   private readonly logger: Logger;
   private readonly auditService?: AuditService | undefined;
@@ -93,6 +102,7 @@ export class RetentionService {
       this.refreshTokenRepo = userRepoOrConfig.refreshTokenRepo;
       this.roomRepo = userRepoOrConfig.roomRepo;
       this.guestRetentionDays = userRepoOrConfig.guestRetentionDays ?? 30;
+      this.codeSnapshotRetentionDays = userRepoOrConfig.codeSnapshotRetentionDays ?? 30;
       this.tombstonePrefix = userRepoOrConfig.tombstonePrefix ?? 'anon';
       this.logger = userRepoOrConfig.logger ?? createLogger('retention-service');
       this.auditService = userRepoOrConfig.auditService;
@@ -101,10 +111,36 @@ export class RetentionService {
       this.refreshTokenRepo = refreshTokenRepo!;
       this.roomRepo = roomRepo;
       this.guestRetentionDays = options?.guestRetentionDays ?? 30;
+      this.codeSnapshotRetentionDays = options?.codeSnapshotRetentionDays ?? 30;
       this.tombstonePrefix = options?.tombstonePrefix ?? 'anon';
       this.logger = logger ?? createLogger('retention-service');
       this.auditService = auditService ?? options?.auditService;
     }
+  }
+
+  /**
+   * Vacía únicamente el texto de snapshots de partidas terminales con 30+ días.
+   * Conserva snapshots como marcadores vacíos y mantiene intacto todo el historial de juego.
+   */
+  async purgeExpiredMatchCodeSnapshots(now = new Date()): Promise<CodeSnapshotPurgeResult> {
+    const cutoffIso = new Date(
+      now.getTime() - this.codeSnapshotRetentionDays * 86_400_000,
+    ).toISOString();
+    let scrubbedSnapshots = 0;
+
+    if (typeof this.roomRepo?.scrubExpiredCodeSnapshots === 'function') {
+      scrubbedSnapshots = await this.roomRepo.scrubExpiredCodeSnapshots(cutoffIso);
+    } else {
+      this.logger.warn('RoomRepository no implementa scrubExpiredCodeSnapshots; purga omitida');
+    }
+
+    this.logger.info('Purga de snapshots de código vencidos completada', {
+      cutoff_iso: cutoffIso,
+      retention_days: this.codeSnapshotRetentionDays,
+      scrubbed_snapshots: scrubbedSnapshots,
+    });
+
+    return { cutoff_iso: cutoffIso, scrubbed_snapshots: scrubbedSnapshots };
   }
 
   /**

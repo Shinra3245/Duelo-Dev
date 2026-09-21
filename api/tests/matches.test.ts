@@ -276,6 +276,16 @@ describe('Matches REST API (/api/v1/matches)', () => {
         source_code: 'int main() { return 0; }',
       });
 
+      // Snapshot vaciado por retención: conserva metadata, pero no expone código vacío.
+      await app.ctx.roomRepo.saveSnapshot({
+        match_id: room.match_id,
+        round_id: randomUUID(),
+        user_id: playerA.userId,
+        problem_id: problemId,
+        language: 'python',
+        source_code: '',
+      });
+
       // Actualizar partida a 'finished'
       const startedAt = new Date(Date.now() - 120000).toISOString();
       const finishedAt = new Date().toISOString();
@@ -318,6 +328,7 @@ describe('Matches REST API (/api/v1/matches)', () => {
       expect(visibleUsersA).toContain(playerA.userId);
       expect(visibleUsersA).toContain(host.userId);
       expect(visibleUsersA).not.toContain(playerB.userId);
+      expect(summaryA.snapshots.every((snapshot) => snapshot.source_code.length > 0)).toBe(true);
 
       // Consulta del resumen por parte de Player B:
       // Player B ve su PROPIO código (aunque is_revealed sea false) más los de Host y Player A

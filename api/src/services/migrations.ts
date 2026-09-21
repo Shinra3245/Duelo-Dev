@@ -27,6 +27,7 @@ export async function runMigrations(clientOrPool: {
   await clientOrPool.query(getMigrationSql('003_admin_role', 'up'));
   await clientOrPool.query(getMigrationSql('004_room_creation_policy', 'up'));
   await clientOrPool.query(getMigrationSql('005_match_instructions', 'up'));
+  await clientOrPool.query(getMigrationSql('006_code_snapshot_retention', 'up'));
 }
 
 /**
@@ -35,6 +36,7 @@ export async function runMigrations(clientOrPool: {
 export async function rollbackMigrations(clientOrPool: {
   query: (sql: string) => Promise<unknown>;
 }): Promise<void> {
+  await clientOrPool.query(getMigrationSql('006_code_snapshot_retention', 'down'));
   await clientOrPool.query(getMigrationSql('005_match_instructions', 'down'));
   await clientOrPool.query(getMigrationSql('004_room_creation_policy', 'down'));
   await clientOrPool.query(getMigrationSql('003_admin_role', 'down'));

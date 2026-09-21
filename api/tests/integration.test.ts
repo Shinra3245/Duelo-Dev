@@ -188,6 +188,53 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     expect(problems.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('vacía snapshots vencidos en PostgreSQL sin borrar partidas ni jugadores', async () => {
+    const roomRepo = new PostgresRoomRepository(pool);
+    const problemRepo = new PostgresProblemRepository(pool);
+    const problem = (await problemRepo.findAllProblems())[0];
+    expect(problem).toBeDefined();
+
+    const expired = await createRunningMatchFixture(pool, 'retold');
+    await roomRepo.updateMatch(expired.matchId, {
+      status: 'finished',
+      finished_at: '2026-08-01T12:00:00.000Z',
+    });
+    const expiredSnapshot = await roomRepo.saveSnapshot({
+      match_id: expired.matchId,
+      round_id: expired.matchId,
+      user_id: expired.userId,
+      problem_id: problem!.id,
+      language: 'python',
+      source_code: 'historical private code',
+    });
+
+    const recent = await createRunningMatchFixture(pool, 'retnew');
+    await roomRepo.updateMatch(recent.matchId, {
+      status: 'finished',
+      finished_at: '2026-09-01T12:00:00.000Z',
+    });
+    await roomRepo.saveSnapshot({
+      match_id: recent.matchId,
+      round_id: recent.matchId,
+      user_id: recent.userId,
+      problem_id: problem!.id,
+      language: 'python',
+      source_code: 'recent private code',
+    });
+
+    const scrubbed = await roomRepo.scrubExpiredCodeSnapshots('2026-08-31T12:00:00.000Z');
+
+    expect(scrubbed).toBe(1);
+    expect(await roomRepo.findMatchById(expired.matchId)).not.toBeNull();
+    expect(await roomRepo.findPlayer(expired.matchId, expired.userId)).not.toBeNull();
+    expect(await roomRepo.findSnapshotsByMatch(expired.matchId)).toMatchObject([
+      { id: expiredSnapshot.id, source_code: '' },
+    ]);
+    expect((await roomRepo.findSnapshotsByMatch(recent.matchId))[0]?.source_code).toBe(
+      'recent private code',
+    );
+  });
+
   it('2. Flujo completo: registro, creación de sala, admisión y encolado en Redis Streams', async () => {
     // A. Registrar Usuario A (Host)
     const resRegA = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
