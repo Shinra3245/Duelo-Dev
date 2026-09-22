@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+const adminEmail = process.env.E2E_ADMIN_EMAIL;
+const adminPassword = process.env.E2E_ADMIN_PASSWORD;
+
 test('el acceso mantiene contraste, etiquetas y controles usables en móvil', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Entrar al torneo' })).toBeVisible();
@@ -89,6 +92,28 @@ test('el panel administrativo mantiene el acceso privado', async ({ page }) => {
   await expect(page.getByText('Acceso restringido.')).toBeVisible();
   await expect(page.getByLabel('Correo')).toBeVisible();
   await expect(page.getByLabel('Contraseña')).toBeVisible();
+});
+
+test('la cuenta administradora no usa el flujo público de jugador', async ({ page }) => {
+  test.skip(
+    !adminEmail || !adminPassword,
+    'Requiere E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD sin imprimir la contraseña',
+  );
+
+  await page.goto('/admin');
+  await page.getByLabel('Correo').fill(adminEmail!);
+  await page.getByLabel('Contraseña').fill(adminPassword!);
+  await page.getByRole('button', { name: 'Entrar al panel' }).click();
+  await expect(page.locator('.admin-layout')).toBeVisible();
+
+  await page.goto('/');
+  await expect(page.getByText('Administración', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Las salas se crean y controlan desde el panel administrativo.'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Crear Sala' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Unirse a sala' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Abrir panel administrativo' })).toBeVisible();
 });
 
 test('un jugador registrado puede salir y volver a entrar desde la landing', async ({ page }) => {

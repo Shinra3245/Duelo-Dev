@@ -516,7 +516,11 @@ export default function Home() {
               <div className="player-access-identity flex items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
                 <div className="min-w-0">
                   <p className="player-access-eyebrow text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
-                    {user.role === 'guest' ? 'Invitado' : 'Cuenta registrada'}
+                    {user.role === 'guest'
+                      ? 'Invitado'
+                      : user.role === 'admin'
+                        ? 'Administración'
+                        : 'Cuenta registrada'}
                   </p>
                   <p className="player-access-gamertag mt-1 break-all font-mono text-lg font-black leading-6 text-slate-950">
                     {user.gamertag}
@@ -530,17 +534,31 @@ export default function Home() {
                 </button>
               </div>
 
-              {user.role !== 'guest' && (
+              {user.role === 'admin' && (
+                <div className="player-access-note rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-base leading-6 text-indigo-950">
+                  Esta cuenta administra el torneo. Las salas se crean y controlan desde el panel
+                  administrativo.
+                  <button
+                    type="button"
+                    onClick={() => router.push('/admin')}
+                    className="mt-3 w-full rounded-xl bg-indigo-700 px-4 py-2.5 font-bold text-white transition hover:bg-indigo-800 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                  >
+                    Abrir panel administrativo
+                  </button>
+                </div>
+              )}
+
+              {user.role === 'user' && (
                 <div className="player-access-subsection border-t border-slate-200 pt-5">
                   <h2 className="player-access-subheading mb-3 text-xl font-black text-slate-950">
                     Crear Sala
                   </h2>
                   <p className="player-access-copy mb-4 text-base leading-6 text-slate-600">
-                    {registeredUsersCanCreateRooms || user.role === 'admin'
+                    {registeredUsersCanCreateRooms
                       ? 'Disponible para el anfitrión del torneo. Elige el formato de la partida.'
                       : 'Por el momento no puedes crear partidas, solo unirte con el codigo'}
                   </p>
-                  {registeredUsersCanCreateRooms || user.role === 'admin' ? (
+                  {registeredUsersCanCreateRooms ? (
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={() => handleCreateRoom('puntos')}
@@ -623,34 +641,36 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="player-access-subsection border-t border-slate-200 pt-5">
-                <h2 className="player-access-subheading mb-2 text-xl font-black text-slate-950">
-                  Unirse a sala
-                </h2>
-                <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
-                  Escribe el código de seis caracteres que te compartió el organizador.
-                </p>
-                <form onSubmit={handleJoinRoom} className="flex flex-col gap-3 sm:flex-row">
-                  <input
-                    type="text"
-                    value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                    aria-label="Código de sala"
-                    className="player-access-input player-access-room-code min-w-0 flex-1 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-black uppercase tracking-[0.18em] text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white sm:text-left"
-                    placeholder="CÓDIGO"
-                    maxLength={6}
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={isJoiningRoom}
-                    aria-busy={isJoiningRoom}
-                    className="player-access-join-button rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
-                  >
-                    {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
-                  </button>
-                </form>
-              </div>
+              {user.role !== 'admin' && (
+                <div className="player-access-subsection border-t border-slate-200 pt-5">
+                  <h2 className="player-access-subheading mb-2 text-xl font-black text-slate-950">
+                    Unirse a sala
+                  </h2>
+                  <p className="player-access-copy mb-4 text-sm leading-6 text-slate-600">
+                    Escribe el código de seis caracteres que te compartió el organizador.
+                  </p>
+                  <form onSubmit={handleJoinRoom} className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={roomCode}
+                      onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                      aria-label="Código de sala"
+                      className="player-access-input player-access-room-code min-w-0 flex-1 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-black uppercase tracking-[0.18em] text-slate-950 placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white sm:text-left"
+                      placeholder="CÓDIGO"
+                      maxLength={6}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={isJoiningRoom}
+                      aria-busy={isJoiningRoom}
+                      className="player-access-join-button rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                    >
+                      {isJoiningRoom ? 'Uniendo...' : 'Unirse'}
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
           )}
         </section>

@@ -22,6 +22,7 @@ describe('Panel administrativo protegido', () => {
   let baseUrl: string;
   let adminCookie: string;
   let userCookie: string;
+  let secondUserCookie: string;
   const controlNotifications: MatchControlNotification[] = [];
 
   function accessCookie(response: Response): string {
@@ -76,6 +77,18 @@ describe('Panel administrativo protegido', () => {
     });
     expect(userRegister.status).toBe(201);
     userCookie = accessCookie(userRegister);
+
+    const secondUserRegister = await fetch(`${baseUrl}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'player-admin-test-two@example.com',
+        password: 'PlayerPassword123!',
+        gamertag: 'player-admin-two',
+      }),
+    });
+    expect(secondUserRegister.status).toBe(201);
+    secondUserCookie = accessCookie(secondUserRegister);
   });
 
   afterAll(async () => {
@@ -112,7 +125,7 @@ describe('Panel administrativo protegido', () => {
       body: JSON.stringify({
         config: {
           mode: 'puntos',
-          max_players: 3,
+          max_players: 2,
           num_problems: 1,
           categories: ['facil'],
           time_per_problem_s: 60,
@@ -149,8 +162,8 @@ describe('Panel administrativo protegido', () => {
 
     const secondJoin = await fetch(`${baseUrl}/api/v1/rooms/${created.room_code}/join`, {
       method: 'POST',
-      headers: { Cookie: adminCookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ gamertag: 'admin-duelodev' }),
+      headers: { Cookie: secondUserCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamertag: 'player-admin-two' }),
     });
     expect(secondJoin.status).toBe(200);
     expect((await secondJoin.json()).role).toBe('player');
@@ -207,7 +220,7 @@ describe('Panel administrativo protegido', () => {
     expect(inactiveDifficulty.status).toBe(400);
   });
 
-  it('admin puede crear y unirse desde la API principal; el primer jugador del lobby admin queda como host', async () => {
+  it('admin no puede crear ni unirse desde la API principal', async () => {
     const ordinaryRoomResponse = await fetch(`${baseUrl}/api/v1/rooms`, {
       method: 'POST',
       headers: { Cookie: userCookie, 'content-type': 'application/json' },
@@ -228,7 +241,8 @@ describe('Panel administrativo protegido', () => {
       headers: { Cookie: adminCookie, 'content-type': 'application/json' },
       body: JSON.stringify({ gamertag: 'admin-duelodev' }),
     });
-    expect(adminJoined.status).toBe(200);
+    expect(adminJoined.status).toBe(403);
+    expect((await adminJoined.json()).error.code).toBe(ERROR_CODES.ADMIN_PLAYER_FLOW_FORBIDDEN);
 
     const adminCreated = await fetch(`${baseUrl}/api/v1/rooms`, {
       method: 'POST',
@@ -243,13 +257,8 @@ describe('Panel administrativo protegido', () => {
         },
       }),
     });
-    expect(adminCreated.status).toBe(201);
-    const mainPageRoom = (await adminCreated.json()) as { room_code: string };
-    const mainPageAccess = await fetch(`${baseUrl}/api/v1/rooms/${mainPageRoom.room_code}`, {
-      headers: { Cookie: adminCookie },
-    });
-    expect(mainPageAccess.status).toBe(200);
-    expect((await mainPageAccess.json()).players).toHaveLength(1);
+    expect(adminCreated.status).toBe(403);
+    expect((await adminCreated.json()).error.code).toBe(ERROR_CODES.ADMIN_PLAYER_FLOW_FORBIDDEN);
   });
 
   it('lista salas, ordena el ranking y audita el ganador manual', async () => {

@@ -24,6 +24,7 @@ export const ERROR_CODES = {
   ROOM_ALREADY_STARTED: 'ROOM_ALREADY_STARTED',
   ROOM_CREATION_DISABLED: 'ROOM_CREATION_DISABLED',
   GUEST_ROOM_CREATION_FORBIDDEN: 'GUEST_ROOM_CREATION_FORBIDDEN',
+  ADMIN_PLAYER_FLOW_FORBIDDEN: 'ADMIN_PLAYER_FLOW_FORBIDDEN',
   MATCH_INSTRUCTIONS_ACTIVE: 'MATCH_INSTRUCTIONS_ACTIVE',
   NOT_A_PLAYER: 'NOT_A_PLAYER',
   GAMERTAG_TAKEN: 'GAMERTAG_TAKEN',
@@ -62,6 +63,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   ROOM_ALREADY_STARTED: 'La partida ya empezó.',
   ROOM_CREATION_DISABLED: 'Por el momento no puedes crear partidas, solo unirte con el codigo',
   GUEST_ROOM_CREATION_FORBIDDEN: 'Las cuentas invitadas sólo pueden unirse a salas.',
+  ADMIN_PLAYER_FLOW_FORBIDDEN:
+    'La cuenta administradora sólo puede gestionar salas desde el panel administrativo.',
   MATCH_INSTRUCTIONS_ACTIVE:
     'Lee las instrucciones; el editor se habilitará al terminar la cuenta regresiva.',
   NOT_A_PLAYER: 'No eres jugador de esta partida.',

@@ -30,6 +30,13 @@ export async function handleCreateRoom(
   }
 
   const session = ctx.authService.authenticateAccessToken(rawToken);
+  if (session.role === 'admin') {
+    throw new HttpError(
+      403,
+      ERROR_CODES.ADMIN_PLAYER_FLOW_FORBIDDEN,
+      ERROR_MESSAGES.ADMIN_PLAYER_FLOW_FORBIDDEN,
+    );
+  }
 
   const body = await parseJsonBody(req);
   const validated = validateCreateRoomRequest(body);
@@ -84,14 +91,23 @@ export async function handleJoinRoom(
   }
 
   let authenticatedUserId: string | undefined;
+  let authenticatedRole: string | undefined;
   const rawToken = extractAccessToken(req);
   if (rawToken) {
     try {
       const session = ctx.authService.authenticateAccessToken(rawToken);
       authenticatedUserId = session.userId;
+      authenticatedRole = session.role;
     } catch {
       // Si el token es inválido, tratamos la solicitud como nuevo invitado
     }
+  }
+  if (authenticatedRole === 'admin') {
+    throw new HttpError(
+      403,
+      ERROR_CODES.ADMIN_PLAYER_FLOW_FORBIDDEN,
+      ERROR_MESSAGES.ADMIN_PLAYER_FLOW_FORBIDDEN,
+    );
   }
 
   const body = await parseJsonBody(req);
