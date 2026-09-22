@@ -1540,6 +1540,47 @@ html.duel-game-viewport body {
   padding: 0.45rem;
 }
 
+.duel-viewport-advisory {
+  position: fixed;
+  z-index: 40;
+  top: 3.35rem;
+  left: 50%;
+  display: flex;
+  width: min(calc(100vw - 1rem), 42rem);
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(251 191 36 / 0.55);
+  border-radius: 0.75rem;
+  background: rgb(69 46 3 / 0.96);
+  padding: 0.55rem 0.65rem 0.55rem 0.85rem;
+  color: #fef3c7;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: 0 12px 30px rgb(2 6 23 / 0.28);
+}
+
+.duel-viewport-advisory button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(254 243 199 / 0.45);
+  border-radius: 0.5rem;
+  color: #fef3c7;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.duel-viewport-advisory button:focus-visible {
+  outline: 2px solid #fef3c7;
+  outline-offset: 2px;
+}
+
 .duel-game-viewport-content > .duel-game-shell {
   display: flex;
   height: 100%;

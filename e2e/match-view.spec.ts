@@ -163,6 +163,24 @@ test.describe('vista de partida sincronizada', () => {
         desktopLayout.boards.every((board) => board.bottom <= desktopLayout.viewportHeight),
       ).toBe(true);
 
+      await host.setViewportSize({ width: 1024, height: 600 });
+      await host.evaluate(() => window.dispatchEvent(new Event('resize')));
+      const viewportAdvisory = host.locator('.duel-viewport-advisory');
+      await expect(viewportAdvisory).toBeVisible();
+      await expect(viewportAdvisory).toContainText('Ventana reducida');
+      const compactViewport = await host.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        documentWidth: document.documentElement.scrollWidth,
+        documentHeight: document.documentElement.scrollHeight,
+      }));
+      expect(compactViewport.documentWidth).toBeLessThanOrEqual(compactViewport.viewportWidth);
+      expect(compactViewport.documentHeight).toBeLessThanOrEqual(compactViewport.viewportHeight);
+      await host.getByRole('button', { name: 'Cerrar aviso de tamaño de ventana' }).click();
+      await expect(viewportAdvisory).not.toBeVisible();
+      await host.setViewportSize({ width: 1280, height: 720 });
+      await host.evaluate(() => window.dispatchEvent(new Event('resize')));
+
       const fixedGameViewport = await host.evaluate(() => ({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,

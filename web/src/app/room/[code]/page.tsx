@@ -14,6 +14,7 @@ import {
   isClipboardShortcut,
 } from '@/lib/editor-behavior';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
+import { isCompactGameViewport } from '@/lib/game-viewport';
 import { ACTIVE_MATCH_LEAVE_QUESTION, protectActiveMatchUnload } from '@/lib/match-unload';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
@@ -64,6 +65,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const [deviceCapability, setDeviceCapability] = useState<'checking' | 'desktop' | 'mobile'>(
     'checking',
   );
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const [isViewportAdvisoryDismissed, setIsViewportAdvisoryDismissed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const sourceCodeRef = useRef(sourceCode);
@@ -98,6 +101,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           ? 'mobile'
           : 'desktop',
       );
+      setIsCompactViewport(isCompactGameViewport(window.innerWidth, window.innerHeight));
     };
 
     updateDeviceCapability();
@@ -870,6 +874,21 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
           {isPlaying && (
             <div ref={gameMotionRef} className="duel-game-shell space-y-4">
+              {isCompactViewport && !isViewportAdvisoryDismissed && (
+                <div className="duel-viewport-advisory" role="status" aria-live="polite">
+                  <span>
+                    Ventana reducida: para una vista óptima usa al menos 1024 × 640 px. El juego se
+                    ajusta al espacio disponible, pero el navegador conserva sus controles.
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Cerrar aviso de tamaño de ventana"
+                    onClick={() => setIsViewportAdvisoryDismissed(true)}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {matchState ? (
                 isInstructionsPhase ? (
                   <section className="duel-instructions-card" aria-labelledby="instructions-title">
