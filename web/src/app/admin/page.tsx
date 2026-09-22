@@ -391,10 +391,14 @@ export default function AdminPage() {
     <main className="admin-shell">
       <div className="admin-layout">
         <header className="admin-header">
-          <div>
+          <div className="admin-header-copy">
             <p className="admin-kicker">DUELODEV · CONTROL PLANE</p>
             <h1>Panel administrativo</h1>
             <p className="admin-muted">Sesión activa: {user.email ?? user.gamertag}</p>
+            <div className="admin-header-status">
+              <span className="admin-secure-badge">Sesión protegida</span>
+              <span>Operación, resultados y auditoría en un solo lugar</span>
+            </div>
           </div>
           <button className="admin-secondary" type="button" onClick={handleLogout} disabled={busy}>
             Cerrar sesión
@@ -416,17 +420,17 @@ export default function AdminPage() {
           <article className="admin-stat">
             <span>Salas</span>
             <strong>{rooms.length}</strong>
-            <small>historial visible</small>
+            <small>{activeRooms.length} activas · historial visible</small>
           </article>
           <article className="admin-stat">
             <span>Jugadores</span>
             <strong>{players.length}</strong>
-            <small>participaciones cargadas</small>
+            <small>registros de participación cargados</small>
           </article>
           <article className="admin-stat">
             <span>Ranking</span>
             <strong>{ranking.length}</strong>
-            <small>jugadores ordenados</small>
+            <small>posiciones ordenadas por puntuación</small>
           </article>
         </section>
 
@@ -658,8 +662,8 @@ export default function AdminPage() {
             </label>
           </div>
           <p className="admin-muted">
-            {visibleRooms.length} salas visibles · La eliminación permanente requiere escribir el
-            código.
+            {visibleRooms.length} salas visibles · selecciona jugadores para resolver una partida;
+            la eliminación permanente requiere escribir el código.
           </p>
           <div className="admin-room-list">
             {visibleRooms.length === 0 && (
@@ -681,22 +685,59 @@ export default function AdminPage() {
                   </div>
                   <time dateTime={room.created_at}>{formatDate(room.created_at)}</time>
                 </div>
+                <div
+                  className="admin-room-summary"
+                  aria-label={`Resumen de sala ${room.room_code}`}
+                >
+                  <div>
+                    <span>Jugadores</span>
+                    <strong>
+                      {room.players.length}/{room.config.max_players}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Retos</span>
+                    <strong>{room.config.num_problems}</strong>
+                  </div>
+                  <div>
+                    <span>Ganadores</span>
+                    <strong>{room.winner_ids.length}</strong>
+                  </div>
+                </div>
+                <div className="admin-list-heading">
+                  <div>
+                    <p className="admin-kicker">CONTROL DE RESULTADO</p>
+                    <h3>Jugadores y puntuación</h3>
+                  </div>
+                  <span>
+                    {room.players.length === 0
+                      ? 'Sala vacía'
+                      : `${room.players.length} ${room.players.length === 1 ? 'jugador' : 'jugadores'}`}
+                  </span>
+                </div>
                 <div className="admin-player-list">
-                  {room.players.map((player) => (
-                    <label className="admin-player-row" key={player.user_id}>
-                      <input
-                        type="checkbox"
-                        checked={(winnerSelections[room.match_id] ?? []).includes(player.user_id)}
-                        onChange={() => toggleWinner(room.match_id, player.user_id)}
-                      />
-                      <span>{playerLabel(player)}</span>
-                      <b>{player.score} pts</b>
-                    </label>
-                  ))}
+                  {room.players.length === 0 ? (
+                    <p className="admin-empty-list">
+                      La sala está disponible y espera jugadores. El primer participante será el
+                      host.
+                    </p>
+                  ) : (
+                    room.players.map((player) => (
+                      <label className="admin-player-row" key={player.user_id}>
+                        <input
+                          type="checkbox"
+                          checked={(winnerSelections[room.match_id] ?? []).includes(player.user_id)}
+                          onChange={() => toggleWinner(room.match_id, player.user_id)}
+                        />
+                        <span>{playerLabel(player)}</span>
+                        <b>{player.score} pts</b>
+                      </label>
+                    ))
+                  )}
                 </div>
                 <div className="admin-room-footer">
                   <span className="admin-muted">
-                    Ganadores actuales: {room.winner_ids.length || 'ninguno'}
+                    Ganadores guardados: {room.winner_ids.length || 'ninguno'}
                   </span>
                   <div className="admin-room-actions">
                     <button
@@ -738,6 +779,7 @@ export default function AdminPage() {
               <div>
                 <p className="admin-kicker">CLASIFICACIÓN</p>
                 <h2>Ranking</h2>
+                <p className="admin-panel-note">Ordenado de mayor a menor puntuación.</p>
               </div>
             </div>
             <div className="admin-table-wrap">
@@ -776,6 +818,7 @@ export default function AdminPage() {
               <div>
                 <p className="admin-kicker">JUGADORES</p>
                 <h2>Participaciones</h2>
+                <p className="admin-panel-note">Actividad y estado por sala.</p>
               </div>
             </div>
             <div className="admin-table-wrap">

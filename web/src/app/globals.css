@@ -2355,6 +2355,31 @@ html.duel-game-viewport body {
   margin-bottom: 0;
 }
 
+.admin-header-copy {
+  min-width: 0;
+}
+
+.admin-header-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+  color: var(--admin-subtle);
+  font-size: 0.78rem;
+}
+
+.admin-secure-badge {
+  border: 1px solid rgb(34 197 94 / 0.35);
+  border-radius: 999px;
+  background: rgb(20 83 45 / 0.32);
+  padding: 0.28rem 0.55rem;
+  color: #bbf7d0;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .admin-stat {
   position: relative;
   overflow: hidden;
@@ -2486,6 +2511,10 @@ html.duel-game-viewport body {
   background: linear-gradient(135deg, rgb(7 15 28 / 0.82), rgb(12 23 40 / 0.92));
 }
 
+.admin-room-card:hover {
+  border-color: rgb(103 232 249 / 0.42);
+}
+
 .admin-room-card-header > div,
 .admin-room-footer > span,
 .admin-player-row span {
@@ -2495,6 +2524,71 @@ html.duel-game-viewport body {
 
 .admin-room-card-header time {
   font-variant-numeric: tabular-nums;
+}
+
+.admin-room-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.admin-room-summary > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  border: 1px solid rgb(100 116 139 / 0.2);
+  border-radius: 0.65rem;
+  background: rgb(15 23 42 / 0.58);
+  padding: 0.6rem 0.7rem;
+}
+
+.admin-room-summary span {
+  color: var(--admin-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-room-summary strong {
+  color: #f8fafc;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-list-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.admin-list-heading h3 {
+  margin: 0.2rem 0 0;
+  color: #e2e8f0;
+  font-size: 0.94rem;
+}
+
+.admin-list-heading > span {
+  flex: 0 0 auto;
+  color: var(--admin-subtle);
+  font-size: 0.78rem;
+}
+
+.admin-player-list {
+  margin: 0.65rem 0 1rem;
+}
+
+.admin-empty-list {
+  margin: 0;
+  border: 1px dashed rgb(100 116 139 / 0.35);
+  border-radius: 0.65rem;
+  padding: 0.8rem;
+  color: var(--admin-subtle);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .admin-player-row {
@@ -2564,6 +2658,13 @@ html.duel-game-viewport body {
   text-align: center !important;
 }
 
+.admin-panel-note {
+  margin: 0.35rem 0 0;
+  color: var(--admin-subtle);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 @media (max-width: 900px) {
   .admin-grid-bottom {
     grid-template-columns: minmax(0, 1fr);
@@ -2594,6 +2695,20 @@ html.duel-game-viewport body {
 
   .admin-section-heading > .admin-badge {
     align-self: flex-start;
+  }
+
+  .admin-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .admin-room-summary {
+    gap: 0.4rem;
+  }
+
+  .admin-room-summary > div {
+    padding-inline: 0.55rem;
   }
 
   .admin-filter-label {
