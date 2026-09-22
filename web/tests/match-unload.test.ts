@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { protectActiveMatchUnload } from '../src/lib/match-unload.js';
+import { ACTIVE_MATCH_UNLOAD_WARNING, protectActiveMatchUnload } from '../src/lib/match-unload.js';
 
 describe('confirmación al cerrar una partida activa', () => {
   it('solicita al navegador que confirme antes de abandonar la página', () => {
@@ -11,6 +11,6 @@ describe('confirmación al cerrar una partida activa', () => {
     protectActiveMatchUnload(event);
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(event.returnValue).toBe('');
+    expect(event.returnValue).toBe(ACTIVE_MATCH_UNLOAD_WARNING);
   });
 });
