@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 const adminEmail = process.env.E2E_ADMIN_EMAIL;
 const adminPassword = process.env.E2E_ADMIN_PASSWORD;
 const adminConfigured = Boolean(adminEmail && adminPassword);
-const closeAllEnabled = process.env.E2E_ADMIN_CLOSE_ALL === '1';
+const disposableStackEnabled = process.env.E2E_DISPOSABLE_STACK === '1';
+const closeAllEnabled = process.env.E2E_ADMIN_CLOSE_ALL === '1' && disposableStackEnabled;
 
 test.describe('panel administrativo en navegador', () => {
   test.skip(
@@ -125,7 +126,7 @@ test.describe('panel administrativo en navegador', () => {
   test('cierra todas las salas activas cuando se habilita explícitamente', async ({ page }) => {
     test.skip(
       !closeAllEnabled,
-      'Requiere E2E_ADMIN_CLOSE_ALL=1 porque modifica todas las salas activas del entorno',
+      'Requiere E2E_ADMIN_CLOSE_ALL=1 y E2E_DISPOSABLE_STACK=1 con una base de datos y Redis desechables',
     );
 
     await loginAsAdmin(page);
