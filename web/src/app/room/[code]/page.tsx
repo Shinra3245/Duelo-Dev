@@ -2,6 +2,8 @@
 
 import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
 import { isMobileGameDevice } from '@/lib/device-support';
@@ -31,6 +33,8 @@ import type {
   RevealChangedPayload,
   PlayerStatusPayload,
 } from '@duelodev/shared';
+
+gsap.registerPlugin(useGSAP);
 
 export default function RoomPage({ params }: { params: Promise<{ code: string }> }) {
   const resolvedParams = use(params);
@@ -70,6 +74,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const leaveDialogRef = useRef<HTMLDialogElement>(null);
   const leaveCancelButtonRef = useRef<HTMLButtonElement>(null);
   const leaveTriggerButtonRef = useRef<HTMLButtonElement>(null);
+  const gameMotionRef = useRef<HTMLDivElement>(null);
   const leaveRequestedRef = useRef(false);
   const leaveTimeoutRef = useRef<number | null>(null);
 
@@ -553,6 +558,62 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     return () => document.documentElement.classList.remove('duel-game-viewport');
   }, [isGameViewportActive, deviceCapability]);
 
+  useGSAP(
+    () => {
+      if (!isGameViewportActive) return;
+
+      const media = gsap.matchMedia();
+      media.add('(prefers-reduced-motion: no-preference)', () => {
+        const boards = gsap.utils.toArray<HTMLElement>('[data-game-motion="board"]');
+        if (boards.length === 0) return;
+
+        gsap.fromTo(
+          boards,
+          { autoAlpha: 0, y: 12 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.42,
+            ease: 'power2.out',
+            stagger: 0.06,
+            clearProps: 'transform,opacity,visibility',
+          },
+        );
+      });
+
+      return () => media.revert();
+    },
+    {
+      dependencies: [isGameViewportActive, matchState?.round_id],
+      revertOnUpdate: true,
+      scope: gameMotionRef,
+    },
+  );
+
+  useGSAP(
+    () => {
+      if (!isChallengeOpen) return;
+
+      const media = gsap.matchMedia();
+      media.add('(prefers-reduced-motion: no-preference)', () => {
+        gsap.fromTo(
+          '[data-game-motion="challenge"]',
+          { autoAlpha: 0, y: -8 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.22,
+            ease: 'power2.out',
+            clearProps: 'transform,opacity,visibility',
+          },
+        );
+      });
+
+      return () => media.revert();
+    },
+    { dependencies: [isChallengeOpen], revertOnUpdate: true, scope: gameMotionRef },
+  );
+
   if (!room || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200">
@@ -808,7 +869,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
           )}
 
           {isPlaying && (
-            <div className="duel-game-shell space-y-4">
+            <div ref={gameMotionRef} className="duel-game-shell space-y-4">
               {matchState ? (
                 isInstructionsPhase ? (
                   <section className="duel-instructions-card" aria-labelledby="instructions-title">
@@ -905,6 +966,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         id="duel-challenge-dialog"
                         role="dialog"
                         aria-labelledby="challenge-title"
+                        data-game-motion="challenge"
                         className="duel-challenge-popover"
                       >
                         <div className="duel-challenge-popover-heading">
@@ -1359,7 +1421,10 @@ function PythonEditor({
   const lineCount = Math.max(1, value.split('\n').length);
 
   return (
-    <article className="duel-code-board duel-own-code-board duel-python-editor overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400">
+    <article
+      data-game-motion="board"
+      className="duel-code-board duel-own-code-board duel-python-editor overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 shadow-inner focus-within:border-cyan-400"
+    >
       <div className="duel-code-board-header flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 text-xs">
         <div className="min-w-0">
           <span className="duel-code-player-name block truncate font-mono font-black text-slate-100">
@@ -1491,6 +1556,7 @@ function RivalCodeBoard({
 }) {
   return (
     <article
+      data-game-motion="board"
       className={`duel-code-board duel-rival-code-board ${isCompact ? 'duel-code-board-compact' : ''}`}
     >
       <header className="duel-code-board-header">
