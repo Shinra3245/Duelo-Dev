@@ -1098,10 +1098,40 @@ describe('MatchHub', () => {
           client.emittedEvents.length = 0;
         }
 
+        const beforeLeave = await store.getMatch(session.match_id);
+        const activePlayerState = ['user-1', 'user-2'].map((userId) => {
+          const player = beforeLeave?.players.get(userId);
+          return {
+            userId,
+            score: player?.score,
+            cases_total: player?.cases_total,
+            time_total_ms: player?.time_total_ms,
+            current_problem_idx: player?.current_problem_idx,
+            is_ready: player?.is_ready,
+            is_revealed: player?.is_revealed,
+          };
+        });
+
         await hub.handleLeaveMatch(clients[2]!);
 
         const updated = await store.getMatch(session.match_id);
         expect(updated?.status).toBe('running');
+        expect(updated?.current_round_id).toBe(beforeLeave?.current_round_id);
+        expect(updated?.current_round_idx).toBe(beforeLeave?.current_round_idx);
+        expect(
+          ['user-1', 'user-2'].map((userId) => {
+            const player = updated?.players.get(userId);
+            return {
+              userId,
+              score: player?.score,
+              cases_total: player?.cases_total,
+              time_total_ms: player?.time_total_ms,
+              current_problem_idx: player?.current_problem_idx,
+              is_ready: player?.is_ready,
+              is_revealed: player?.is_revealed,
+            };
+          }),
+        ).toEqual(activePlayerState);
         expect(updated?.players.get('user-3')?.connection).toBe('left');
         expect(
           [...(updated?.players.values() ?? [])].filter(

@@ -74,6 +74,10 @@ test.describe('panel administrativo en navegador', () => {
     const roomCard = page.locator('article.admin-room-card').filter({ hasText: room.room_code });
 
     await expect(roomCard).toBeVisible();
+    await expect(roomCard.locator('.admin-room-summary')).toContainText(
+      `0/${room.config.max_players}`,
+    );
+    await expect(roomCard).toContainText('Sala vacía');
     await expect(roomCard.getByRole('button', { name: 'Cerrar sala' })).toBeVisible();
 
     const closeResponse = page.waitForResponse(
@@ -104,6 +108,8 @@ test.describe('panel administrativo en navegador', () => {
 
     const roomCard = page.locator('article.admin-room-card').filter({ hasText: room.room_code });
     await expect(roomCard).toContainText('Lobby');
+    await expect(roomCard.locator('.admin-room-summary')).toContainText('0/3');
+    await expect(roomCard).toContainText('Sala vacía');
 
     const closeResponse = page.waitForResponse(
       (response) =>
