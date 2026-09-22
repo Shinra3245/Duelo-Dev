@@ -1581,6 +1581,17 @@ html.duel-game-viewport body {
   outline-offset: 2px;
 }
 
+.duel-reconnect-notice {
+  border: 1px solid rgb(251 191 36 / 0.5);
+  border-radius: 0.85rem;
+  background: rgb(255 251 235 / 0.96);
+  padding: 0.7rem 0.9rem;
+  color: #78350f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .duel-game-viewport-content > .duel-game-shell {
   display: flex;
   height: 100%;

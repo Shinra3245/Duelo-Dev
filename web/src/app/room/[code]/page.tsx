@@ -17,7 +17,13 @@ import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import { isCompactGameViewport } from '@/lib/game-viewport';
 import { ACTIVE_MATCH_LEAVE_QUESTION, protectActiveMatchUnload } from '@/lib/match-unload';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
-import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
+import {
+  S2C,
+  C2S,
+  comparePlayerScores,
+  PROBLEM_CATEGORY_LABELS,
+  RECONNECT_GRACE_MS,
+} from '@duelodev/shared';
 import type {
   RoomDetailsResponse,
   RoomPlayerSummary,
@@ -108,6 +114,26 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
     window.addEventListener('resize', updateDeviceCapability);
     return () => window.removeEventListener('resize', updateDeviceCapability);
   }, []);
+
+  useEffect(() => {
+    const markOffline = () => setIsConnected(false);
+    const reconnectAfterNetworkRecovery = () => {
+      if (!wsClient) return;
+      // El WebSocket existente puede permanecer abierto mientras el navegador
+      // está offline. Forzamos un ciclo limpio para que el cliente vuelva a
+      // emitir `connected` y la UI retire el aviso solo cuando el transporte
+      // esté realmente disponible.
+      wsClient.disconnect();
+      wsClient.connect();
+    };
+
+    window.addEventListener('offline', markOffline);
+    window.addEventListener('online', reconnectAfterNetworkRecovery);
+    return () => {
+      window.removeEventListener('offline', markOffline);
+      window.removeEventListener('online', reconnectAfterNetworkRecovery);
+    };
+  }, [wsClient]);
 
   // Load room & connect
   useEffect(() => {
@@ -874,6 +900,13 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
           {isPlaying && (
             <div ref={gameMotionRef} className="duel-game-shell space-y-4">
+              {canConfirmBrowserLeave && !isConnected && (
+                <div className="duel-reconnect-notice" role="status" aria-live="polite">
+                  La conexión se interrumpió. El servidor conserva tu lugar durante{' '}
+                  {Math.round(RECONNECT_GRACE_MS / 1000)} segundos mientras intentamos reconectar;
+                  no cierres esta pestaña si quieres volver a la partida.
+                </div>
+              )}
               {isCompactViewport && !isViewportAdvisoryDismissed && (
                 <div className="duel-viewport-advisory" role="status" aria-live="polite">
                   <span>

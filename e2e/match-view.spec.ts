@@ -181,6 +181,14 @@ test.describe('vista de partida sincronizada', () => {
       await host.setViewportSize({ width: 1280, height: 720 });
       await host.evaluate(() => window.dispatchEvent(new Event('resize')));
 
+      // Simulamos las señales del navegador para validar el aviso sin dejar
+      // que Playwright cierre y reabra el WebSocket fuera del control del test.
+      await host.evaluate(() => window.dispatchEvent(new Event('offline')));
+      await expect(host.locator('.duel-reconnect-notice')).toBeVisible({ timeout: 10_000 });
+      await expect(host.locator('.duel-reconnect-notice')).toContainText('60 segundos');
+      await host.evaluate(() => window.dispatchEvent(new Event('online')));
+      await expect(host.locator('.duel-reconnect-notice')).toBeHidden({ timeout: 15_000 });
+
       const fixedGameViewport = await host.evaluate(() => ({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
