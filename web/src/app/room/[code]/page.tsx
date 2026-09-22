@@ -14,7 +14,7 @@ import {
   isClipboardShortcut,
 } from '@/lib/editor-behavior';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
-import { protectActiveMatchUnload } from '@/lib/match-unload';
+import { ACTIVE_MATCH_LEAVE_QUESTION, protectActiveMatchUnload } from '@/lib/match-unload';
 import { RealtimeClient, realtimeUrl } from '@/lib/realtime';
 import { S2C, C2S, comparePlayerScores, PROBLEM_CATEGORY_LABELS } from '@duelodev/shared';
 import type {
@@ -1113,8 +1113,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                   }}
                 >
                   <p className="duel-game-eyebrow">SALIDA DE PARTIDA</p>
-                  <h2 id="duel-leave-title">¿Estás a punto de abandonar la partida?</h2>
+                  <h2 id="duel-leave-title">{ACTIVE_MATCH_LEAVE_QUESTION}</h2>
                   <p id="duel-leave-description">
+                    Si sales, perderás la partida.{' '}
                     {activePlayersAfterLeave >= 2
                       ? 'La partida continuará con los jugadores restantes.'
                       : 'Tu rival será declarado ganador por abandono.'}{' '}

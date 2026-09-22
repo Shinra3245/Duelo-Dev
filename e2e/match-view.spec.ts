@@ -182,6 +182,20 @@ test.describe('vista de partida sincronizada', () => {
         }),
       ).toBe(true);
 
+      await host.getByRole('button', { name: 'Abandonar partida' }).last().click();
+      await expect(
+        host.getByRole('heading', {
+          name: '¿Estás seguro de que quieres abandonar la partida?',
+        }),
+      ).toBeVisible();
+      await expect(host.getByText('Si sales, perderás la partida.')).toBeVisible();
+      await host.getByRole('button', { name: 'Seguir en la partida' }).click();
+      await expect(
+        host.getByRole('heading', {
+          name: '¿Estás seguro de que quieres abandonar la partida?',
+        }),
+      ).not.toBeVisible();
+
       await host.getByRole('button', { name: 'Abrir el reto' }).click();
       const challenge = host.getByRole('dialog', { name: 'Reto actual' });
       await expect(challenge).toBeVisible();
