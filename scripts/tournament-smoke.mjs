@@ -3,6 +3,14 @@
 /* eslint-disable no-console */
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
+import {
+  ACTIVE_PROBLEM_CATEGORIES,
+  C2S,
+  DEFAULT_LANGUAGE,
+  LANGUAGE_LABELS,
+  S2C,
+  isLanguage,
+} from '@duelodev/shared';
 
 const API_URL = stripTrailingSlash(
   process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001/api/v1',
@@ -12,28 +20,24 @@ const REALTIME_URL =
 const WEB_URL = stripTrailingSlash(process.env.WEB_URL ?? 'http://127.0.0.1:3000');
 const TIMEOUT_MS = positiveInt(process.env.SMOKE_TIMEOUT_MS, 90_000);
 const EXPECTED_VERDICT = process.env.SMOKE_EXPECTED_VERDICT ?? 'WA';
+const LANGUAGE = process.env.SMOKE_LANGUAGE ?? DEFAULT_LANGUAGE;
 const RUN_ID = Date.now().toString(36).slice(-6);
-
-const C2S = {
-  JOIN_MATCH: 'join_match',
-};
-
-const S2C = {
-  MATCH_SYNC: 'match_sync',
-  VERDICT: 'verdict',
-  SCORE_UPDATE: 'score_update',
-  ERROR: 'error',
-};
 
 const config = {
   mode: 'puntos',
+  language: LANGUAGE,
   max_players: 2,
   num_problems: 1,
-  categories: ['muy_facil', 'facil', 'facil_medio'],
+  categories: [...ACTIVE_PROBLEM_CATEGORIES],
   time_per_problem_s: 300,
 };
 
-const wrongPythonSolution = `# DueloDev tournament smoke: respuesta incorrecta controlada\nprint(0)\n`;
+// Programas controlados; sólo los ejecuta el worker de la VM aislada.
+const WRONG_SOLUTIONS = {
+  python: 'print("DUEL_SMOKE_INCORRECTO")\n',
+  cpp: '#include <iostream>\nint main() { std::cout << "DUEL_SMOKE_INCORRECTO\\n"; }\n',
+  java: 'public class Main { public static void main(String[] args) { System.out.println("DUEL_SMOKE_INCORRECTO"); } }\n',
+};
 
 function positiveInt(value, fallback) {
   if (!value) return fallback;
@@ -215,7 +219,11 @@ async function waitForSubmissionCompleted(submissionId, token) {
 }
 
 async function main() {
+  if (!isLanguage(LANGUAGE)) {
+    throw new Error('SMOKE_LANGUAGE debe ser python, cpp o java');
+  }
   console.log('Smoke torneo DueloDev');
+  console.log(`Lenguaje=${LANGUAGE_LABELS[LANGUAGE]}`);
   console.log(`API=${API_URL}`);
   console.log(`Realtime=${REALTIME_URL}`);
   console.log(`Origen web=${WEB_URL}`);
@@ -268,13 +276,29 @@ async function main() {
         payload?.round_id,
       'match_sync running',
     );
-    await rivalWs.waitFor(
+    const rivalSync = await rivalWs.waitFor(
       S2C.MATCH_SYNC,
-      (payload) => payload?.match_id === room.match_id,
+      (payload) => payload?.match_id === room.match_id && payload?.status === 'running',
       'match_sync rival',
     );
+    if (
+      hostSync.language !== LANGUAGE ||
+      rivalSync.language !== LANGUAGE ||
+      hostSync.problem_id !== rivalSync.problem_id ||
+      hostSync.round_id !== rivalSync.round_id
+    ) {
+      throw new Error('Los jugadores no recibieron el mismo lenguaje, reto y ronda inicial');
+    }
 
     console.log(`Problema activo: ${hostSync.problem_id}; ronda: ${hostSync.round_id}`);
+    const instructionsRemaining = Math.max(
+      0,
+      (hostSync.instructions_ends_at ?? hostSync.server_time) - hostSync.server_time,
+    );
+    if (instructionsRemaining > 0) {
+      console.log('Esperando la ventana de instrucciones antes del envío...');
+      await new Promise((resolve) => setTimeout(resolve, instructionsRemaining + 100));
+    }
 
     const accepted = await apiRequest('/submissions', {
       method: 'POST',
@@ -284,8 +308,8 @@ async function main() {
         match_id: room.match_id,
         round_id: hostSync.round_id,
         problem_id: hostSync.problem_id,
-        language: 'python',
-        source_code: wrongPythonSolution,
+        language: LANGUAGE,
+        source_code: WRONG_SOLUTIONS[LANGUAGE],
       },
     });
     const submission = accepted.data;
@@ -296,11 +320,7 @@ async function main() {
       (payload) => payload?.submission_id === submission.submission_id,
       'verdict del envío',
     );
-    await hostWs.waitFor(
-      S2C.SCORE_UPDATE,
-      (payload) => payload?.match_id === room.match_id,
-      'score_update',
-    );
+    // WA con 0 casos no modifica la clasificación ni obliga a emitir SCORE_UPDATE.
     const durable = await waitForSubmissionCompleted(submission.submission_id, host.token);
 
     if (durable.verdict !== EXPECTED_VERDICT) {
