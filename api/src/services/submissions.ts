@@ -6,6 +6,8 @@ import {
   JUDGE_STREAM_SCHEMA_VERSION,
   createLogger,
   resolveTimeLimitMs,
+  getMatchLanguage,
+  LANGUAGE_LABELS,
   type CreateSubmissionRequest,
   type JudgeJobStreamMessage,
   type Logger,
@@ -108,6 +110,13 @@ export class SubmissionService {
     }
 
     const matchBeforeCooldown = await this.roomRepo.findMatchById(req.match_id);
+    if (matchBeforeCooldown && req.language !== getMatchLanguage(matchBeforeCooldown.config)) {
+      throw new HttpError(
+        400,
+        ERROR_CODES.UNSUPPORTED_LANGUAGE,
+        `Esta sala utiliza ${LANGUAGE_LABELS[getMatchLanguage(matchBeforeCooldown.config)]}. Envía tu solución en ese lenguaje.`,
+      );
+    }
     if (
       matchBeforeCooldown?.instructions_ends_at &&
       Date.parse(matchBeforeCooldown.instructions_ends_at) > now

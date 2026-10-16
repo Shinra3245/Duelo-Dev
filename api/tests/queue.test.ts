@@ -145,6 +145,7 @@ describe('Judge Queue & Submission Reconciler (doc 04 §4, §5)', () => {
         host_id: hostId,
         config: {
           mode: 'puntos',
+          language: 'cpp',
           max_players: 2,
           categories: ['facil'],
           num_problems: 3,

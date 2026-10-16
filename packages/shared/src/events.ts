@@ -12,6 +12,7 @@
  * en capas de coordinación sin agregar dependencias externas.
  */
 import { type Verdict, isVerdict } from './verdicts.js';
+import { type Language, isLanguage } from './limits.js';
 
 export const MATCH_NAMESPACE = '/match';
 
@@ -169,6 +170,8 @@ export function isMatchFinishReason(value: unknown): value is MatchFinishReason 
 // ─────────────────────── Configuración de partida ─────────────────────────
 
 interface BaseMatchConfig {
+  /** Ausente sólo en configuraciones históricas; equivale a Python. */
+  language?: Language;
   num_problems: number;
   categories: ProblemCategory[];
   max_players: number;
@@ -217,6 +220,8 @@ export type MatchConfig = PuntosMatchConfig | RondasMatchConfig;
 export function isMatchConfig(value: unknown): value is MatchConfig {
   if (typeof value !== 'object' || value === null) return false;
   const cfg = value as Record<string, unknown>;
+
+  if (cfg.language !== undefined && !isLanguage(cfg.language)) return false;
 
   if (
     typeof cfg.num_problems !== 'number' ||

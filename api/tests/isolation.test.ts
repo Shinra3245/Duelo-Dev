@@ -558,8 +558,8 @@ describe('Aislamiento y Seguridad Multijugador (doc 04 §2, §5 y doc 06)', () =
           match_id: room.match_id,
           round_id: testRoundId,
           problem_id: testProblemId,
-          language: 'cpp',
-          source_code: 'int main() { return 0; }',
+          language: 'python',
+          source_code: 'print(0)',
         }),
       });
       expect(subResB.status).toBe(202);

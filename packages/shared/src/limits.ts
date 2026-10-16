@@ -12,6 +12,18 @@
 export const LANGUAGES = ['python', 'cpp', 'java'] as const;
 export type Language = (typeof LANGUAGES)[number];
 
+export const DEFAULT_LANGUAGE: Language = 'python';
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  python: 'Python 3.12',
+  cpp: 'C++20',
+  java: 'Java 21',
+};
+
+/** Las partidas anteriores a la selección por sala usan Python. */
+export function getMatchLanguage(config: { language?: Language }): Language {
+  return config.language ?? DEFAULT_LANGUAGE;
+}
+
 /** Multiplicador de tiempo respecto al límite base, que es el de C++ (D3). */
 export const TIME_MULTIPLIERS: Record<Language, number> = {
   python: 3,

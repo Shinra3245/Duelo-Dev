@@ -1,5 +1,6 @@
 import {
   ACTIVE_PROBLEM_CATEGORIES,
+  LANGUAGES,
   MAX_MATCH_DURATION_S,
   MAX_ACTIVE_PROBLEMS,
   SUPPORTED_PLAYER_COUNTS,
@@ -29,6 +30,7 @@ export const createRoomRequestSchema = {
       required: ['mode', 'max_players', 'categories', 'num_problems'],
       properties: {
         mode: { type: 'string', enum: ['puntos', 'rondas'] },
+        language: { type: 'string', enum: LANGUAGES },
         max_players: { type: 'integer', enum: SUPPORTED_PLAYER_COUNTS },
         categories: {
           type: 'array',
