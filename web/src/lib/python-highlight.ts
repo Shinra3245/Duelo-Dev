@@ -24,7 +24,7 @@ export function highlightPython(value: string): string {
   return result + escapeHtml(value.slice(previousIndex));
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

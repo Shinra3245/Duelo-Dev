@@ -7,7 +7,8 @@ import { useGSAP } from '@gsap/react';
 import { api, ApiClientError } from '@/lib/api';
 import { CodeSyncClient } from '@/lib/code-sync';
 import { isMobileGameDevice } from '@/lib/device-support';
-import { highlightPython } from '@/lib/python-highlight';
+import { highlightCode } from '@/lib/code-highlight';
+import { LANGUAGE_FILES, LANGUAGE_TEMPLATES, editorLabel } from '@/lib/code-language';
 import {
   getClosingDelimiterSkipPosition,
   insertAutoClosePair,
@@ -23,6 +24,8 @@ import {
   comparePlayerScores,
   PROBLEM_CATEGORY_LABELS,
   RECONNECT_GRACE_MS,
+  LANGUAGE_LABELS,
+  getMatchLanguage,
 } from '@duelodev/shared';
 import type {
   RoomDetailsResponse,
@@ -39,6 +42,7 @@ import type {
   PlayerScore,
   RevealChangedPayload,
   PlayerStatusPayload,
+  Language,
 } from '@duelodev/shared';
 
 gsap.registerPlugin(useGSAP);
@@ -84,6 +88,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   const leaveCancelButtonRef = useRef<HTMLButtonElement>(null);
   const leaveTriggerButtonRef = useRef<HTMLButtonElement>(null);
   const gameMotionRef = useRef<HTMLDivElement>(null);
+  const language = matchState?.language ?? (room ? getMatchLanguage(room.config) : 'python');
   const leaveRequestedRef = useRef(false);
   const leaveTimeoutRef = useRef<number | null>(null);
 
@@ -187,14 +192,19 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
 
         client.on(S2C.MATCH_SYNC, (payload: unknown) => {
           const typedPayload = payload as MatchSyncPayload;
+          const nextLanguage = typedPayload.language ?? getMatchLanguage(res.config);
+          if (!currentRoundIdRef.current && !sourceCodeRef.current) {
+            sourceCodeRef.current = LANGUAGE_TEMPLATES[nextLanguage];
+            setSourceCode(LANGUAGE_TEMPLATES[nextLanguage]);
+          }
           if (
             typedPayload.status === 'running' &&
             currentRoundIdRef.current &&
             currentRoundIdRef.current !== typedPayload.round_id
           ) {
-            sourceCodeRef.current = '';
+            sourceCodeRef.current = LANGUAGE_TEMPLATES[nextLanguage];
             lastPublishedSourceRef.current = '';
-            setSourceCode('');
+            setSourceCode(LANGUAGE_TEMPLATES[nextLanguage]);
             setRivalCode({});
             setProblem(null);
             setVerdict(null);
@@ -242,9 +252,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         client.on(S2C.PROBLEM_BEGIN, (payload: unknown) => {
           const typedPayload = payload as ProblemBeginPayload;
           currentRoundIdRef.current = typedPayload.round_id;
-          sourceCodeRef.current = '';
+          sourceCodeRef.current = LANGUAGE_TEMPLATES[getMatchLanguage(res.config)];
           lastPublishedSourceRef.current = '';
-          setSourceCode('');
+          setSourceCode(LANGUAGE_TEMPLATES[getMatchLanguage(res.config)]);
           setRivalCode({});
           setProblem(null);
           setVerdict(null);
@@ -390,7 +400,10 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       const client = new CodeSyncClient(realtimeUrl, room.match_id, targetUserId, {
         onSync: (message) => {
           if (targetUserId === user.id) {
-            if (!sourceCodeRef.current && message.source_code) {
+            if (
+              (!sourceCodeRef.current || sourceCodeRef.current === LANGUAGE_TEMPLATES[language]) &&
+              message.source_code
+            ) {
               sourceCodeRef.current = message.source_code;
               setSourceCode(message.source_code);
             }
@@ -418,7 +431,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       }
       setRivalCode({});
     };
-  }, [room?.match_id, user?.id, codeSyncTargetKey]);
+  }, [room?.match_id, user?.id, codeSyncTargetKey, language]);
 
   useEffect(() => {
     const ownerClient = codeSyncClientsRef.current.get(user?.id ?? '');
@@ -488,7 +501,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
         match_id: room.match_id,
         round_id: matchState.round_id,
         problem_id: matchState.problem_id,
-        language: 'python',
+        language,
         source_code: sourceCode,
       });
       setIsAwaitingVerdict(true);
@@ -743,6 +756,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
               <span className="duel-room-status rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-slate-100">
                 {roomStatusLabel(room.status)}
               </span>
+              <span className="duel-room-language rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-cyan-200">
+                {LANGUAGE_LABELS[language]}
+              </span>
               <span
                 className="duel-room-connection flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-slate-100"
                 aria-live="polite"
@@ -944,7 +960,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                           <strong aria-live="off">
                             00:{String(instructionsRemaining).padStart(2, '0')}
                           </strong>
-                          <span>Python 3</span>
+                          <span>{LANGUAGE_LABELS[language]}</span>
                         </div>
                         {canLeaveMatch && (
                           <button
@@ -960,6 +976,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                     </div>
                     <ProblemStatement
                       problem={problem}
+                      language={language}
                       problemIndex={matchState.problem_index ?? 0}
                       totalProblems={room.config.num_problems}
                     />
@@ -1024,7 +1041,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         <div className="duel-challenge-popover-heading">
                           <div>
                             <p className="duel-game-eyebrow">
-                              Python 3 · Ronda {(matchState.problem_index ?? 0) + 1}
+                              {LANGUAGE_LABELS[language]} · Ronda{' '}
+                              {(matchState.problem_index ?? 0) + 1}
                             </p>
                             <h2 id="challenge-title">Reto actual</h2>
                           </div>
@@ -1042,6 +1060,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         </div>
                         <ProblemStatement
                           problem={problem}
+                          language={language}
                           problemIndex={matchState.problem_index ?? 0}
                           totalProblems={room.config.num_problems}
                         />
@@ -1055,7 +1074,8 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                     <div
                       className={`duel-code-board-grid ${currentMatchPlayers.length === 2 ? 'duel-two-boards' : ''}`}
                     >
-                      <PythonEditor
+                      <CodeEditor
+                        language={language}
                         value={sourceCode}
                         onChange={setSourceCode}
                         disabled={isSubmitting || room.status !== 'running'}
@@ -1068,6 +1088,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                         .map((player, index) => (
                           <RivalCodeBoard
                             key={player.user_id}
+                            language={language}
                             player={player}
                             status={matchState.players[player.user_id] ?? 'disconnected'}
                             score={matchState.scores.find(
@@ -1096,9 +1117,9 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
                               ? 'Esperando veredicto...'
                               : 'Enviar solución'}
                       </button>
-                      <p id="python-editor-help">
-                        Python 3 · Copiar y pegar desactivados. El reto permanece accesible desde
-                        «Ver reto»; abrirlo no pausa el reloj.
+                      <p id="code-editor-help">
+                        {LANGUAGE_LABELS[language]} · Copiar y pegar desactivados. El reto permanece
+                        accesible desde «Ver reto»; abrirlo no pausa el reloj.
                       </p>
                     </div>
 
@@ -1212,10 +1233,12 @@ function formatClock(totalSeconds: number) {
 
 function ProblemStatement({
   problem,
+  language,
   problemIndex,
   totalProblems,
 }: {
   problem: ProblemPublicResponse | null;
+  language: Language;
   problemIndex: number;
   totalProblems: number;
 }) {
@@ -1232,7 +1255,7 @@ function ProblemStatement({
         <span className="duel-problem-category">
           Dificultad: {PROBLEM_CATEGORY_LABELS[problem.category]}
         </span>
-        <span>Python 3</span>
+        <span>{LANGUAGE_LABELS[language]}</span>
       </div>
       <h3>{problem.title}</h3>
       <p className="duel-problem-description">{problem.description}</p>
@@ -1331,13 +1354,15 @@ function VisibleCodeSnapshots({
                     {playerNames.get(snapshot.user_id) ?? snapshot.user_id}
                     {isOwn ? ' · tú' : ''}
                   </span>
-                  <span className="text-slate-400">Python 3 · snapshot autorizado</span>
+                  <span className="text-slate-400">
+                    {LANGUAGE_LABELS[snapshot.language]} · snapshot autorizado
+                  </span>
                 </div>
                 <pre
                   aria-label={`Código de ${playerNames.get(snapshot.user_id) ?? 'jugador'}`}
                   className="max-h-72 overflow-auto p-4 font-mono text-xs leading-6 text-slate-100"
                   dangerouslySetInnerHTML={{
-                    __html: highlightPython(snapshot.source_code) || ' ',
+                    __html: highlightCode(snapshot.source_code, snapshot.language) || ' ',
                   }}
                 />
               </article>
@@ -1453,7 +1478,8 @@ function formatScoreTime(timeMs: number) {
   return `${(timeMs / 1000).toFixed(1)} s`;
 }
 
-function PythonEditor({
+function CodeEditor({
+  language,
   value,
   onChange,
   disabled,
@@ -1461,6 +1487,7 @@ function PythonEditor({
   isRevealed,
   onToggleReveal,
 }: {
+  language: Language;
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
@@ -1483,11 +1510,11 @@ function PythonEditor({
           <span className="duel-code-player-name block truncate font-mono font-black text-slate-100">
             {playerName} <span>(Tú)</span>
           </span>
-          <span className="font-mono text-slate-400">solution.py</span>
+          <span className="font-mono text-slate-400">{LANGUAGE_FILES[language]}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="rounded-full bg-cyan-300/10 px-2 py-1 font-bold uppercase tracking-[0.14em] text-cyan-200">
-            Python 3
+            {LANGUAGE_LABELS[language]}
           </span>
           <button type="button" onClick={onToggleReveal} className="duel-code-visibility-button">
             {isRevealed ? 'Ocultar mi código' : 'Mostrar mi código'}
@@ -1509,12 +1536,12 @@ function PythonEditor({
             ref={highlightRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 m-0 overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-sm leading-6 text-slate-100"
-            dangerouslySetInnerHTML={{ __html: highlightPython(value) || ' ' }}
+            dangerouslySetInnerHTML={{ __html: highlightCode(value, language) || ' ' }}
           />
           <textarea
             ref={editorRef}
-            aria-describedby="python-editor-help"
-            aria-label="Editor de solución Python"
+            aria-describedby="code-editor-help"
+            aria-label={editorLabel(language)}
             className="relative h-full w-full resize-none overflow-auto bg-transparent p-5 font-mono text-sm leading-6 text-transparent caret-cyan-300 outline-none placeholder:text-slate-500"
             value={value}
             onChange={(event) => onChange(event.target.value)}
@@ -1580,7 +1607,7 @@ function PythonEditor({
                 lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
               }
             }}
-            placeholder="Escribe tu código en Python 3 aquí..."
+            placeholder={`Escribe tu código en ${LANGUAGE_LABELS[language]} aquí...`}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
@@ -1593,6 +1620,7 @@ function PythonEditor({
 }
 
 function RivalCodeBoard({
+  language,
   player,
   status,
   score,
@@ -1600,6 +1628,7 @@ function RivalCodeBoard({
   isRevealed,
   isCompact,
 }: {
+  language: Language;
   player: RoomPlayerSummary;
   status: MatchSyncPayload['players'][string];
   score: PlayerScore | undefined;
@@ -1631,7 +1660,7 @@ function RivalCodeBoard({
           <pre
             aria-label={`Código en vivo de ${player.gamertag}${isRevealed ? '' : ', desenfocado'}`}
             className={`duel-rival-code ${isRevealed ? '' : 'duel-code-blurred'}`}
-            dangerouslySetInnerHTML={{ __html: highlightPython(sourceCode) || ' ' }}
+            dangerouslySetInnerHTML={{ __html: highlightCode(sourceCode, language) || ' ' }}
           />
         )}
         {!isRevealed && <span className="duel-code-blur-badge">Código desenfocado</span>}

@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import {
   ACTIVE_PROBLEM_CATEGORIES,
   MAX_MATCH_DURATION_S,
+  LANGUAGES,
+  LANGUAGE_LABELS,
+  getMatchLanguage,
+  isLanguage,
   PROBLEM_CATEGORY_LABELS,
 } from '@duelodev/shared';
 import type {
@@ -22,6 +26,7 @@ import { fitRondasTarget, getActiveProblemLimit } from '@/lib/admin-room-config'
 const defaultConfig: CreateRoomRequest = {
   config: {
     mode: 'puntos',
+    language: 'python',
     max_players: 2,
     num_problems: 3,
     categories: ['facil', 'facil_medio', 'dificil'],
@@ -531,12 +536,14 @@ export default function AdminPage() {
                       ? {
                           config: {
                             ...defaultConfig.config,
+                            language: getMatchLanguage(current.config),
                             max_players: current.config.max_players,
                           },
                         }
                       : {
                           config: {
                             mode: 'rondas',
+                            language: getMatchLanguage(current.config),
                             max_players: current.config.max_players,
                             num_problems: 3,
                             categories: ['facil', 'facil_medio', 'dificil'],
@@ -550,6 +557,25 @@ export default function AdminPage() {
                 <option value="puntos">Puntos</option>
                 <option value="rondas">Rondas</option>
               </select>
+            </label>
+            <label>
+              Lenguaje
+              <select
+                aria-label="Lenguaje"
+                value={getMatchLanguage(config.config)}
+                onChange={(event) => {
+                  const language = event.target.value;
+                  if (isLanguage(language))
+                    setConfig((current) => ({ config: { ...current.config, language } }));
+                }}
+              >
+                {LANGUAGES.map((language) => (
+                  <option key={language} value={language}>
+                    {LANGUAGE_LABELS[language]}
+                  </option>
+                ))}
+              </select>
+              <small>Todos los jugadores usarán el mismo lenguaje durante la partida.</small>
             </label>
             <label>
               Jugadores
@@ -680,7 +706,8 @@ export default function AdminPage() {
                     <strong>{room.room_code}</strong>
                     <span>
                       {room.mode === 'puntos' ? 'Puntos' : 'Rondas'} ·{' '}
-                      {roomStatusLabels[room.status]}
+                      {roomStatusLabels[room.status]} ·{' '}
+                      {LANGUAGE_LABELS[getMatchLanguage(room.config)]}
                     </span>
                   </div>
                   <time dateTime={room.created_at}>{formatDate(room.created_at)}</time>

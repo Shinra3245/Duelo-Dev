@@ -7,7 +7,13 @@ import { Space_Grotesk } from 'next/font/google';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ACTIVE_PROBLEM_CATEGORIES } from '@duelodev/shared';
+import {
+  ACTIVE_PROBLEM_CATEGORIES,
+  LANGUAGES,
+  LANGUAGE_LABELS,
+  isLanguage,
+  type Language,
+} from '@duelodev/shared';
 import { api } from '@/lib/api';
 import { registerGuestSessionCleanup } from '@/lib/guest-session';
 import type {
@@ -55,6 +61,7 @@ export default function Home() {
 
   // Room state
   const [roomCode, setRoomCode] = useState('');
+  const [roomLanguage, setRoomLanguage] = useState<Language>('python');
   const [registeredUsersCanCreateRooms, setRegisteredUsersCanCreateRooms] = useState(true);
 
   // Loading states
@@ -194,6 +201,7 @@ export default function Home() {
       if (mode === 'puntos') {
         config = {
           mode: 'puntos',
+          language: roomLanguage,
           max_players: 2,
           num_problems: 1,
           categories: PILOT_CATEGORIES,
@@ -202,6 +210,7 @@ export default function Home() {
       } else {
         config = {
           mode: 'rondas',
+          language: roomLanguage,
           max_players: 2,
           num_problems: 3,
           categories: PILOT_CATEGORIES,
@@ -311,7 +320,7 @@ export default function Home() {
                   3
                 </span>
                 <span className="pt-1">
-                  Escribe tu solución en Python 3 y observa el resultado al instante.
+                  Resuelve retos con Python, C++ o Java y sigue el resultado en vivo.
                 </span>
               </li>
             </ol>
@@ -559,23 +568,46 @@ export default function Home() {
                       : 'Por el momento no puedes crear partidas, solo unirte con el codigo'}
                   </p>
                   {registeredUsersCanCreateRooms ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => handleCreateRoom('puntos')}
-                        disabled={isCreatingRoom}
-                        aria-busy={isCreatingRoom}
-                        className="player-access-points rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                    <div className="space-y-3">
+                      <label
+                        className="player-access-label block text-sm font-bold"
+                        htmlFor="room-language"
                       >
-                        {isCreatingRoom ? 'Creando...' : 'Puntos'}
-                      </button>
-                      <button
-                        onClick={() => handleCreateRoom('rondas')}
-                        disabled={isCreatingRoom}
-                        aria-busy={isCreatingRoom}
-                        className="player-access-rounds rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
-                      >
-                        {isCreatingRoom ? 'Creando...' : 'Rondas'}
-                      </button>
+                        Lenguaje de la sala
+                        <select
+                          id="room-language"
+                          className="player-access-input mt-2 w-full rounded-2xl px-4 py-3"
+                          value={roomLanguage}
+                          disabled={isCreatingRoom}
+                          onChange={(event) => {
+                            if (isLanguage(event.target.value)) setRoomLanguage(event.target.value);
+                          }}
+                        >
+                          {LANGUAGES.map((language) => (
+                            <option key={language} value={language}>
+                              {LANGUAGE_LABELS[language]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={() => handleCreateRoom('puntos')}
+                          disabled={isCreatingRoom}
+                          aria-busy={isCreatingRoom}
+                          className="player-access-points rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                        >
+                          {isCreatingRoom ? 'Creando...' : 'Puntos'}
+                        </button>
+                        <button
+                          onClick={() => handleCreateRoom('rondas')}
+                          disabled={isCreatingRoom}
+                          aria-busy={isCreatingRoom}
+                          className="player-access-rounds rounded-2xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98]"
+                        >
+                          {isCreatingRoom ? 'Creando...' : 'Rondas'}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -707,8 +739,8 @@ export default function Home() {
             <span className="landing-flow-index">03</span>
             <h3>Lee el veredicto</h3>
             <p>
-              Envía Python 3, recibe AC o el diagnóstico correspondiente y escala en el ranking de
-              la sala con total trazabilidad.
+              Envía tu solución en el lenguaje de la sala, recibe AC o el diagnóstico y escala en el
+              ranking de la sala con total trazabilidad.
             </p>
           </article>
         </div>
@@ -719,9 +751,9 @@ export default function Home() {
             <h3>Sube la presión a tu ritmo.</h3>
             <p>
               El organizador selecciona el nivel antes de abrir la sala. El núcleo activo mantiene
-              Python como único lenguaje para que la competición sea limpia y comparable.
+              Un único lenguaje por sala para mantener una competición comparable.
             </p>
-            <span className="landing-language-chip">PYTHON 3 · LENGUAJE ACTIVO</span>
+            <span className="landing-language-chip">PYTHON 3.12 · C++20 · JAVA 21</span>
           </div>
           <div className="landing-difficulty-grid">
             <div className="landing-difficulty-card landing-difficulty-card-start">

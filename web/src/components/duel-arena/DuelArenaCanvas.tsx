@@ -323,7 +323,7 @@ export function DuelArenaCanvas({ className = '' }: DuelArenaCanvasProps) {
       <div className="duel-arena-hud" aria-hidden="true">
         <span className="duel-arena-hud-label">ARENA ONLINE</span>
         <span className="duel-arena-hud-status">
-          <i /> Python 3
+          <i /> Python · C++ · Java
         </span>
       </div>
     </div>
