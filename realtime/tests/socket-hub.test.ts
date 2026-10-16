@@ -247,6 +247,24 @@ describe('MatchHub', () => {
     });
   });
 
+  it.each(['python', 'cpp', 'java'] as const)(
+    'sincroniza %s al entrar y reconectar',
+    async (language) => {
+      const session = createSampleSession('match-language');
+      session.config.language = language;
+      await store.saveMatch(session);
+      const client = createMockClient('sock-language', 'user-1', 'coder1');
+      hub.registerClient(client);
+      await hub.handleJoinMatch(client, { match_id: session.match_id });
+      await hub.handleJoinMatch(client, { match_id: session.match_id });
+      const syncs = client.emittedEvents.filter((event) => event.event === S2C.MATCH_SYNC);
+      expect(syncs).toHaveLength(2);
+      for (const sync of syncs) {
+        expect((sync.payload as MatchSyncPayload).language).toBe(language);
+      }
+    },
+  );
+
   describe('C2S: handleToggleReveal', () => {
     it('valida que visible sea booleano', async () => {
       const client = createMockClient('sock-1', 'user-1', 'coder1', 'match-1');

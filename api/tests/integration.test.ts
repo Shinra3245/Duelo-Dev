@@ -15,6 +15,7 @@ import {
 import { createProductionApp, type ApiApp } from '../src/index.js';
 import {
   createProductionRealtimeServer,
+  PostgresMatchStore,
   PostgresYjsSnapshotStore,
   type RealtimeServer,
 } from '../../realtime/src/index.js';
@@ -637,6 +638,38 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       leaveClient.release();
     }
   });
+
+  it.each(['python', 'cpp', 'java'] as const)(
+    'recupera %s desde PostgreSQL y lo guarda en snapshots',
+    async (language) => {
+      const fixture = await createRunningMatchFixture(pool, `lang-${language}`);
+      await pool.query(
+        "UPDATE matches SET config = config || jsonb_build_object('language', $2::text) WHERE id = $1",
+        [fixture.matchId, language],
+      );
+      const restartedStore = new PostgresMatchStore(pool);
+      const recovered = await restartedStore.getMatch(fixture.matchId);
+      expect(recovered?.config.language).toBe(language);
+      const problem = (await new PostgresProblemRepository(pool).findAllProblems())[0]!;
+      const snapshotId = randomUUID();
+      await new PostgresYjsSnapshotStore(pool).persist({
+        id: snapshotId,
+        matchId: fixture.matchId,
+        roundId: randomUUID(),
+        userId: fixture.userId,
+        problemId: problem.id,
+        generation: 1,
+        code: 'texto de prueba sin ejecución',
+        capturedAt: new Date().toISOString(),
+        isRevealed: false,
+      });
+      const snapshot = await pool.query(
+        'SELECT language, is_revealed FROM match_code_snapshots WHERE id = $1',
+        [snapshotId],
+      );
+      expect(snapshot.rows).toEqual([{ language, is_revealed: false }]);
+    },
+  );
 
   it('6. Reconciliación de estado: recuperación determinista ante avisos perdidos', async () => {
     const fixture = await createRunningMatchFixture(pool, 'recon');

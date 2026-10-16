@@ -361,6 +361,11 @@ describe('contrato de eventos y estado de partida', () => {
     };
 
     expect(isMatchSyncPayload(syncPayload)).toBe(true);
+    for (const language of ['python', 'cpp', 'java']) {
+      expect(isMatchSyncPayload({ ...syncPayload, language })).toBe(true);
+    }
+    expect(isMatchSyncPayload({ ...syncPayload, language: 'javascript' })).toBe(false);
+    expect(isMatchSyncPayload({ ...syncPayload, language: null })).toBe(false);
 
     expect(isMatchSyncPayload({ ...syncPayload, round_id: '' })).toBe(false);
     expect(isMatchSyncPayload({ ...syncPayload, problem_id: '' })).toBe(false);

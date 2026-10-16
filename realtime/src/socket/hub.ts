@@ -19,6 +19,7 @@
 import {
   C2S,
   ERROR_CODES,
+  getMatchLanguage,
   matchRoom,
   RECONNECT_GRACE_MS,
   S2C,
@@ -1086,6 +1087,7 @@ export class MatchHub {
       server_time: Date.now(),
       status: session.status,
       mode: session.mode,
+      language: getMatchLanguage(session.config),
       round_id: roundId,
       problem_id: problemId,
       problem_index: problemIndex,

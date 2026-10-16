@@ -26,7 +26,8 @@ describe('PostgresYjsSnapshotStore', () => {
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('INSERT INTO match_code_snapshots');
     expect(sql).toContain('ON CONFLICT (id) DO UPDATE');
-    expect(sql).toContain("'python'");
+    expect(sql).toContain("COALESCE(match.config->>'language', 'python')");
+    expect(sql).toContain('language = EXCLUDED.language');
     expect(sql).toContain("status IN ('running', 'settling', 'finished', 'abandoned')");
     expect(params).toEqual([
       validSnapshot.id,

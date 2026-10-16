@@ -353,6 +353,8 @@ export function isPlayerScore(value: unknown): value is PlayerScore {
 export interface MatchSyncPayload extends StateStamped {
   status: MatchStatus;
   mode: GameModeName;
+  /** Los servidores actuales siempre lo emiten; opcional por compatibilidad de eventos antiguos. */
+  language?: Language;
   round_id: string | null;
   problem_id: string | null;
   problem_index: number;
@@ -687,6 +689,7 @@ export function isMatchSyncPayload(value: unknown): value is MatchSyncPayload {
     p.server_time <= 0 ||
     !isMatchStatus(p.status) ||
     !isGameModeName(p.mode) ||
+    (p.language !== undefined && !isLanguage(p.language)) ||
     (p.round_id !== null && (typeof p.round_id !== 'string' || p.round_id.length === 0)) ||
     (p.problem_id !== null && (typeof p.problem_id !== 'string' || p.problem_id.length === 0)) ||
     typeof p.problem_index !== 'number' ||

@@ -24,16 +24,15 @@ export class PostgresYjsSnapshotStore {
          id, match_id, round_id, user_id, problem_id, language, source_code,
          is_revealed, version, captured_at
        )
-       SELECT $1, $2, $3, $4, $5, 'python', $6, $7, $8, $9
-       WHERE EXISTS (
-         SELECT 1 FROM matches
-         WHERE id = $2 AND status IN ('running', 'settling', 'finished', 'abandoned')
-       )
+       SELECT $1, $2, $3, $4, $5, COALESCE(match.config->>'language', 'python'), $6, $7, $8, $9
+       FROM matches AS match
+       WHERE match.id = $2 AND match.status IN ('running', 'settling', 'finished', 'abandoned')
          AND EXISTS (
            SELECT 1 FROM match_players WHERE match_id = $2 AND user_id = $4
          )
          AND EXISTS (SELECT 1 FROM problems WHERE id = $5)
        ON CONFLICT (id) DO UPDATE SET
+         language = EXCLUDED.language,
          source_code = EXCLUDED.source_code,
          is_revealed = EXCLUDED.is_revealed,
          version = EXCLUDED.version,
