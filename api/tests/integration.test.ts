@@ -34,6 +34,11 @@ const TEST_DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ?? 'postgresql://duelodev:test@127.0.0.1:55432/duelodev_test';
 const TEST_REDIS_URL = process.env['TEST_REDIS_URL'] ?? 'redis://127.0.0.1:56379';
 const TEST_AUTH_SECRET = 'test-integration-auth-secret-32-characters-min!';
+// Sólo identificadores generados aquí; nunca se revierte ni se borra el esquema del propietario.
+const TEST_SCHEMA = `duelodev_it_${randomUUID().replaceAll('-', '')}`;
+const scopedDatabaseUrl = new URL(TEST_DATABASE_URL);
+scopedDatabaseUrl.searchParams.set('options', `-c search_path=${TEST_SCHEMA}`);
+const SCOPED_DATABASE_URL = scopedDatabaseUrl.toString();
 
 function extractCookieHeader(res: Response): string {
   const rawCookies =
@@ -105,6 +110,8 @@ async function createRunningMatchFixture(
 describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL → Pub/Sub → Realtime', () => {
   let pool: pg.Pool;
   let redis: Redis;
+  let setupPool: pg.Pool | undefined;
+  let schemaCreated = false;
 
   let apiApp: (ApiApp & { pool: pg.Pool; redis: Redis }) | null = null;
   let realtimeServer: (RealtimeServer & { pool: pg.Pool; redis: Redis }) | null = null;
@@ -113,7 +120,7 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
   beforeAll(async () => {
     // La integración es un gate estricto: infraestructura ausente debe fallar,
     // nunca convertir cinco pruebas sin aserciones en un resultado verde.
-    const candidatePool = new Pool({ connectionString: TEST_DATABASE_URL, max: 5 });
+    const candidatePool = new Pool({ connectionString: SCOPED_DATABASE_URL, max: 5 });
     let candidateRedis: Redis | undefined;
 
     try {
@@ -126,6 +133,10 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       await candidateRedis.connect();
       await candidateRedis.ping();
 
+      setupPool = new Pool({ connectionString: TEST_DATABASE_URL, max: 1 });
+      await setupPool.query(`CREATE SCHEMA ${TEST_SCHEMA}`);
+      schemaCreated = true;
+
       pool = candidatePool;
       redis = candidateRedis;
     } catch (error) {
@@ -133,19 +144,18 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
       await candidatePool.end().catch(() => {});
 
       throw new Error(
-        `Infraestructura de integración no disponible. PostgreSQL: ${TEST_DATABASE_URL}; Redis: ${TEST_REDIS_URL}`,
+        'Infraestructura de integración no disponible. Revisa TEST_DATABASE_URL y TEST_REDIS_URL.',
         { cause: error },
       );
     }
 
-    // 1. Limpieza inicial y migraciones
-    await rollbackMigrations(pool).catch(() => {});
+    // 1. Migraciones en un esquema nuevo; no ocultar errores de rollback de otra ejecución.
     await runMigrations(pool);
-    await redis.flushall();
+    await redis.flushdb();
 
     // 2. Inicializar y arrancar servidor API real conectado a Postgres y Redis
     apiApp = await createProductionApp({
-      databaseUrl: TEST_DATABASE_URL,
+      databaseUrl: SCOPED_DATABASE_URL,
       redisUrl: TEST_REDIS_URL,
       authSecret: TEST_AUTH_SECRET,
       seedPilotProblems: true,
@@ -157,7 +167,7 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
 
     // 3. Inicializar y arrancar servidor Realtime conectado a Postgres y Redis
     realtimeServer = await createProductionRealtimeServer({
-      databaseUrl: TEST_DATABASE_URL,
+      databaseUrl: SCOPED_DATABASE_URL,
       redisUrl: TEST_REDIS_URL,
       authSecret: TEST_AUTH_SECRET,
       reconnectGraceMs: 2000,
@@ -178,6 +188,22 @@ describe('Integración Durable: API → Redis Stream → Juez → PostgreSQL →
     if (pool) {
       await pool.end();
     }
+    if (setupPool) {
+      try {
+        if (schemaCreated) {
+          await setupPool.query(`DROP SCHEMA ${TEST_SCHEMA} CASCADE`);
+        }
+      } finally {
+        await setupPool.end();
+      }
+    }
+  });
+
+  it('aísla cada ejecución en su propio esquema sin fallback al esquema público', async () => {
+    const result = await pool.query(
+      'SELECT current_schema() AS schema, current_schemas(false)::text[] AS schemas',
+    );
+    expect(result.rows[0]).toEqual({ schema: TEST_SCHEMA, schemas: [TEST_SCHEMA] });
   });
 
   it('1. Migraciones DDL e idempotencia de reversión/reinicio', async () => {
